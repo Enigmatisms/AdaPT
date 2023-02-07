@@ -1,0 +1,6 @@
+*.png
+
+fast_test/
+**/__pycache__
+
+!assets/*.png

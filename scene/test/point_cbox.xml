@@ -1,0 +1,121 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- A test file for mitsuba-like scene xml file parser -->
+<!-- Author: Qianyue He / Original credit goes to Wenzel Jakob -->
+<!-- Only Steady state rendering are supported -->
+<!-- Only RGB or rgb spectrums are supported -->
+<scene version="1.0">
+	<sensor type="perspective">
+		<float name="near_clip" value="0.001"/>
+		<float name="far_clip" value="2000"/>
+		<float name="fov" value="39.3077"/>
+        <integer name="sample_count" value="128"/>
+		<!-- Only useful in progressive path tracer -->
+		<integer name="max_bounce" value="10"/>
+        <boolean name="use_rr" value="false"/>			<!-- Whether to use Russian roulette ray termination -->
+        <boolean name="anti_alias" value="true"/>       <!-- Only useful in progressive path tracer -->
+
+		<transform name="toWorld">
+			<lookat target="2.78, 2.73, -7.99" origin="2.78, 2.73, -8.00" up="0, 1, 0"/>
+		</transform>
+
+		<film type="film">
+			<integer name="width" value="512"/>
+			<integer name="height" value="512"/>
+			<integer name="sub_samples" value="8"/>
+		</film>
+	</sensor>
+
+	<bsdf type="blinn-phong" id="box">
+		<rgb name="reflectance" value="#BCBCBC"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</bsdf>
+
+	<bsdf type="blinn-phong" id="large_box">
+		<rgb name="reflectance" value="#BCBCBC"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</bsdf>
+
+	<bsdf type="blinn-phong" id="white">
+		<rgb name="reflectance" value="#BDBDBD"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</bsdf>
+
+	<bsdf type="blinn-phong" id="left_wall">
+		<rgb name="reflectance" value="#DD2525"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</bsdf>
+
+	<bsdf type="blinn-phong" id="right_wall">
+		<rgb name="reflectance" value="#25DD25"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</bsdf>
+
+	<emitter type="point" id="point">
+		<rgb name="reflectance" value="15.0, 12.7, 10.5"/>
+		<point name="center" x="2.78" y="5.0" z="2.795"/>
+		<float name="l1" value="1.3"/>
+		<float name="l2" value="1.05"/>
+	</emitter>
+
+	<shape type="sphere">
+		<point name="center" x="3.8" y="0.6" z="1.2"/>
+		<float name="radius" value="0.6"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/cbox_floor.obj"/>
+		<ref type="material" id="white"/>
+		<transform name="toWorld">
+			<translate x="0" y="0.0" z="0"/>
+		</transform>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/cbox_ceiling.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/cbox_back.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/cbox_greenwall.obj"/>
+		<ref type="material" id="right_wall"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/cbox_redwall.obj"/>
+
+		<ref type="material" id="left_wall"/>
+	</shape>
+
+	<shape type="sphere">
+		<point name="center" x="2.0" y="1.2" z="3.2"/>
+		<float name="radius" value="1.2"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<!-- <shape type="obj">
+		<string name="filename" value="meshes/cbox_smallbox.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="0"/>
+		</transform>
+		<ref type="material" id="box"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/cbox_largebox.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
+		</transform>
+		<ref type="material" id="large_box"/>
+	</shape> -->
+</scene>
