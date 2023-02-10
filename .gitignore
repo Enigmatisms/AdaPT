@@ -1,5 +1,6 @@
 *.png
 
+cached/
 fast_test/
 **/__pycache__
 

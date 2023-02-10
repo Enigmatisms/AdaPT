@@ -27,6 +27,8 @@ from emitters.point import PointSource
 from emitters.rect_area import RectAreaSource
 from emitters.directional import DirectionalSource
 
+from utils.tools import timing
+
 __VERSION__   = "1.1"
 __MAPPING__   = {"integer": int, "float": float, "string": str, "boolean": lambda x: True if x.lower() == "true" else False}
 
@@ -151,8 +153,10 @@ def parse_global_sensor(sensor_elem: xet.Element):
             sensor_config["film"][name] = get(elem, "value", __MAPPING__[elem.tag])
     return sensor_config
 
+@timing()
 def mitsuba_parsing(directory: str, file: str):
     xml_file = os.path.join(directory, file)
+    print(f"Parsing XML file from '{xml_file}'")
     node_tree = xet.parse(xml_file)
     root_node = node_tree.getroot()
     version_tag = root_node.attrib["version"]
@@ -175,5 +179,5 @@ def mitsuba_parsing(directory: str, file: str):
     return emitter_configs, bsdf_dict, meshes, configs
 
 if __name__ == "__main__":
-    emitter_configs, bsdf_configs, meshes, configs = mitsuba_parsing("./test/", "balls.xml")
+    emitter_configs, bsdf_configs, meshes, configs = mitsuba_parsing("../inputs/", "cbox/complex.xml")
     print(emitter_configs, bsdf_configs, meshes, configs)

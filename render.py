@@ -3,7 +3,7 @@
     @author: Qianyue He
     @date: 2023.2.7
 """
-
+import os
 import taichi as ti
 from taichi.math import vec3
 
@@ -12,10 +12,11 @@ from la.cam_transform import *
 from tracer.path_tracer import PathTracer
 from emitters.abtract_source import LightSource
 
-from scene.opts import get_options
 from scene.obj_desc import ObjDescriptor
 from scene.xml_parser import mitsuba_parsing
+from scene.opts import get_options, mapped_arch
 from sampler.general_sampling import mis_weight
+from utils.watermark import apply_watermark
 
 @ti.data_oriented
 class Renderer(PathTracer):
@@ -106,11 +107,15 @@ class Renderer(PathTracer):
 
 if __name__ == "__main__":
     options = get_options()
-    ti.init(arch = ti.vulkan, kernel_profiler = options.profile, default_ip = ti.i32, default_fp = ti.f32)
-    emitter_configs, _, meshes, configs = mitsuba_parsing(options.input_path, options.scene)  # complex_cornell
+    cache_path = "./cached/"
+    ti.init(arch = mapped_arch(options.arch), kernel_profiler = options.profile, \
+            default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path)
+    input_folder = os.path.join(options.input_path, options.scene)
+    emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, options.name)  # complex_cornell
     rdr = Renderer(emitter_configs, meshes, configs)
     gui = ti.GUI('Path Tracing', (rdr.w, rdr.h))
     iter_cnt = 0
+    print("[INFO] starting to loop...")
     while True:
         for e in gui.get_events(gui.PRESS):
             if e.key == gui.ESCAPE:
@@ -126,6 +131,5 @@ if __name__ == "__main__":
 
     if options.profile:
         ti.profiler.print_kernel_profiler_info() 
-    pixels = rdr.pixels.to_numpy()
-    print(f"Maximum value: {pixels.max():.5f}")
-    ti.tools.imwrite(pixels, options.output_path + options.img_name)
+    image = apply_watermark(rdr.pixels)
+    ti.tools.imwrite(image, options.output_path + options.img_name)

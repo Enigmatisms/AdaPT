@@ -24,9 +24,9 @@ class World_np:
             name = rgb_elem.get("name")
             if hasattr(self, name):
                 self.__setattr__(name, rgb_parse(rgb_elem))
-        print("Loading the world")
         self.medium = Medium_np(elem.find("medium"))
         self.C = 1.0
+        print(f"World loading completed: \n{self}")
 
     def export(self):
         return World(skybox = vec3(self.skybox), ambient = vec3(self.ambient), medium = self.medium.export(), C = self.C)

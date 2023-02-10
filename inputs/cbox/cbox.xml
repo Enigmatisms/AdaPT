@@ -28,58 +28,43 @@
 		</film>
 	</sensor>
 
-	<brdf type="blinn-phong" id="box">
-		<rgb name="reflectance" value="#BCBCBC"/>
+	<brdf type="lambertian" id="box">
+		<rgb name="k_d" value="#BCBCBC"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="large_box">
-		<rgb name="reflectance" value="#BCBCBC"/>
+	<brdf type="lambertian" id="white">
+		<rgb name="k_d" value="#BDBDBD"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="white">
-		<rgb name="reflectance" value="#BDBDBD"/>
+	<brdf type="lambertian" id="left_wall">
+		<rgb name="k_d" value="#DD2525"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="left_wall">
-		<rgb name="reflectance" value="#DD2525"/>
+	<brdf type="lambertian" id="right_wall">
+		<rgb name="k_d" value="#25DD25"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="right_wall">
-		<rgb name="reflectance" value="#25DD25"/>
+	<brdf type="lambertian" id="light">
+		<rgb name="k_d" value="#555555"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
-
-	<brdf type="blinn-phong" id="light">
-		<rgb name="reflectance" value="#555555"/>
-		<rgb name="k_g" value="1.0"/>
-		<rgb name="k_s" value="0.0"/>
-	</brdf>
-
-	<bsdf type="det-refraction" id="glass">
-		<rgb name="k_d" value="#FAFAFA"/>
-		<medium type="transparent">
-			<rgb name="u_a" value="0.0"/>
-			<rgb name="u_s" value="0.0"/>
-			<rgb name="par" value="0.0"/>
-			<float name="ior" value="1.5"/>
-		</medium>
-	</bsdf>
 
 	<emitter type="rect_area" id="rect_area">
-		<rgb name="reflectance" value="50.0, 45.6, 42.3"/>
+		<rgb name="emission" value="50.0, 45.6, 42.3"/>
+		<rgb name="scaler" value="4.0"/>
 	</emitter>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_luminaire.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
 		<transform name="toWorld">
 			<translate x="0" y="-0.001" z="0"/>
 		</transform>
@@ -88,7 +73,7 @@
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_floor.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
 		<ref type="material" id="white"/>
 		<transform name="toWorld">
 			<translate x="0" y="0.0" z="0"/>
@@ -96,28 +81,28 @@
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_ceiling.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_ceiling.obj"/>
 		<ref type="material" id="white"/>
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_back.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_back.obj"/>
 		<ref type="material" id="white"/>
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_greenwall.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_greenwall.obj"/>
 		<ref type="material" id="right_wall"/>
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_redwall.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_redwall.obj"/>
 
 		<ref type="material" id="left_wall"/>
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_smallbox.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_smallbox.obj"/>
 		<transform name="toWorld">
 			<rotate type="euler" r="0.0" p="0.0" y="0"/>
 		</transform>
@@ -125,11 +110,11 @@
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_largebox.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_largebox.obj"/>
 		<transform name="toWorld">
 			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
 		</transform>
-		<ref type="material" id="glass"/>
+		<ref type="material" id="box"/>
 	</shape>
 
 	<world name="yes!">

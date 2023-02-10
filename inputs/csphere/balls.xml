@@ -96,7 +96,7 @@
 	</emitter> -->
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_luminaire.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
 		<transform name="toWorld">
 			<translate x="0" y="-0.001" z="0"/>
 		</transform>
@@ -105,7 +105,7 @@
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_floor.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
 		<ref type="material" id="white"/>
 		<transform name="toWorld">
 			<translate x="0" y="0.0" z="0"/>
@@ -113,22 +113,22 @@
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_ceiling.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_ceiling.obj"/>
 		<ref type="material" id="white"/>
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_back.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_back.obj"/>
 		<ref type="material" id="white"/>
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_greenwall.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_greenwall.obj"/>
 		<ref type="material" id="right_wall"/>
 	</shape>
 
 	<shape type="obj">
-		<string name="filename" value="meshes/cbox_redwall.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_redwall.obj"/>
 
 		<ref type="material" id="left_wall"/>
 	</shape>

@@ -296,6 +296,7 @@ class BRDF:
             Solid angle PDF for a specific incident direction - BRDF sampling
             Some PDF has nothing to do with backward incid (from eye to the surface), like diffusive 
             This PDF is actually the PDF of cosine-weighted term * BRDF function value
+            # FIXME: this function for getting PDF? PDF for BSDF or PDF for cosine weighted BSDF?
         """
         pdf = 0.0
         dot_outdir = tm.dot(normal, outdir)
@@ -304,7 +305,6 @@ class BRDF:
         elif self._type == 1:
             pdf = tm.max(dot_outdir, 0.0) * INV_PI
         elif self._type == 4:
-            # FIXME: there will be much refactoring work when the ray can penetrate the meshes
             if dot_outdir > 0.0:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, normal)

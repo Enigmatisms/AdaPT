@@ -122,11 +122,17 @@ class LightSource:
         Point / Area / Spot / Directional are to be supported
     """
     def __init__(self, base_elem: xet.Element = None):
+        self.intensity = np.ones(3, np.float32)
         if base_elem is not None:
-            self.intensity = rgb_parse(base_elem.find("rgb"))
+            all_rgbs = base_elem.findall("rgb")
+            for rgb_elem in all_rgbs:
+                name = rgb_elem.get("name")
+                if name == "emission":
+                    self.intensity = rgb_parse(rgb_elem)
+                elif name == "scaler":
+                    self.intensity *= rgb_parse(rgb_elem)
         else:
             print("Warning: default intializer should only be used in testing.")
-            self.intensity = np.ones(3, np.float32)
         self.type: str = base_elem.get("type")
         self.id:   str = base_elem.get("id")
         self.inv_area  = 1.0        # inverse area (for non-point emitters, like rect-area or mesh attached emitters)

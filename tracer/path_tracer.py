@@ -23,6 +23,7 @@ from scene.obj_desc import ObjDescriptor
 from scene.xml_parser import mitsuba_parsing
 
 from sampler.general_sampling import *
+from utils.tools import TicToc
 
 @ti.data_oriented
 class PathTracer(TracerBase):
@@ -35,6 +36,7 @@ class PathTracer(TracerBase):
         """
             Implement path tracing algorithms first, then we can improve light source / BSDF / participating media
         """
+        timer = TicToc()
         self.anti_alias         = prop['anti_alias']
         self.stratified_sample  = prop['stratified_sampling']   # whether to use stratified sampling
         self.use_mis            = prop['use_mis']               # whether to use multiple importance sampling
@@ -57,7 +59,10 @@ class PathTracer(TracerBase):
         self.brdf_nodes.place(self.brdf_field)                              # BRDF Taichi storage
         ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
 
+        print(f"[INFO] Path tracer param loading in {timer.toc(True):.3f} ms")
+        timer.tic()
         self.initialze(emitters, objects)
+        print(f"[INFO] Path tracer initialization in {timer.toc(True):.3f} ms")
 
     def initialze(self, emitters: List[LightSource], objects: List[ObjDescriptor]):
         for i, emitter in enumerate(emitters):
