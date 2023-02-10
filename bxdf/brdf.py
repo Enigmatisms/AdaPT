@@ -187,9 +187,9 @@ class BRDF:
     def eval_frensel_blend(self, ray_in: vec3, ray_out: vec3, normal: vec3, R: mat3):
         # specular part, note that ray out is actually incident light in forward tracing
         half_vec = (ray_out - ray_in)
-        dot_out  = tm.dot(normal, ray_out)                      # FIXME: what if light travels from inside to outside?
+        dot_out  = tm.dot(normal, ray_out)
         spec = vec3([0, 0, 0])
-        if dot_out > 0. and ti.abs(half_vec).max() > 1e-4:      # ray_in and ray_out not on the exact opposite direction
+        if dot_out > 0. and ti.abs(half_vec).max() > 1e-4:  # ray_in and ray_out not on the exact opposite direction
             half_vec = half_vec.normalized()
             dot_in   = -tm.dot(normal, ray_in)              # incident dot should always be positive (otherwise it won't hit this point)
             dot_half = ti.abs(tm.dot(normal, half_vec))
@@ -204,7 +204,6 @@ class BRDF:
             pow5_in  = tm.pow(1. - dot_in / 2., 5)
             pow5_out = tm.pow(1. - dot_out / 2., 5)
             diffuse *= (1. - pow5_in) * (1. - pow5_out)
-            # TODO: should dot_out be here?
             spec = (specular + diffuse) * dot_out
         return spec
 
@@ -222,7 +221,7 @@ class BRDF:
     @ti.func
     def eval_lambertian(self, ray_out: vec3, normal: vec3):
         cosine_term = tm.max(0.0, tm.dot(normal, ray_out))
-        return self.k_d * 0.5 * INV_PI * cosine_term
+        return self.k_d * INV_PI * cosine_term
 
     @ti.func
     def sample_lambertian(self, normal: vec3):

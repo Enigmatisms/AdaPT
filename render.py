@@ -16,6 +16,7 @@ from scene.obj_desc import ObjDescriptor
 from scene.xml_parser import mitsuba_parsing
 from scene.opts import get_options, mapped_arch
 from sampler.general_sampling import mis_weight
+from utils.tools import folder_path
 from utils.watermark import apply_watermark
 
 @ti.data_oriented
@@ -104,10 +105,13 @@ class Renderer(PathTracer):
 
             self.color[i, j] += ti.select(ti.math.isnan(color), 0., color)
             self.pixels[i, j] = self.color[i, j] / self.cnt[None]
+    
+    def summary(self):
+        print(f"[INFO] Finished rendering with {self.cnt[None]} SPP.")
 
 if __name__ == "__main__":
     options = get_options()
-    cache_path = "./cached/"
+    cache_path = folder_path(f"./cached/{options.scene}", f"Cache path for scene {options.scene} not found. JIT compilation might take some time (~30s)...")
     ti.init(arch = mapped_arch(options.arch), kernel_profiler = options.profile, \
             default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path)
     input_folder = os.path.join(options.input_path, options.scene)
@@ -128,8 +132,8 @@ if __name__ == "__main__":
         if gui.running == False: break
         gui.clear()
         rdr.reset()
-
+    rdr.summary()
     if options.profile:
         ti.profiler.print_kernel_profiler_info() 
     image = apply_watermark(rdr.pixels)
-    ti.tools.imwrite(image, options.output_path + options.img_name)
+    ti.tools.imwrite(image, folder_path(options.output_path) + options.img_name)

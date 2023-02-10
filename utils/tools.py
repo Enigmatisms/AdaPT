@@ -25,19 +25,19 @@ def timing(verbose = True):
             start_time = time()
             ret_val = func(*args, **kwargs)
             if verbose:
-                print(f"[Info] Function <{func.__name__}> takes {(time() - start_time) * 1e3:.4f} ms")
+                print(f"[INFO] Function <{func.__name__}> takes {(time() - start_time) * 1e3:.4f} ms")
             return ret_val
         return inner_wrapper
     return outter_wrapper
 
 def show_global_config(config: dict):
-    print(f"[Info] Image to render: (w, h) = ({config['film']['width']}, \
+    print(f"[INFO] Image to render: (w, h) = ({config['film']['width']}, \
           {config['film']['height']}) with {config['max_bounce']} max bounces")
-    print(f"[Info] FOV: {config['fov']:.4f}°. RR: {on_off(config['use_rr'])}.\
+    print(f"[INFO] FOV: {config['fov']:.4f}°. RR: {on_off(config['use_rr'])}.\
           MIS: {on_off(config['use_mis'])}. Shadow rays: {config['shadow_rays']}")
 
-def folder_path(path: str):
+def folder_path(path: str, comment: str = ""):
     if not os.path.exists(path):
-        os.mkdir(path)
+        if comment: print(comment)
+        os.makedirs(path)
     return path
-    
