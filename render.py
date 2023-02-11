@@ -75,9 +75,11 @@ class Renderer(PathTracer):
                         break
                     light_pdf = emitter_pdf * direct_pdf
                     if ti.static(self.use_mis):
-                        bsdf_pdf = self.get_pdf(obj_id, light_dir, normal, ray_d, self.world.medium)
-                        mis_w    = mis_weight(light_pdf, bsdf_pdf)
-                        direct_int += direct_spec * shadow_int * mis_w
+                        mis_w = 1.0
+                        if not emitter.is_delta:
+                            bsdf_pdf = self.get_pdf(obj_id, light_dir, normal, ray_d, self.world.medium)
+                            mis_w    = mis_weight(light_pdf, bsdf_pdf)
+                        direct_int  += direct_spec * shadow_int * mis_w
                     else:
                         direct_int += direct_spec * shadow_int / light_pdf
                 if not break_flag:
@@ -136,4 +138,4 @@ if __name__ == "__main__":
     if options.profile:
         ti.profiler.print_kernel_profiler_info() 
     image = apply_watermark(rdr.pixels)
-    ti.tools.imwrite(image, folder_path(options.output_path) + options.img_name)
+    ti.tools.imwrite(image, f"{folder_path(options.output_path)}{options.img_name}-{options.name[:-4]}.{options.img_ext}")

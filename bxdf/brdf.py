@@ -150,12 +150,14 @@ class BRDF:
         spec = vec3([0, 0, 0])
         pdf = self.k_d.max()
         if eps < pdf:                       # diffusive sampling
-            ray_out_d, spec, pdf = self.sample_lambertian(normal)
+            ray_out_d, spec, lmbt_pdf = self.sample_lambertian(normal)
+            pdf *= lmbt_pdf
         elif eps < pdf + self.k_s.max():    # specular sampling
             local_new_dir, pdf = mod_phong_hemisphere(self.mean[2])
             reflect_view = (-2 * normal * tm.dot(incid, normal) + incid).normalized()
             ray_out_d, _ = delocalize_rotate(reflect_view, local_new_dir)
             spec = self.eval_mod_phong(incid, ray_out_d, normal)
+            pdf *= self.k_s.max()
         else:                               # zero contribution
             # it doesn't matter even we don't return a valid ray_out_d
             # since returned spec here is 0, contribution will be 0 and the ray will be terminated by RR or cut-off

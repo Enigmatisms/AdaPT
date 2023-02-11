@@ -28,6 +28,7 @@ class TaichiSource:
     """
     _type:      ti.i32      # 0 Point, 1 Area, 2 Spot, 3 Directional
     obj_ref_id: ti.i32      # Referring to the attaching object
+    is_delta:   ti.i32      # indicate whether the source is a delta source
     intensity:  vec3
     pos:        vec3
     dirv:       vec3
@@ -50,6 +51,7 @@ class TaichiSource:
             A unified sampling function, choose sampling strategy according to _type \\
             input ray hit point \\
             returns <sampled source point> <souce intensity> <sample pdf> 
+            sampled PDF is defined on solid angles (but not differential area)
         """
         ret_int = self.intensity
         ret_pos = self.pos
@@ -76,6 +78,7 @@ class TaichiSource:
                     local_dir, pdf = cosine_hemisphere()
                     normal, _ = delocalize_rotate(to_hit, local_dir)
                     ret_pos   = center + normal * radius
+                    # since we can sample on any point on the sphere, yet we only choose the hemisphere, therefore we have a 0.5
                     ret_pdf   = 0.5 * pdf
                 diff      = hit_pos - ret_pos
                 dot_light = ti.math.dot(diff.normalized(), normal)
@@ -103,7 +106,7 @@ class TaichiSource:
         if self._type == 1:
             dot_light = -ti.math.dot(inci_dir.normalized(), normal)
             if dot_light > 0:
-                ret_int = self.intensity        # FIXME: this could be a bug
+                ret_int = self.intensity    # radiance will remain unchanged
         return ret_int
 
     @ti.func

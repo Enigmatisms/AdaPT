@@ -24,7 +24,7 @@ from scene.general_parser import get, transform_parse, parse_sphere_element
 
 # import emitters
 from emitters.point import PointSource
-from emitters.rect_area import RectAreaSource
+from emitters.area import AreaSource
 from emitters.directional import DirectionalSource
 
 from utils.tools import timing
@@ -61,7 +61,7 @@ def parse_emitters(em_elem: list):
         if emitter_type == "point":
             source = PointSource(elem)
         elif emitter_type == "rect_area":
-            source = RectAreaSource(elem)
+            source = AreaSource(elem)
         elif emitter_type == "directional":
             source = DirectionalSource(elem)
         if source is not None:
