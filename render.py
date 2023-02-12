@@ -5,6 +5,7 @@
 """
 import os
 import taichi as ti
+from tqdm import tqdm
 from taichi.math import vec3
 
 from typing import List
@@ -16,7 +17,7 @@ from scene.obj_desc import ObjDescriptor
 from scene.xml_parser import mitsuba_parsing
 from scene.opts import get_options, mapped_arch
 from sampler.general_sampling import mis_weight
-from utils.tools import folder_path
+from utils.tools import folder_path, TicToc
 from utils.watermark import apply_watermark
 
 @ti.data_oriented
@@ -27,7 +28,8 @@ class Renderer(PathTracer):
     """
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
         super().__init__(emitters, objects, prop)
-
+        self.clock = TicToc()
+        
     @ti.kernel
     def render(self):
         self.cnt[None] += 1
@@ -79,9 +81,10 @@ class Renderer(PathTracer):
                         if not emitter.is_delta:
                             bsdf_pdf = self.get_pdf(obj_id, light_dir, normal, ray_d, self.world.medium)
                             mis_w    = mis_weight(light_pdf, bsdf_pdf)
-                        direct_int  += direct_spec * shadow_int * mis_w
+                        # FIXME: here we have a bug
+                        direct_int  += direct_spec * shadow_int * mis_w / emitter_pdf
                     else:
-                        direct_int += direct_spec * shadow_int / light_pdf
+                        direct_int += direct_spec * shadow_int / emitter_pdf
                 if not break_flag:
                     direct_int *= self.inv_num_shadow_ray
                 # emission: ray hitting an area light source
@@ -109,9 +112,10 @@ class Renderer(PathTracer):
             self.pixels[i, j] = self.color[i, j] / self.cnt[None]
     
     def summary(self):
-        print(f"[INFO] Finished rendering with {self.cnt[None]} SPP.")
+        print(f"[INFO] Finished rendering. SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s")
 
 if __name__ == "__main__":
+    from utils.tools import TicToc
     options = get_options()
     cache_path = folder_path(f"./cached/{options.scene}", f"Cache path for scene {options.scene} not found. JIT compilation might take some time (~30s)...")
     ti.init(arch = mapped_arch(options.arch), kernel_profiler = options.profile, \
@@ -120,20 +124,20 @@ if __name__ == "__main__":
     emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, options.name)  # complex_cornell
     rdr = Renderer(emitter_configs, meshes, configs)
     gui = ti.GUI('Path Tracing', (rdr.w, rdr.h))
+    
+    max_iter_num = options.iter_num if options.iter_num > 0 else 10000
     iter_cnt = 0
     print("[INFO] starting to loop...")
-    while True:
+    for iter_cnt in tqdm(range(max_iter_num)):
+        gui.clear()
+        rdr.reset()
         for e in gui.get_events(gui.PRESS):
             if e.key == gui.ESCAPE:
                 gui.running = False
         rdr.render()
         gui.set_image(rdr.pixels)
         gui.show()
-        iter_cnt += 1
-        if options.iter_num > 0 and iter_cnt > options.iter_num: break
         if gui.running == False: break
-        gui.clear()
-        rdr.reset()
     rdr.summary()
     if options.profile:
         ti.profiler.print_kernel_profiler_info() 

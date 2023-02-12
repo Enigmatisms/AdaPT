@@ -81,8 +81,6 @@ def sample_triangle(dv1: vec3, dv2: vec3):
 
 @ti.func
 def mis_weight(pdf_a: ti.f32, pdf_b: ti.f32):
-    """ Power heuristic function for MIS weight computation """
-    pdf_a = pdf_a
-    pdf_b = pdf_b
+    """ Balanced heuristic function for MIS weight computation """
     return ti.select(pdf_a > 1e-7, pdf_a / (pdf_a + pdf_b), 0.)
     

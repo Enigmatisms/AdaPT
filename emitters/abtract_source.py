@@ -96,7 +96,7 @@ class TaichiSource:
             else:
                 diff_norm2 = diff.norm_sqr()
                 ret_pdf   *= ti.select(dot_light > 0.0, diff_norm2 / dot_light, 0.0)
-                ret_int   *= (1. / ti.max(diff_norm2, 1e-5) * dot_light)
+                ret_int   /= ti.max(1e-5, ret_pdf)
         return ret_pos, ret_int, ret_pdf
 
     @ti.func
