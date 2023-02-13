@@ -11,19 +11,24 @@ import taichi as ti
 import xml.etree.ElementTree as xet
 
 from taichi.math import vec3
+from bxdf.phase import PhaseFunction
 from scene.general_parser import get, rgb_parse
 
 __all__ = ['Medium', 'Medium_np']
 
 class Medium_np:
-    __type_mapping = {"transparent": 0, "h-g": 1, "rayleigh": 2, "mie": 3, "air": -1}
+    __type_mapping = {"hg": 0, "multi-hg": 1, "rayleigh": 2, "mie": 3, "transparent": -1}
     def __init__(self, elem: xet.Element, is_world = False):
+        """
+            Without spectral information, Rayleigh scattering here might not be physically-based
+        """
         self.ior = 1.0
         self.u_a = np.zeros(3, np.float32)
         self.u_s = np.zeros(3, np.float32)
         self.par = np.zeros(3, np.float32)
+        self.pdf = np.zeros(3, np.float32)
         self.type_id = -1
-        self.type_name = "air"
+        self.type_name = "transparent"
 
         elem_to_query = {"rgb": rgb_parse, "float": lambda el: get(el, "value")}
         if elem is not None:
@@ -41,12 +46,13 @@ class Medium_np:
                         self.__setattr__(name, query_func(tag_elem))
         else:
             if not is_world:
-                print("Warning: default initialization yields air, which is a trivial medium.")
+                print("Warning: default initialization yields <transparent>, which is a trivial medium.")
         self.u_e = self.u_a + self.u_s
     
     def export(self):
+        phase_func = PhaseFunction(_type = self.type_id, par = vec3(self.par), pdf = vec3(self.pdf))
         return Medium(_type = self.type_id, ior = self.ior, u_a = vec3(self.u_a), 
-            u_s = vec3(self.u_s), u_e = vec3(self.u_e), params = vec3(self.par)
+            u_s = vec3(self.u_s), u_e = vec3(self.u_e), ph = phase_func
         )
     
     def __repr__(self):
@@ -56,18 +62,16 @@ class Medium_np:
 class Medium:
     _type:  ti.i32
     ior:    ti.f32
-    u_s:    vec3      # scattering
-    u_a:    vec3      # absorption
-    u_e:    vec3      # precomputed extinction
-    params: vec3      # other parameters (like phase function)
+    u_s:    vec3            # scattering
+    u_a:    vec3            # absorption
+    u_e:    vec3            # precomputed extinction
+    ph:     PhaseFunction   # phase function
 
-    """ All the functions related to 'directions' are useless unless the medium is a scattering one """
+    """ Compute attenuation """
+    @ti.func
     def sample_direction(self):
         pass
 
+    @ti.func
     def eval_direction(self):
         pass
-
-    def pdf_direction(self):
-        pass
-    

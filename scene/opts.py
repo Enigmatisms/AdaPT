@@ -23,7 +23,7 @@ def get_options(delayed_parse = False):
     parser.add_argument("--img_ext",     default = "png", choices=['png', 'jpg', 'bmp'], help = "Output image extension", type = str)
     parser.add_argument("--scene",       default = "cbox", help = "Name of the scene", type = str)
     parser.add_argument("--name",        default = "complex.xml", help = "Scene file name with extension", type = str)
-    parser.add_argument("--arch",        default = 'gpu', choices=['cpu', 'gpu', 'vulkan', 'cuda'], help = "Backend-architecture")
+    parser.add_argument("--arch",        default = 'vulkan', choices=['cpu', 'gpu', 'vulkan', 'cuda'], help = "Backend-architecture")
     parser.add_argument("--profile",     default = False, action = "store_true", help = "Whether to profile the program")
 
     if delayed_parse:

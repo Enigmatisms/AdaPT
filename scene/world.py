@@ -40,5 +40,5 @@ class World:
     skybox:     vec3        # background color (texture is not supported yet)
     ambient:    vec3        # ambient light
 
-    medium:     Medium      # medium in the free space (normally, air or vacuum)
+    medium:     Medium      # medium in the free space (normally, transparent or vacuum)
     C:          ti.f32      # speed of light (could be 1. or 3e8)
