@@ -6,6 +6,7 @@
 """
 
 import taichi as ti
+import taichi.math as tm
 from taichi.math import vec3
 
 from typing import List
@@ -23,6 +24,21 @@ class VolumeRenderer(PathTracer):
     """
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
         super().__init__(emitters, objects, prop)
+
+    @ti.func
+    def sample_mfp(self, idx: ti.i32, in_free_space: ti.i32):
+        """ Mean free path sampling, returns: 
+            - whether medium is a valid scattering medium / mean free path
+        """
+        valid_medium = False
+        mfp = 1e9
+        if in_free_space:
+            if self.world.medium.is_scattering():
+                pass
+        else:
+            if self.is_scattering(idx):
+                pass
+        return valid_medium, mfp
         
     @ti.kernel
     def render(self):
@@ -30,20 +46,29 @@ class VolumeRenderer(PathTracer):
         for i, j in self.pixels:
             ray_d = self.pix2ray(i, j)
             ray_o = self.cam_t
-            obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
-            hit_light       = self.emitter_id[obj_id]   # id for hit emitter, if nothing is hit, this value will be -1
+            obj_id          = -1
+            hit_light       = -1
+            normal          = vec3([0, 1, 0])
             color           = vec3([0, 0, 0])
-            contribution    = vec3([1, 1, 1])
+            throughput      = vec3([1, 1, 1])
+            min_depth       = 1e9
             emission_weight = 1.0
+            in_free_space   = True              # indicator for non-world Medium
             for _i in range(self.max_bounce):
-                if obj_id < 0: break                    # nothing is hit, break
-                if ti.static(self.use_rr):
-                    # Simple Russian Roullete ray termination
-                    max_value = contribution.max()
-                    if ti.random(float) > max_value: break
-                    else: contribution *= 1. / (max_value + 1e-7)    # unbiased calculation
-                else:
-                    if contribution.max() < 1e-4: break     # contribution too small, break
+                # Step 1: ray termination test - Only RR termination is allowed
+                max_value = throughput.max()
+                if ti.random(float) > max_value: break
+                else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
+                # Step 2: ray intersection
+                obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
+                hit_light = self.emitter_id[obj_id]
+                if obj_id < 0: break                                # nothing is hit, break
+                ray_dot = tm.dot(normal, ray_d)
+                # Step 3: check for mean free path sampling
+                is_surf_v, mfp = self.sample_mfp(obj_id, ray_dot < 0) 
+                
+
+
                 hit_point   = ray_d * min_depth + ray_o
 
                 direct_pdf  = 1.0
@@ -89,9 +114,9 @@ class VolumeRenderer(PathTracer):
                 # indirect component requires sampling 
                 ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, self.world.medium)
                 ray_o = hit_point
-                color += (direct_int + emit_int * emission_weight) * contribution
+                color += (direct_int + emit_int * emission_weight) * throughput
                 # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)
-                contribution *= indirect_spec / ray_pdf
+                throughput *= indirect_spec / ray_pdf
                 obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
 
                 if obj_id >= 0:

@@ -104,7 +104,7 @@ class PathTracer(TracerBase):
         else:
             ret_dir, ret_spec, pdf = self.bsdf_field[idx].sample_new_rays(incid, normal, medium)
         return ret_dir, ret_spec, pdf
-    
+
     @ti.func
     def eval(self, idx: ti.i32, incid: vec3, out: vec3, normal: vec3, medium) -> vec3:
         ret_spec = vec3([1, 1, 1])
@@ -131,6 +131,13 @@ class PathTracer(TracerBase):
         else:
             is_delta = self.bsdf_field[idx].is_delta
         return is_delta
+    
+    @ti.func
+    def is_scattering(self, idx: ti.i32):           # check if the object with index idx is a scattering medium
+        is_scattering = False
+        if not ti.is_active(self.brdf_nodes, idx):
+            is_scattering = self.bsdf_field[idx].medium.is_scattering()
+        return is_scattering
 
     @ti.func
     def sample_light(self, no_sample: ti.i32):

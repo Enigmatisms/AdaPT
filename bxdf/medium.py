@@ -67,6 +67,10 @@ class Medium:
     u_e:    vec3            # precomputed extinction
     ph:     PhaseFunction   # phase function
 
+    @ti.func
+    def is_scattering(self):   # check whether the current medium is scattering medium
+        return self._type >= 0
+
     """ Compute attenuation """
     @ti.func
     def sample_direction(self):
