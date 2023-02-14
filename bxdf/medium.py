@@ -73,7 +73,8 @@ class Medium:
 
     """ Compute attenuation """
     @ti.func
-    def sample_direction(self):
+    def sample_mfp(self):
+        channel_id = ti.random(ti.i32) % 3
         pass
 
     @ti.func

@@ -14,6 +14,7 @@ from la.cam_transform import *
 from tracer.path_tracer import PathTracer
 from emitters.abtract_source import LightSource
 
+from bxdf.medium import Medium
 from scene.obj_desc import ObjDescriptor
 from sampler.general_sampling import mis_weight
 
@@ -24,6 +25,7 @@ class VolumeRenderer(PathTracer):
     """
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
         super().__init__(emitters, objects, prop)
+        self.world_scattering = False
         
     @ti.func
     def get_transmittance(self, idx: ti.i32, in_free_space: ti.i32, depth: ti.f32):
@@ -42,12 +44,14 @@ class VolumeRenderer(PathTracer):
         """
         valid_medium = False
         mfp = 1e9
-        if in_free_space:
-            if self.world.medium.is_scattering():
-                pass
-        else:
-            if self.is_scattering(idx):
-                pass
+        # whether the world is valid for scattering: inside the free space and world has scattering medium
+        world_valid_scat = in_free_space and self.world_scattering      
+        if world_valid_scat or self.is_scattering(idx):
+            medium = self.world.medium
+            if not world_valid_scat:        # scattering is not in the free space
+                medium = self.bsdf_field[idx].medium
+            # use medium to sample / calculate transmittance
+            
         return valid_medium, mfp
     
     @ti.func
@@ -96,15 +100,21 @@ class VolumeRenderer(PathTracer):
                 else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
                 # Step 2: ray intersection
                 obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
-                hit_light = self.emitter_id[obj_id]
+                # 何时需要进行 MFP 采样？medium不是处处存在的，只有当前在散射介质内才需要MFP采样
+                # 逻辑应该是，首先判定当前是否在散射介质内，如果在，则进行MFP采样并且计算对应的 attenuation
+                # 如果不是则可以跳过
                 if obj_id < 0: break                                # nothing is hit, break
+                hit_light = self.emitter_id[obj_id]
                 ray_dot = tm.dot(normal, ray_d)
                 # Step 3: check for mean free path sampling
-                valid_medium, mfp = self.sample_mfp(obj_id, ray_dot < 0) 
+                # Calculate mfp, path transmittance and scattering sample PDF
+                valid_medium, mfp, path_att, path_pdf = self.sample_mfp(obj_id, ray_dot < 0) 
                 if valid_medium and mfp + 1e-4 < min_depth:         # medium interaction
                     min_depth = mfp
                 hit_point = ray_d * min_depth + ray_o
                 # Step 4: medium / surface interaction
+                # 根据 mean free path 可以确定当前应当是 medium 还是 surface interactio
+                # 如果是 surface interaction
                 
                 direct_pdf  = 1.0
                 emitter_pdf = 1.0
