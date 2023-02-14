@@ -138,12 +138,21 @@ class PathTracer(TracerBase):
         if not ti.is_active(self.brdf_nodes, idx):
             is_scattering = self.bsdf_field[idx].medium.is_scattering()
         return is_scattering
+    
+    @ti.func
+    def transmittance(self, idx: ti.i32, depth: ti.f32):           # check if the object with index idx is a scattering medium
+        is_scattering = False
+        transmittance = vec3([1., 1., 1.])
+        if not ti.is_active(self.brdf_nodes, idx):
+            is_scattering, transmittance = self.bsdf_field[idx].medium.transmittance(depth)
+        return is_scattering, transmittance
 
     @ti.func
     def sample_light(self, no_sample: ti.i32):
         """
             return selected light source, pdf and whether the current source is valid
             if can only sample <id = no_sample>, then the sampled source is invalid
+            sample light might need to return more information (medium transmittance information)
         """
         idx = ti.random(int) % self.src_num
         pdf = 1. / self.src_num

@@ -24,6 +24,16 @@ class VolumeRenderer(PathTracer):
     """
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
         super().__init__(emitters, objects, prop)
+        
+    @ti.func
+    def get_transmittance(self, idx: ti.i32, in_free_space: ti.i32, depth: ti.f32):
+        valid_medium = False
+        transmittance = vec3([1., 1., 1.])
+        if in_free_space:
+            valid_medium, transmittance = self.world.medium.transmittance(depth)
+        else:
+            valid_medium, transmittance = self.transmittance(idx, depth)
+        return valid_medium, transmittance
 
     @ti.func
     def sample_mfp(self, idx: ti.i32, in_free_space: ti.i32):
@@ -39,11 +49,37 @@ class VolumeRenderer(PathTracer):
             if self.is_scattering(idx):
                 pass
         return valid_medium, mfp
+    
+    @ti.func
+    def track_ray(self, ray, start_p, depth):
+        """ 
+            For medium interaction, check if the path to one point is not blocked (by non-null surface object)
+            And also we need to calculate the attenuation along the path, e.g.: if the ray passes through
+            two clouds of smoke and between the two clouds there is a transparent medium
+            
+            Here, we also keep tracks of what kind of medium we are in
+        """
+        tr = vec3([1., 1., 1.])
+        for _i in range(5):             # maximum tracking depth = 5 (corresponding to at most 2 clouds of smoke)
+            obj_id, normal, min_depth = self.ray_intersect(ray, start_p, depth)
+            if obj_id < 0: break        # does not intersect anything - break (point source in the void with no medium)
+            in_free_space = tm.dot(normal, ray) < 0
+            valid_medium, transmittance = self.get_transmittance(obj_id, in_free_space, min_depth)
+            # invalid medium can be "BRDF" or "transparent medium". Transparent medium has non-null surface, therefore invalid
+            if not valid_medium:        # non-null surface blocks the ray path, break
+                tr.fill(0.0)
+                break  
+            tr *= transmittance
+            start_p += ray * min_depth
+            depth -= min_depth
+            if depth <= 5e-4: break     # reach the target point: break
+        return tr
         
     @ti.kernel
     def render(self):
         self.cnt[None] += 1
         for i, j in self.pixels:
+            # TODO: MIS in VPT is not considered yet (too complex)
             ray_d = self.pix2ray(i, j)
             ray_o = self.cam_t
             obj_id          = -1
@@ -52,7 +88,6 @@ class VolumeRenderer(PathTracer):
             color           = vec3([0, 0, 0])
             throughput      = vec3([1, 1, 1])
             min_depth       = 1e9
-            emission_weight = 1.0
             in_free_space   = True              # indicator for non-world Medium
             for _i in range(self.max_bounce):
                 # Step 1: ray termination test - Only RR termination is allowed
@@ -65,12 +100,12 @@ class VolumeRenderer(PathTracer):
                 if obj_id < 0: break                                # nothing is hit, break
                 ray_dot = tm.dot(normal, ray_d)
                 # Step 3: check for mean free path sampling
-                is_surf_v, mfp = self.sample_mfp(obj_id, ray_dot < 0) 
+                valid_medium, mfp = self.sample_mfp(obj_id, ray_dot < 0) 
+                if valid_medium and mfp + 1e-4 < min_depth:         # medium interaction
+                    min_depth = mfp
+                hit_point = ray_d * min_depth + ray_o
+                # Step 4: medium / surface interaction
                 
-
-
-                hit_point   = ray_d * min_depth + ray_o
-
                 direct_pdf  = 1.0
                 emitter_pdf = 1.0
                 break_flag  = False
@@ -87,23 +122,20 @@ class VolumeRenderer(PathTracer):
                         to_emitter  = emit_pos - hit_point
                         emitter_d   = to_emitter.norm()
                         light_dir   = to_emitter / emitter_d
-                        if self.does_intersect(light_dir, hit_point, emitter_d):        # shadow ray 
-                            shadow_int.fill(0.0)
-                        else:
-                            direct_spec = self.eval(obj_id, ray_d, light_dir, normal, self.world.medium)
+                        """
+                            different logic for medium and surface --- for medium interaction:
+                            there might be null surface that will be intersected, we need to trace the ray (in one direction)
+                        """
+                        # 
+                        tr = self.track_ray(ray_d, ray_o, emitter_d)
+                        shadow_int *= tr
+                        # FIXME: refactoring: medium interaction should be accounted for
+                        # FIXME: currently, the code doesn't know if the point is on the surface of BSDF or inside the medium
+                        direct_spec = self.eval(obj_id, ray_d, light_dir, normal, self.world.medium)
                     else:       # the only situation for being invalid, is when there is only one source and the ray hit the source
                         break_flag = True
                         break
-                    light_pdf = emitter_pdf * direct_pdf
-                    if ti.static(self.use_mis):
-                        mis_w = 1.0
-                        if not emitter.is_delta:
-                            bsdf_pdf = self.get_pdf(obj_id, light_dir, normal, ray_d, self.world.medium)
-                            mis_w    = mis_weight(light_pdf, bsdf_pdf)
-                        # FIXME: here we have a bug
-                        direct_int  += direct_spec * shadow_int * mis_w / emitter_pdf
-                    else:
-                        direct_int += direct_spec * shadow_int / emitter_pdf
+                    direct_int += direct_spec * shadow_int / emitter_pdf
                 if not break_flag:
                     direct_int *= self.inv_num_shadow_ray
                 # emission: ray hitting an area light source
@@ -114,18 +146,13 @@ class VolumeRenderer(PathTracer):
                 # indirect component requires sampling 
                 ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, self.world.medium)
                 ray_o = hit_point
-                color += (direct_int + emit_int * emission_weight) * throughput
+                color += (direct_int + emit_int) * throughput
                 # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)
                 throughput *= indirect_spec / ray_pdf
                 obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
 
                 if obj_id >= 0:
                     hit_light = self.emitter_id[obj_id]
-                    if ti.static(self.use_mis):
-                        emitter_pdf = 0.0
-                        if hit_light >= 0 and self.is_delta(obj_id) == 0:
-                            emitter_pdf = self.src_field[hit_light].solid_angle_pdf(ray_d, normal, min_depth)
-                        emission_weight = mis_weight(ray_pdf, emitter_pdf)
 
             self.color[i, j] += ti.select(ti.math.isnan(color), 0., color)
             self.pixels[i, j] = self.color[i, j] / self.cnt[None]

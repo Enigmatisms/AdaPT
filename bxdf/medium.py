@@ -79,3 +79,9 @@ class Medium:
     @ti.func
     def eval_direction(self):
         pass
+    
+    @ti.func
+    def transmittance(self, depth: ti.f32):
+        is_scattering = self._type >= 0
+        transmittance = ti.exp(-self.u_e * depth)
+        return is_scattering, transmittance

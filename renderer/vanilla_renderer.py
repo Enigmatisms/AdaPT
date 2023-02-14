@@ -73,7 +73,6 @@ class Renderer(PathTracer):
                         if not emitter.is_delta:
                             bsdf_pdf = self.get_pdf(obj_id, light_dir, normal, ray_d, self.world.medium)
                             mis_w    = mis_weight(light_pdf, bsdf_pdf)
-                        # FIXME: here we have a bug
                         direct_int  += direct_spec * shadow_int * mis_w / emitter_pdf
                     else:
                         direct_int += direct_spec * shadow_int / emitter_pdf
