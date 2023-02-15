@@ -38,12 +38,14 @@ class VolumeRenderer(PathTracer):
         return valid_medium, transmittance
 
     @ti.func
-    def sample_mfp(self, idx: ti.i32, in_free_space: ti.i32):
+    def sample_mfp(self, idx: ti.i32, in_free_space: ti.i32, depth: ti.f32):
         """ Mean free path sampling, returns: 
             - whether medium is a valid scattering medium / mean free path
         """
-        valid_medium = False
-        mfp = 1e9
+        is_mi = False
+        mfp   = depth
+        pdf   = 1.0
+        beta  = vec3([1., 1., 1.])
         # whether the world is valid for scattering: inside the free space and world has scattering medium
         world_valid_scat = in_free_space and self.world_scattering      
         if world_valid_scat or self.is_scattering(idx):
@@ -51,8 +53,8 @@ class VolumeRenderer(PathTracer):
             if not world_valid_scat:        # scattering is not in the free space
                 medium = self.bsdf_field[idx].medium
             # use medium to sample / calculate transmittance
-            
-        return valid_medium, mfp
+            is_mi, mfp, beta, pdf = medium.sample_mfp(depth)
+        return is_mi, mfp, beta, pdf
     
     @ti.func
     def track_ray(self, ray, start_p, depth):
@@ -100,22 +102,17 @@ class VolumeRenderer(PathTracer):
                 else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
                 # Step 2: ray intersection
                 obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
-                # 何时需要进行 MFP 采样？medium不是处处存在的，只有当前在散射介质内才需要MFP采样
-                # 逻辑应该是，首先判定当前是否在散射介质内，如果在，则进行MFP采样并且计算对应的 attenuation
-                # 如果不是则可以跳过
+
                 if obj_id < 0: break                                # nothing is hit, break
                 hit_light = self.emitter_id[obj_id]
                 ray_dot = tm.dot(normal, ray_d)
                 # Step 3: check for mean free path sampling
                 # Calculate mfp, path transmittance and scattering sample PDF
-                valid_medium, mfp, path_att, path_pdf = self.sample_mfp(obj_id, ray_dot < 0) 
-                if valid_medium and mfp + 1e-4 < min_depth:         # medium interaction
-                    min_depth = mfp
+                is_mi, min_depth, path_att, path_pdf = self.sample_mfp(obj_id, ray_dot < 0) 
                 hit_point = ray_d * min_depth + ray_o
                 # Step 4: medium / surface interaction
                 # 根据 mean free path 可以确定当前应当是 medium 还是 surface interactio
                 # 如果是 surface interaction
-                
                 direct_pdf  = 1.0
                 emitter_pdf = 1.0
                 break_flag  = False
@@ -132,16 +129,11 @@ class VolumeRenderer(PathTracer):
                         to_emitter  = emit_pos - hit_point
                         emitter_d   = to_emitter.norm()
                         light_dir   = to_emitter / emitter_d
-                        """
-                            different logic for medium and surface --- for medium interaction:
-                            there might be null surface that will be intersected, we need to trace the ray (in one direction)
-                        """
-                        # 
+                        # FIXME: should tr get divided by pdf? tracing a shadow ray does not
+                        # account for the proba of not having scattering event?
                         tr = self.track_ray(ray_d, ray_o, emitter_d)
                         shadow_int *= tr
-                        # FIXME: refactoring: medium interaction should be accounted for
-                        # FIXME: currently, the code doesn't know if the point is on the surface of BSDF or inside the medium
-                        direct_spec = self.eval(obj_id, ray_d, light_dir, normal, self.world.medium)
+                        direct_spec = self.eval(obj_id, ray_d, light_dir, normal, self.world.medium, is_mi)
                     else:       # the only situation for being invalid, is when there is only one source and the ray hit the source
                         break_flag = True
                         break
@@ -151,10 +143,11 @@ class VolumeRenderer(PathTracer):
                 # emission: ray hitting an area light source
                 emit_int    = vec3([0, 0, 0])
                 if hit_light >= 0:
+                    # Direct illumination? 
                     emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, normal)
                 
                 # indirect component requires sampling 
-                ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, self.world.medium)
+                ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, self.world.medium, is_mi)
                 ray_o = hit_point
                 color += (direct_int + emit_int) * throughput
                 # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)

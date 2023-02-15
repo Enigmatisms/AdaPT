@@ -95,23 +95,23 @@ class PathTracer(TracerBase):
                 self.src_field[emitter_ref_id].obj_ref_id = i
 
     @ti.func
-    def sample_new_ray(self, idx: ti.i32, incid: vec3, normal: vec3, medium):
+    def sample_new_ray(self, idx: ti.i32, incid: vec3, normal: vec3, medium, is_mi: ti.i32):
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
         pdf      = 1.0
         if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
             ret_dir, ret_spec, pdf = self.brdf_field[idx].sample_new_rays(incid, normal, medium)
         else:
-            ret_dir, ret_spec, pdf = self.bsdf_field[idx].sample_new_rays(incid, normal, medium)
+            ret_dir, ret_spec, pdf = self.bsdf_field[idx].sample_new_rays(incid, normal, medium, is_mi)
         return ret_dir, ret_spec, pdf
 
     @ti.func
-    def eval(self, idx: ti.i32, incid: vec3, out: vec3, normal: vec3, medium) -> vec3:
+    def eval(self, idx: ti.i32, incid: vec3, out: vec3, normal: vec3, medium, is_mi: ti.i32) -> vec3:
         ret_spec = vec3([1, 1, 1])
         if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
             ret_spec = self.brdf_field[idx].eval(incid, out, normal, medium)
         else:
-            ret_spec = self.bsdf_field[idx].eval(incid, out, normal, medium)
+            ret_spec = self.bsdf_field[idx].eval(incid, out, normal, medium, is_mi)
         return ret_spec
     
     @ti.func

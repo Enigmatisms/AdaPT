@@ -128,7 +128,7 @@ class BSDF:
     
     @ti.func
     # ========================= General operations =========================
-    def sample_new_rays(self, incid: vec3, normal: vec3, medium):
+    def sample_new_rays(self, incid: vec3, normal: vec3, medium, is_mi: ti.i32):
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
         pdf      = 1.0
@@ -137,7 +137,7 @@ class BSDF:
         return ret_dir, ret_spec, pdf
     
     @ti.func
-    def eval(self, incid: vec3, out: vec3, normal: vec3, medium) -> vec3:
+    def eval(self, incid: vec3, out: vec3, normal: vec3, medium, is_mi: ti.i32) -> vec3:
         ret_spec = vec3([1, 1, 1])
         if self._type == 0:
             ret_spec = self.eval_det_refraction(incid, out, normal, medium)

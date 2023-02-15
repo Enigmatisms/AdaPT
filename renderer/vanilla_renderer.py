@@ -63,7 +63,7 @@ class Renderer(PathTracer):
                         if self.does_intersect(light_dir, hit_point, emitter_d):        # shadow ray 
                             shadow_int.fill(0.0)
                         else:
-                            direct_spec = self.eval(obj_id, ray_d, light_dir, normal, self.world.medium)
+                            direct_spec = self.eval(obj_id, ray_d, light_dir, normal, self.world.medium, False)
                     else:       # the only situation for being invalid, is when there is only one source and the ray hit the source
                         break_flag = True
                         break
@@ -84,7 +84,7 @@ class Renderer(PathTracer):
                     emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, normal)
                 
                 # indirect component requires sampling 
-                ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, self.world.medium)
+                ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, self.world.medium, False)
                 ray_o = hit_point
                 color += (direct_int + emit_int * emission_weight) * contribution
                 # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)

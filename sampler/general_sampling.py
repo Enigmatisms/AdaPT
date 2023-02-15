@@ -15,6 +15,19 @@ __all__ = ['cosine_hemisphere', 'uniform_hemisphere', 'sample_triangle',
 pi_inv = 1. / tm.pi
 
 @ti.func
+def random_rgb(vector):
+    """ Taichi does not support dynamic indexing (it does actually, yet I don't want to set `dynamic_index = True`)"""
+    idx = ti.random(ti.i32) % 3
+    result = 0.
+    if idx == 0:
+        result = vector[0]
+    elif idx == 1:
+        result = vector[1]
+    else:
+        result = vector[2]
+    return result
+
+@ti.func
 def cosine_hemisphere():
     """
         Zenith angle (cos theta) follows a ramped PDF (triangle like)

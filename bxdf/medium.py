@@ -13,6 +13,7 @@ import xml.etree.ElementTree as xet
 from taichi.math import vec3
 from bxdf.phase import PhaseFunction
 from scene.general_parser import get, rgb_parse
+from sampler.general_sampling import random_rgb
 
 __all__ = ['Medium', 'Medium_np']
 
@@ -86,3 +87,20 @@ class Medium:
         is_scattering = self._type >= 0
         transmittance = ti.exp(-self.u_e * depth)
         return is_scattering, transmittance
+
+    @ti.func
+    def sample_mfp(self, max_depth):
+        random_ue = random_rgb(self.u_e)
+        sample_t = - ti.log(1. - ti.random(ti.f32)) / random_ue
+        pdf = 0.
+        beta = vec3([1., 1., 1.])
+        is_medium_interact = False
+        if sample_t >= max_depth:
+            sample_t = max_depth
+            pdf = ti.exp(- self.u_e * max_depth).sum() / 3.
+            beta =  ti.exp(-self.u_e * max_depth) / pdf
+        else:
+            is_medium_interact = True
+            pdf = random_ue * ti.exp(-random_ue * sample_t)
+            beta =  ti.exp(-self.u_e * sample_t) * self.u_s / pdf
+        return is_medium_interact, sample_t, beta, pdf
