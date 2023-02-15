@@ -12,6 +12,7 @@ import xml.etree.ElementTree as xet
 
 from taichi.math import vec3
 from bxdf.phase import PhaseFunction
+from la.cam_transform import delocalize_rotate
 from scene.general_parser import get, rgb_parse
 from sampler.general_sampling import random_rgb
 
@@ -99,3 +100,20 @@ class Medium:
             pdf = (self.u_e * ti.exp(-self.u_e * sample_t)).sum() / 3.
             beta =  ti.exp(-self.u_e * sample_t) * self.u_s / pdf
         return is_medium_interact, sample_t, beta
+    
+    # ================== medium sampling & eval =======================
+    
+    @ti.func
+    def sample_new_rays(self, incid: vec3):
+        ret_dir  = vec3([0, 1, 0])
+        ret_spec = vec3([1, 1, 1])
+        ret_pdf  = 1.0
+        if self.is_scattering():   # medium interaction - evaluate phase function (currently output a float)
+            local_new_dir, ret_pdf = self.ph.sample_p(incid)     # local frame ray_dir should be transformed
+            ret_dir, _ = delocalize_rotate(incid, local_new_dir)
+            ret_spec *= ret_pdf
+        return ret_dir, ret_spec, ret_pdf
+    
+    @ti.func
+    def eval(self, ray_in: vec3, ray_out: vec3):
+        return self.ph.eval_p(ray_in, ray_out)

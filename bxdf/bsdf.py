@@ -126,30 +126,19 @@ class BSDF:
                 ret_int = self.k_d * reflect_ratio
         return ret_int
     
+    # ========================= Null surface =========================
+    @ti.func
+    def sample_null(self, incid):
+        return incid, vec3([1, 1, 1]), 1.0
+    
+    @ti.func
+    def eval_null(self, ray_in: vec3, ray_out: vec3):
+        ret_int = vec3([0, 0, 0])
+        if tm.dot(ray_in, ray_out) > 1 - 1e-5:
+            ret_int = vec3([1, 1, 1])
+        return ret_int
     # ========================= General operations =========================
-    @ti.func
-    def sample_new_rays(self, incid: vec3, normal: vec3, medium, is_mi: int):
-        ret_dir  = vec3([0, 1, 0])
-        ret_spec = vec3([1, 1, 1])
-        ret_pdf  = 1.0
-        if not is_mi:                       # BSDF surface interaction
-            # surf_sample_rays returns ray_dir (in world frame)
-            ret_dir, ret_spec, ret_pdf = self.surf_sample_rays(incid, normal, medium)
-        elif self.medium.is_scattering():   # medium interaction - evaluate phase function (currently output a float)
-            local_new_dir, ret_pdf = self.medium.ph.sample_p(incid)     # local frame ray_dir should be transformed
-            ret_dir, _ = delocalize_rotate(normal, local_new_dir)
-            ret_spec *= ret_pdf
-        return ret_dir, ret_spec, ret_pdf
-    
-    @ti.func
-    def eval(self, incid: vec3, out: vec3, normal: vec3, medium, is_mi: int) -> vec3:
-        ret_spec = vec3([1, 1, 1])
-        if not is_mi:                       # BSDF surface interaction
-            ret_spec = self.eval_surf(incid, out, normal, medium)
-        elif self.medium.is_scattering():   # medium interaction - evaluate phase function (currently output a float)
-            ret_spec *= self.medium.ph.eval_p(incid, out)
-        return ret_spec
-    
+
     @ti.func
     def get_pdf(self, outdir: vec3, normal: vec3, incid: vec3, medium):
         """ TODO: currently, deterministic refraction yields PDF = 0.0"""
@@ -161,14 +150,18 @@ class BSDF:
         ret_spec = vec3([1, 1, 1])
         if self._type == 0:
             ret_spec = self.eval_det_refraction(incid, out, normal, medium)
+        if self._type == -1:
+            ret_spec = self.eval_null(incid, out)
         return ret_spec
     
     @ti.func
-    def surf_sample_rays(self, incid: vec3, normal: vec3, medium):
+    def sample_surf_rays(self, incid: vec3, normal: vec3, medium):
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
         pdf      = 1.0
         if self._type == 0:
             ret_dir, ret_spec, pdf = self.sample_det_refraction(incid, normal, medium)
+        elif self._type == -1:
+            ret_dir, ret_spec, pdf = self.sample_null(incid)
         return ret_dir, ret_spec, pdf
     

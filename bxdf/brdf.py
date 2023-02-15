@@ -269,7 +269,7 @@ class BRDF:
         return ret_spec
 
     @ti.func
-    def sample_new_rays(self, incid: vec3, normal: vec3, medium):
+    def sample_new_rays(self, incid: vec3, normal: vec3):
         """
             All the sampling function will return: (1) new ray (direction) \\
             (2) rendering equation transfer term (BRDF * cos term) (3) PDF

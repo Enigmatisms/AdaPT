@@ -95,23 +95,36 @@ class PathTracer(TracerBase):
                 self.src_field[emitter_ref_id].obj_ref_id = i
 
     @ti.func
-    def sample_new_ray(self, idx: int, incid: vec3, normal: vec3, medium, is_mi: int):
+    def sample_new_ray(self, idx: int, incid: vec3, normal: vec3, is_mi: int, in_free_space: int):
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
-        pdf      = 1.0
-        if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-            ret_dir, ret_spec, pdf = self.brdf_field[idx].sample_new_rays(incid, normal, medium)
-        else:
-            ret_dir, ret_spec, pdf = self.bsdf_field[idx].sample_new_rays(incid, normal, medium, is_mi)
-        return ret_dir, ret_spec, pdf
+        ret_pdf      = 1.0
+        if is_mi:
+            if in_free_space:       # sample world medium
+                ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
+            else:                   # sample object medium
+                ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].medium.sample_new_rays(incid)
+        else:                       # surface sampling
+            if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
+                ret_dir, ret_spec, ret_pdf = self.brdf_field[idx].sample_new_rays(incid, normal)
+            else:                                       # directly sample surface
+                ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].sample_surf_rays(incid, normal, self.world.medium)
+        return ret_dir, ret_spec, ret_pdf
 
     @ti.func
-    def eval(self, idx: int, incid: vec3, out: vec3, normal: vec3, medium, is_mi: int) -> vec3:
+    def eval(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int) -> vec3:
         ret_spec = vec3([1, 1, 1])
-        if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-            ret_spec = self.brdf_field[idx].eval(incid, out, normal, medium)
-        else:
-            ret_spec = self.bsdf_field[idx].eval(incid, out, normal, medium, is_mi)
+        if is_mi:
+            # FIXME: eval_phase and phase function currently return a float
+            if in_free_space:       # evaluate world medium
+                ret_spec.fill(self.world.medium.eval(incid, out))
+            else:                   # is_mi implys is_scattering = True
+                ret_spec.fill(self.bsdf_field[idx].medium.eval(incid, out))
+        else:                       # surface interaction
+            if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
+                ret_spec = self.brdf_field[idx].eval(incid, out, normal, self.world.medium)
+            else:                                       # directly evaluate surface
+                ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium)
         return ret_spec
     
     @ti.func

@@ -18,6 +18,15 @@ from bxdf.medium import Medium
 from scene.obj_desc import ObjDescriptor
 from sampler.general_sampling import mis_weight
 
+"""
+    Todo today: 
+    1. Debug for VPT, why the picture is not blurred and some places appear darker?
+    2. VPT is going to take a long time, make it right and implement MIS
+    3. Optimization: Rodrigues transformation / implementation optimization
+
+    The shadow of VPT seems normal (global illumination is correct, but not scattering sim)
+"""
+
 @ti.data_oriented
 class VolumeRenderer(PathTracer):
     """
@@ -25,8 +34,7 @@ class VolumeRenderer(PathTracer):
     """
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
         super().__init__(emitters, objects, prop)
-        # FIXME: calculate whether the world contains scattering medium
-        self.world_scattering = False
+        self.world_scattering = self.world.medium._type >= 0
         
     @ti.func
     def get_transmittance(self, idx: int, in_free_space: int, depth: float):
@@ -56,7 +64,7 @@ class VolumeRenderer(PathTracer):
             # world scattering should be evaluated
             if world_valid_scat:        # scattering is not in the free space
                 is_mi, mfp, beta = self.world.medium.sample_mfp(depth)
-            else:
+            elif not in_free_space:
                 is_mi, mfp, beta = self.bsdf_field[idx].medium.sample_mfp(depth)
             # use medium to sample / calculate transmittance
         return is_mi, mfp, beta
@@ -105,10 +113,10 @@ class VolumeRenderer(PathTracer):
                 obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
 
                 if obj_id < 0: break                                # nothing is hit, break
-                ray_dot = tm.dot(normal, ray_d)
+                in_free_space = tm.dot(normal, ray_d) < 0
                 # Step 3: check for mean free path sampling
                 # Calculate mfp, path_beta = transmittance / PDF
-                is_mi, min_depth, path_beta = self.sample_mfp(obj_id, ray_dot < 0, min_depth) 
+                is_mi, min_depth, path_beta = self.sample_mfp(obj_id, in_free_space, min_depth) 
                 hit_point = ray_d * min_depth + ray_o
                 hit_light = -1 if is_mi else self.emitter_id[obj_id]
                 # Step 4: direct component estimation
@@ -128,9 +136,9 @@ class VolumeRenderer(PathTracer):
                         to_emitter  = emit_pos - hit_point
                         emitter_d   = to_emitter.norm()
                         light_dir   = to_emitter / emitter_d
-                        tr = self.track_ray(ray_d, ray_o, emitter_d)
+                        tr = self.track_ray(to_emitter, ray_o, emitter_d)
                         shadow_int *= tr
-                        direct_spec = self.eval(obj_id, ray_d, light_dir, normal, self.world.medium, is_mi)
+                        direct_spec = self.eval(obj_id, ray_d, light_dir, normal, is_mi, in_free_space)
                     else:       # the only situation for being invalid, is when there is only one source and the ray hit the source
                         break_flag = True
                         break
@@ -143,7 +151,7 @@ class VolumeRenderer(PathTracer):
                     emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, normal)
                 
                 # Step 6: sample new ray. This should distinguish between surface and medium interactions
-                ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, self.world.medium, is_mi)
+                ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, is_mi, in_free_space)
                 ray_o = hit_point
                 throughput *= path_beta         # attenuate first
                 color += (direct_int + emit_int) * throughput

@@ -28,7 +28,7 @@ if __name__ == "__main__":
     else:
         rdr = VolumeRenderer(emitter_configs, meshes, configs)
     gui = ti.GUI(f"{'' if options.vanilla else 'Volumetric '}Path Tracing", (rdr.w, rdr.h))
-    
+    # TODO: add no gui options
     max_iter_num = options.iter_num if options.iter_num > 0 else 10000
     iter_cnt = 0
     print("[INFO] starting to loop...")

@@ -9,12 +9,12 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="16"/>
+        <integer name="max_bounce" value="12"/>
         <integer name="num_shadow_ray" value="4"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
-        <boolean name="stratified_sampling" value="true"/>
+        <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
         <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
 		
 		<transform name="toWorld">
@@ -28,55 +28,49 @@
 		</film>
 	</sensor>
 
-	<brdf type="blinn-phong" id="diffuse">
-		<rgb name="k_d" value="#D2D2D2"/>
+	<brdf type="lambertian" id="box">
+		<rgb name="k_d" value="#BCBCBC"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
 	<brdf type="lambertian" id="white">
-		<rgb name="k_d" value="#FFFFFF"/>
+		<rgb name="k_d" value="#BDBDBD"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="left_wall">
+	<brdf type="lambertian" id="left_wall">
 		<rgb name="k_d" value="#DD2525"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="right_wall">
+	<brdf type="lambertian" id="right_wall">
 		<rgb name="k_d" value="#25DD25"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="light">
-		<rgb name="k_d" value="#CCCCCC"/>
+	<brdf type="lambertian" id="light">
+		<rgb name="k_d" value="#555555"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<bsdf type="det-refraction" id="scattering">
-		<rgb name="k_d" value="#FAFAFA"/>
+	<bsdf type="null" id="scattering">
 		<medium type="hg">
-			<rgb name="u_a" value="0.1"/>
-			<rgb name="u_s" value="0.1"/>
+			<rgb name="u_a" value="0.05"/>
+			<rgb name="u_s" value="1.0"/>
 			<rgb name="par" value="0.5"/>
 			<float name="ior" value="1.5"/>
 		</medium>
 	</bsdf>
 
 	<emitter type="rect_area" id="rect_area">
-		<rgb name="emission" value="30.0, 30.0, 30.0"/>
-		<rgb name="scaler" value="1.0"/>
+		<rgb name="emission" value="50.0, 45.6, 42.3"/>
+		<rgb name="scaler" value="0.8"/>
 	</emitter>
-
-	<!-- <emitter type="point" id="point">
-		<rgb name="emission" value="30.0, 28.7, 28.5"/>
-		<point name="center" x="2.779" y="4.9" z="2.745"/>
-	</emitter> -->
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
@@ -89,7 +83,7 @@
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
-		<ref type="material" id="diffuse"/>
+		<ref type="material" id="white"/>
 		<transform name="toWorld">
 			<translate x="0" y="0.0" z="0"/>
 		</transform>
@@ -97,12 +91,12 @@
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_ceiling.obj"/>
-		<ref type="material" id="diffuse"/>
+		<ref type="material" id="white"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_back.obj"/>
-		<ref type="material" id="diffuse"/>
+		<ref type="material" id="white"/>
 	</shape>
 
 	<shape type="obj">
@@ -116,16 +110,22 @@
 		<ref type="material" id="left_wall"/>
 	</shape>
 
-	<shape type="sphere">
-		<point name="center" x="4.5" y="0.6" z="4.4"/>
-		<float name="radius" value="0.6"/>
-		<ref type="material" id="white"/>
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_smallbox.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="0"/>
+		</transform>
+		<ref type="material" id="box"/>
 	</shape>
 
-	<shape type="sphere">
-		<point name="center" x="2.7" y="3.8" z="0.0"/>
-		<float name="radius" value="1.2"/>
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_largebox.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
+			<translate x="0" y="0.01" z="0"/>
+		</transform>
 		<ref type="material" id="scattering"/>
+		
 	</shape>
 
 	<world name="yes!">
