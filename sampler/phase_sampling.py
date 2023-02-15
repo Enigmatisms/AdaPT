@@ -23,17 +23,18 @@ def sample_hg(g: ti.f32):
         sqr_term = (1. - g * g) / (1. - g + 2. * g * ti.random(ti.f32))
         cos_theta = (1. + g * g - sqr_term * sqr_term) / (2. * g)
     sin_theta = ti.sqrt(ti.max(0., 1. - cos_theta * cos_theta))
-    phi = 2. * ti.pi * ti.random(ti.float32)
+    phi = 2. * tm.pi * ti.random(ti.float32)
     # rotational offset w.r.t axis [0, 1, 0] & pdf
     return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), cos_theta
 
 @ti.func
 def sample_rayleigh():
     """ rayleigh sphere sampling: returns sampled direction and cos_theta """
+    # TODO: check the distribution of Rayleigh sampling
     rd = 2. * ti.random(ti.f32) - 1.
     u = - tm.pow(2. * rd + ti.sqrt(4. * rd * rd + 1.) , 1. / 3.)
     cos_theta = tm.clamp(u - 1. / u, -1., 1.)
     sin_theta = ti.sqrt(ti.max(0., 1. - cos_theta * cos_theta))
-    phi = 2. * ti.pi * ti.random(ti.float32)
+    phi = 2. * tm.pi * ti.random(ti.float32)
     return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), cos_theta
     

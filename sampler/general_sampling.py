@@ -10,7 +10,7 @@ import taichi.math as tm
 from taichi.math import vec3
 
 __all__ = ['cosine_hemisphere', 'uniform_hemisphere', 'sample_triangle', 
-            'mis_weight', 'mod_phong_hemisphere', 'frensel_hemisphere']
+            'mis_weight', 'mod_phong_hemisphere', 'frensel_hemisphere', 'random_rgb']
 
 pi_inv = 1. / tm.pi
 
@@ -18,14 +18,14 @@ pi_inv = 1. / tm.pi
 def random_rgb(vector):
     """ Taichi does not support dynamic indexing (it does actually, yet I don't want to set `dynamic_index = True`)"""
     idx = ti.random(ti.i32) % 3
-    result = 0.
+    result = 1.0
     if idx == 0:
         result = vector[0]
     elif idx == 1:
         result = vector[1]
     else:
         result = vector[2]
-    return result
+    return ti.max(result, 1e-5)
 
 @ti.func
 def cosine_hemisphere():

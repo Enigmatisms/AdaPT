@@ -27,7 +27,7 @@ class Medium_np:
         self.u_a = np.zeros(3, np.float32)
         self.u_s = np.zeros(3, np.float32)
         self.par = np.zeros(3, np.float32)
-        self.pdf = np.zeros(3, np.float32)
+        self.pdf = np.float32([1., 0., 0.])
         self.type_id = -1
         self.type_name = "transparent"
 
@@ -71,36 +71,31 @@ class Medium:
     @ti.func
     def is_scattering(self):   # check whether the current medium is scattering medium
         return self._type >= 0
-
-    """ Compute attenuation """
-    @ti.func
-    def sample_mfp(self):
-        channel_id = ti.random(ti.i32) % 3
-        pass
-
-    @ti.func
-    def eval_direction(self):
-        pass
     
     @ti.func
     def transmittance(self, depth: ti.f32):
         is_scattering = self._type >= 0
         transmittance = ti.exp(-self.u_e * depth)
+        # transmitted without being scattered (PDF)
+        transmittance /= self.pdf_no_scatter(depth)
         return is_scattering, transmittance
+    
+    @ti.func
+    def pdf_no_scatter(self, depth):
+        return ti.max(ti.exp(-self.u_e * depth).sum() / 3., 1e-5)      # self.u_e * depth < 11.5 (log 1e-5 \approx -11.5)
 
     @ti.func
     def sample_mfp(self, max_depth):
         random_ue = random_rgb(self.u_e)
         sample_t = - ti.log(1. - ti.random(ti.f32)) / random_ue
-        pdf = 0.
         beta = vec3([1., 1., 1.])
         is_medium_interact = False
         if sample_t >= max_depth:
             sample_t = max_depth
-            pdf = ti.exp(- self.u_e * max_depth).sum() / 3.
+            pdf = self.pdf_no_scatter(max_depth)
             beta =  ti.exp(-self.u_e * max_depth) / pdf
         else:
             is_medium_interact = True
-            pdf = random_ue * ti.exp(-random_ue * sample_t)
+            pdf = (self.u_e * ti.exp(-self.u_e * sample_t)).sum() / 3.
             beta =  ti.exp(-self.u_e * sample_t) * self.u_s / pdf
-        return is_medium_interact, sample_t, beta, pdf
+        return is_medium_interact, sample_t, beta

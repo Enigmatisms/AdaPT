@@ -103,4 +103,4 @@ class Renderer(PathTracer):
             self.pixels[i, j] = self.color[i, j] / self.cnt[None]
     
     def summary(self):
-        print(f"[INFO] Finished rendering. SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s")
+        print(f"[INFO] PT Finished rendering. SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s")

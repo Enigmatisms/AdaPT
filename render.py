@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from la.cam_transform import *
 from renderer.vanilla_renderer import Renderer
+from renderer.vpt import VolumeRenderer
 
 from utils.tools import folder_path
 from utils.watermark import apply_watermark
@@ -22,8 +23,11 @@ if __name__ == "__main__":
             default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path)
     input_folder = os.path.join(options.input_path, options.scene)
     emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, options.name)  # complex_cornell
-    rdr = Renderer(emitter_configs, meshes, configs)
-    gui = ti.GUI('Path Tracing', (rdr.w, rdr.h))
+    if options.vanilla:
+        rdr = Renderer(emitter_configs, meshes, configs)
+    else:
+        rdr = VolumeRenderer(emitter_configs, meshes, configs)
+    gui = ti.GUI(f"{'' if options.vanilla else 'Volumetric '}Path Tracing", (rdr.w, rdr.h))
     
     max_iter_num = options.iter_num if options.iter_num > 0 else 10000
     iter_cnt = 0
@@ -41,5 +45,5 @@ if __name__ == "__main__":
     rdr.summary()
     if options.profile:
         ti.profiler.print_kernel_profiler_info() 
-    image = apply_watermark(rdr.pixels)
+    image = apply_watermark(rdr.pixels, True)
     ti.tools.imwrite(image, f"{folder_path(options.output_path)}{options.img_name}-{options.name[:-4]}.{options.img_ext}")
