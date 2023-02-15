@@ -11,7 +11,7 @@ sys.path.append("..")
 import numpy as np
 import taichi as ti
 import taichi.math as tm
-from taichi.math import vec3
+from taichi.math import vec3, mat3
 
 from typing import List
 from la.cam_transform import *
@@ -48,14 +48,14 @@ class TracerBase:
 
         self.cam_orient = prop['transform'][0]                          # first field is camera orientation
         self.cam_orient /= np.linalg.norm(self.cam_orient)
-        self.cam_t      = ti.Vector(prop['transform'][1])
-        self.cam_r      = ti.Matrix(np_rotation_between(np.float32([0, 0, 1]), self.cam_orient))
+        self.cam_t      = vec3(prop['transform'][1])
+        self.cam_r      = mat3(np_rotation_between(np.float32([0, 0, 1]), self.cam_orient))
         
-        self.aabbs      = ti.Vector.field(3, ti.f32, (self.num_objects, 2))
-        self.normals    = ti.Vector.field(3, ti.f32)
-        self.meshes     = ti.Vector.field(3, ti.f32)                    # leveraging SSDS, shape (N, mesh_num, 3) - vector3d
-        self.precom_vec = ti.Vector.field(3, ti.f32)
-        self.pixels = ti.Vector.field(3, ti.f32, (self.w, self.h))      # output: color
+        self.aabbs      = ti.Vector.field(3, float, (self.num_objects, 2))
+        self.normals    = ti.Vector.field(3, float)
+        self.meshes     = ti.Vector.field(3, float)                    # leveraging SSDS, shape (N, mesh_num, 3) - vector3d
+        self.precom_vec = ti.Vector.field(3, float)
+        self.pixels = ti.Vector.field(3, float, (self.w, self.h))      # output: color
 
         self.bitmasked_nodes = ti.root.dense(ti.i, self.num_objects).bitmasked(ti.j, max_tri_num)
         self.bitmasked_nodes.place(self.normals)
@@ -64,8 +64,8 @@ class TracerBase:
         # These two precom(puted) vectors can be used in ray intersection and triangle sampling (for shape-attached emitters)
         self.bitmasked_nodes.dense(ti.k, 3).place(self.precom_vec)
 
-        self.mesh_cnt   = ti.field(ti.i32, self.num_objects)
-        self.cnt        = ti.field(ti.i32, ())                          # useful in path tracer (sample counter)
+        self.mesh_cnt   = ti.field(int, self.num_objects)
+        self.cnt        = ti.field(int, ())                          # useful in path tracer (sample counter)
 
     def __repr__(self):
         """

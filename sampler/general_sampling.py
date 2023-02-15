@@ -17,7 +17,7 @@ pi_inv = 1. / tm.pi
 @ti.func
 def random_rgb(vector):
     """ Taichi does not support dynamic indexing (it does actually, yet I don't want to set `dynamic_index = True`)"""
-    idx = ti.random(ti.i32) % 3
+    idx = ti.random(int) % 3
     result = 1.0
     if idx == 0:
         result = vector[0]
@@ -43,7 +43,7 @@ def cosine_hemisphere():
     return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), pdf
 
 @ti.func
-def mod_phong_hemisphere(alpha: ti.f32):
+def mod_phong_hemisphere(alpha: float):
     """ 
         PDF for modified Phong model 
         Lafortune & Willems, Using the Modified Phong Reflectance Model for Physically Based Rendering, 1994
@@ -66,8 +66,8 @@ def uniform_hemisphere():
     return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), pdf
 
 @ti.func
-def frensel_hemisphere(nu: ti.f32, nv: ti.f32):
-    eps1 = ti.random(ti.f32) * 4.
+def frensel_hemisphere(nu: float, nv: float):
+    eps1 = ti.random(float) * 4.
     inner_angle = eps1 - tm.floor(eps1)
     tan_phi = ti.sqrt((nu + 1) / (nv + 1)) * ti.tan(tm.pi / 2 * inner_angle)
     cos_phi2 = 1. / (1. + tan_phi ** 2)
@@ -76,7 +76,7 @@ def frensel_hemisphere(nu: ti.f32, nv: ti.f32):
     if eps1 > 1. and eps1 <= 3.: cos_phi *= -1.
     sin_phi = ti.sqrt(sin_phi2) * tm.sign(2. - eps1)
     power_coeff = nu * cos_phi2 + nv * sin_phi2
-    cos_theta = tm.pow(1. - ti.random(ti.f32), 1. / (power_coeff + 1.))
+    cos_theta = tm.pow(1. - ti.random(float), 1. / (power_coeff + 1.))
     sin_theta = ti.sqrt(1 - cos_theta * cos_theta)
     return vec3([cos_phi * sin_theta, cos_theta, sin_phi * sin_theta]), power_coeff
 
@@ -93,7 +93,7 @@ def sample_triangle(dv1: vec3, dv2: vec3):
     return triangle_pt
 
 @ti.func
-def mis_weight(pdf_a: ti.f32, pdf_b: ti.f32):
+def mis_weight(pdf_a: float, pdf_b: float):
     """ Balanced heuristic function for MIS weight computation """
     return ti.select(pdf_a > 1e-7, pdf_a / (pdf_a + pdf_b), 0.)
     

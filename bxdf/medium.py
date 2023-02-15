@@ -61,8 +61,8 @@ class Medium_np:
 
 @ti.dataclass
 class Medium:
-    _type:  ti.i32
-    ior:    ti.f32
+    _type:  int
+    ior:    float
     u_s:    vec3            # scattering
     u_a:    vec3            # absorption
     u_e:    vec3            # precomputed extinction
@@ -73,7 +73,7 @@ class Medium:
         return self._type >= 0
     
     @ti.func
-    def transmittance(self, depth: ti.f32):
+    def transmittance(self, depth: float):
         is_scattering = self._type >= 0
         transmittance = ti.exp(-self.u_e * depth)
         # transmitted without being scattered (PDF)
@@ -87,7 +87,7 @@ class Medium:
     @ti.func
     def sample_mfp(self, max_depth):
         random_ue = random_rgb(self.u_e)
-        sample_t = - ti.log(1. - ti.random(ti.f32)) / random_ue
+        sample_t = - ti.log(1. - ti.random(float)) / random_ue
         beta = vec3([1., 1., 1.])
         is_medium_interact = False
         if sample_t >= max_depth:

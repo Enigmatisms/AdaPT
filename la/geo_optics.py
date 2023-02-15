@@ -22,12 +22,12 @@ def exit_reflect_dir(ray: vec3, normal: vec3):
     return (2 * normal * dot - ray).normalized(), dot
 
 @ti.func
-def schlick_frensel(r_s: vec3, dot_val: ti.f32):
+def schlick_frensel(r_s: vec3, dot_val: float):
     """ Schlick's Frensel Fraction Approximation [1993] """
     return r_s + (1 - r_s) * tm.pow(1. - dot_val, 5)
 
 @ti.func
-def frensel_equation(n_in: ti.f32, n_out: ti.f32, cos_inc: ti.f32, cos_ref: ti.f32):
+def frensel_equation(n_in: float, n_out: float, cos_inc: float, cos_ref: float):
     """ 
         Frensel Equation for calculating specular ratio
         Since Schlick's Approximation is not clear about n1->n2, n2->n1 (different) effects
@@ -41,11 +41,11 @@ def frensel_equation(n_in: ti.f32, n_out: ti.f32, cos_inc: ti.f32, cos_ref: ti.f
     return 0.5 * (rs * rs + rp * rp)
 
 @ti.func
-def is_total_reflection(dot_normal: ti.f32, ni: ti.f32, nr: ti.f32):
+def is_total_reflection(dot_normal: float, ni: float, nr: float):
     return (1. - ti.pow(ni / nr, 2) * (1. - ti.pow(dot_normal, 2))) < 0.
 
 @ti.func
-def snell_refraction(incid: vec3, normal: vec3, dot_n: ti.f32, ni: ti.f32, nr: ti.f32):
+def snell_refraction(incid: vec3, normal: vec3, dot_n: float, ni: float, nr: float):
     """ Refraction vector by Snell's Law, note that an extra flag will be returned """
     exiting    = tm.sign(dot_n)
     ratio      = ni / nr

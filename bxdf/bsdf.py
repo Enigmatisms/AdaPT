@@ -66,8 +66,8 @@ class BSDF:
         - implement simple BSDF first (simple refraction and mirror surface / glossy surface / lambertian surface)
         - transmission and reflection have independent distribution, yet transmission can be stochastic 
     """
-    _type:      ti.i32
-    is_delta:   ti.i32          # whether the BRDF is Dirac-delta-like
+    _type:      int
+    is_delta:   int          # whether the BRDF is Dirac-delta-like
     k_d:        vec3            # diffusive coefficient (albedo)
     k_s:        vec3            # specular coefficient
     k_g:        vec3            # glossiness coefficient
@@ -128,7 +128,7 @@ class BSDF:
     
     # ========================= General operations =========================
     @ti.func
-    def sample_new_rays(self, incid: vec3, normal: vec3, medium, is_mi: ti.i32):
+    def sample_new_rays(self, incid: vec3, normal: vec3, medium, is_mi: int):
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
         ret_pdf  = 1.0
@@ -142,7 +142,7 @@ class BSDF:
         return ret_dir, ret_spec, ret_pdf
     
     @ti.func
-    def eval(self, incid: vec3, out: vec3, normal: vec3, medium, is_mi: ti.i32) -> vec3:
+    def eval(self, incid: vec3, out: vec3, normal: vec3, medium, is_mi: int) -> vec3:
         ret_spec = vec3([1, 1, 1])
         if not is_mi:                       # BSDF surface interaction
             ret_spec = self.eval_surf(incid, out, normal, medium)

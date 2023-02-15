@@ -41,4 +41,4 @@ class World:
     ambient:    vec3        # ambient light
 
     medium:     Medium      # medium in the free space (normally, transparent or vacuum)
-    C:          ti.f32      # speed of light (could be 1. or 3e8)
+    C:          float      # speed of light (could be 1. or 3e8)

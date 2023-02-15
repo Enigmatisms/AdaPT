@@ -96,8 +96,8 @@ class BRDF:
     """
         Taichi exported struct for unified BRDF storage
     """
-    _type:      ti.i32
-    is_delta:   ti.i32          # whether the BRDF is Dirac-delta-like
+    _type:      int
+    is_delta:   int          # whether the BRDF is Dirac-delta-like
     k_d:        vec3            # diffusive coefficient (albedo)
     k_s:        vec3            # specular coefficient
     k_g:        vec3            # glossiness coefficient
@@ -172,7 +172,7 @@ class BRDF:
     """
 
     @ti.func
-    def frensel_blend_dir(self, incid: vec3, half: vec3, normal: vec3, power_coeff: ti.f32):
+    def frensel_blend_dir(self, incid: vec3, half: vec3, normal: vec3, power_coeff: float):
         reflected, dot_incid = inci_reflect_dir(incid, half)
         half_pdf = self.k_g[2] * tm.pow(tm.dot(half, normal), power_coeff)
         pdf = half_pdf / ti.max(ti.abs(dot_incid), EPS)
@@ -180,7 +180,7 @@ class BRDF:
         return reflected, pdf, valid_sample
     
     @ti.func
-    def frensel_cos2_sin2(self, half_vec: vec3, normal: vec3, R: mat3, dot_half: ti.f32):
+    def frensel_cos2_sin2(self, half_vec: vec3, normal: vec3, R: mat3, dot_half: float):
         transed_x = (R @ vec3([1, 0, 0])).normalized()
         cos_phi2  = tm.dot(transed_x, (half_vec - dot_half * normal).normalized()) ** 2       # azimuth angle of half vector 
         return cos_phi2, 1. - cos_phi2

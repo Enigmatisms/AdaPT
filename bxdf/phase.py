@@ -19,19 +19,19 @@ from sampler.phase_sampling import *
 __inv_2pi__ = 0.5 / tm.pi
 
 @ti.func
-def phase_hg(cos_theta: ti.f32, g: ti.f32):
+def phase_hg(cos_theta: float, g: float):
     g2 = g * g
     denom = 1. + g2 + 2. * g * cos_theta
     return (1. - g2) / (ti.sqrt(denom) * denom) * 0.5 * __inv_2pi__
 
 # ============== Rayleigh ================
 @ti.func
-def phase_rayleigh(cos_theta: ti.f32):
+def phase_rayleigh(cos_theta: float):
     return 0.375 * __inv_2pi__ * (1. + cos_theta * cos_theta)
 
 @ti.dataclass
 class PhaseFunction:
-    _type:  ti.i32
+    _type:  int
     par:    vec3
     pdf:    vec3            # for multiple H-G, an extra pdf is required
     
@@ -49,7 +49,7 @@ class PhaseFunction:
             ret_dir, cos_t = sample_hg(g)
             ret_p = phase_hg(cos_t, g)
         elif self._type == 1:           # multiple H-G
-            eps = ti.random(ti.f32)
+            eps = ti.random(float)
             cos_t = 0.
             g = 0.
             if eps < self.pdf[0]:

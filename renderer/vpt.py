@@ -29,7 +29,7 @@ class VolumeRenderer(PathTracer):
         self.world_scattering = False
         
     @ti.func
-    def get_transmittance(self, idx: ti.i32, in_free_space: ti.i32, depth: ti.f32):
+    def get_transmittance(self, idx: int, in_free_space: int, depth: float):
         valid_medium = False
         transmittance = vec3([1., 1., 1.])
         if in_free_space:
@@ -41,7 +41,7 @@ class VolumeRenderer(PathTracer):
         return valid_medium, transmittance
 
     @ti.func
-    def sample_mfp(self, idx: ti.i32, in_free_space: ti.i32, depth: ti.f32):
+    def sample_mfp(self, idx: int, in_free_space: int, depth: float):
         """ Mean free path sampling, returns: 
             - whether medium is a valid scattering medium / mean free path
         """
