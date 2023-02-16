@@ -40,6 +40,7 @@ class TaichiSource:
 
     @ti.func
     def distance_attenuate(self, x: vec3):
+        # This falloff function is... weird
         return ti.min(1.0 / ti.max(x.norm_sqr(), 1e-5), 1.0)
 
     @ti.func

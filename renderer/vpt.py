@@ -19,10 +19,9 @@ from scene.obj_desc import ObjDescriptor
 from sampler.general_sampling import mis_weight
 
 """
-    Todo today: 
-    1. Debug for VPT, why the picture is not blurred and some places appear darker?
-    2. VPT is going to take a long time, make it right and implement MIS
-    3. Optimization: Rodrigues transformation / implementation optimization
+    VPT todo: 
+    1. MIS for volumetric path tracing is difficult, but it needs to be done
+    2. Optimization: Rodrigues transformation / implementation optimization
 
     The shadow of VPT seems normal (global illumination is correct, but not scattering sim)
 """

@@ -46,7 +46,7 @@ def np_rotation_between(fixed: Arr, target: Arr) -> Arr:
         return Rot.from_rotvec(axis).as_matrix()
 
 @ti.func
-def rotation_between(fixed: vec3, target: vec3) -> vec3:
+def rotation_between(fixed: vec3, target: vec3) -> mat3:
     """
         Transform parsed from xml file is merely camera orientation (Taichi version)
         Rodrigues transformation is implemented here
@@ -58,13 +58,10 @@ def rotation_between(fixed: vec3, target: vec3) -> vec3:
     cos_theta = tm.dot(fixed, target)
     ret_R = ti.Matrix.zero(float, 3, 3)
     if ti.abs(cos_theta) < 1. - 1e-5:
-        axis_norm = axis.norm()
-        axis /= axis_norm
-        ret_R = ti.Matrix.diag(3, cos_theta) + colv3((1 - cos_theta) * axis) @ rowv3(axis) + skew_symmetry(axis_norm * axis)
-    elif cos_theta > 1. - 1e-5:
-        ret_R = ti.Matrix.diag(3, 1)
+        normed_axis = axis.normalized()
+        ret_R = ti.Matrix.diag(3, cos_theta) + colv3((1 - cos_theta) * normed_axis) @ rowv3(normed_axis) + skew_symmetry(axis)
     else:
-        ret_R = ti.Matrix.diag(3, -1)
+        ret_R = ti.Matrix.diag(3, tm.sign(cos_theta))
     return ret_R
 
 @ti.func

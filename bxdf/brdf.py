@@ -250,7 +250,7 @@ class BRDF:
     # ================================================================
 
     @ti.func
-    def eval(self, incid: vec3, out: vec3, normal: vec3, medium) -> vec3:
+    def eval(self, incid: vec3, out: vec3, normal: vec3) -> vec3:
         """ Direct component reflectance """
         ret_spec = vec3([1, 1, 1])
         if self._type == 0:         # Blinn-Phong

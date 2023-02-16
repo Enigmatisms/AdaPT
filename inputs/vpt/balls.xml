@@ -70,7 +70,7 @@
 
 	<emitter type="rect_area" id="rect_area">
 		<rgb name="emission" value="30.0, 30.0, 30.0"/>
-		<rgb name="scaler" value="1.0"/>
+		<rgb name="scaler" value="1.5"/>
 	</emitter>
 
 	<!-- <emitter type="point" id="point">

@@ -122,7 +122,7 @@ class PathTracer(TracerBase):
                 ret_spec.fill(self.bsdf_field[idx].medium.eval(incid, out))
         else:                       # surface interaction
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                ret_spec = self.brdf_field[idx].eval(incid, out, normal, self.world.medium)
+                ret_spec = self.brdf_field[idx].eval(incid, out, normal)
             else:                                       # directly evaluate surface
                 ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium)
         return ret_spec
