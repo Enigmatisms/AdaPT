@@ -38,15 +38,20 @@ class VolumeRenderer(PathTracer):
         
     @ti.func
     def get_transmittance(self, idx: int, in_free_space: int, depth: float):
-        valid_medium = False
         transmittance = vec3([1., 1., 1.])
         if in_free_space:
-            valid_medium, transmittance = self.world.medium.transmittance(depth)
+            transmittance = self.world.medium.transmittance(depth)
         else:
             # if not in_free_space, bsdf_field[idx] must be valid
-            # TODO: check if any sample of BRDF can penetrate the surface without termination
-            valid_medium, transmittance = self.bsdf_field[idx].medium.transmittance(depth)
-        return valid_medium, transmittance
+            transmittance = self.bsdf_field[idx].medium.transmittance(depth)
+        return transmittance
+    
+    @ti.func
+    def non_null_surface(self, idx: int):
+        non_null = True
+        if not ti.is_active(self.brdf_nodes, idx):      # BRDF is non-null, BSDF can be non-null
+            non_null = self.bsdf_field[idx].is_non_null()
+        return non_null
 
     @ti.func
     def sample_mfp(self, idx: int, in_free_space: int, depth: float):
@@ -75,20 +80,17 @@ class VolumeRenderer(PathTracer):
             For medium interaction, check if the path to one point is not blocked (by non-null surface object)
             And also we need to calculate the attenuation along the path, e.g.: if the ray passes through
             two clouds of smoke and between the two clouds there is a transparent medium
-            
-            Here, we also keep tracks of what kind of medium we are in
         """
         tr = vec3([1., 1., 1.])
         for _i in range(5):             # maximum tracking depth = 5 (corresponding to at most 2 clouds of smoke)
             obj_id, normal, min_depth = self.ray_intersect(ray, start_p, depth)
             if obj_id < 0: break        # does not intersect anything - break (point source in the void with no medium)
-            in_free_space = tm.dot(normal, ray) < 0
-            valid_medium, transmittance = self.get_transmittance(obj_id, in_free_space, min_depth)
             # invalid medium can be "BRDF" or "transparent medium". Transparent medium has non-null surface, therefore invalid
-            if not valid_medium:        # non-null surface blocks the ray path, break
+            if self.non_null_surface(obj_id):        # non-null surface blocks the ray path, break
                 tr.fill(0.0)
                 break  
-            tr *= transmittance
+            in_free_space = tm.dot(normal, ray) < 0
+            tr *= self.get_transmittance(obj_id, in_free_space, min_depth)
             start_p += ray * min_depth
             depth -= min_depth
             if depth <= 5e-4: break     # reach the target point: break
@@ -136,7 +138,7 @@ class VolumeRenderer(PathTracer):
                         to_emitter  = emit_pos - hit_point
                         emitter_d   = to_emitter.norm()
                         light_dir   = to_emitter / emitter_d
-                        tr = self.track_ray(to_emitter, ray_o, emitter_d)
+                        tr = self.track_ray(to_emitter, hit_point, emitter_d)
                         shadow_int *= tr
                         direct_spec = self.eval(obj_id, ray_d, light_dir, normal, is_mi, in_free_space)
                     else:       # the only situation for being invalid, is when there is only one source and the ray hit the source

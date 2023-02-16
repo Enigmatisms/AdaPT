@@ -46,7 +46,7 @@ class BSDF_np(BRDF_np):
         if self.type not in BSDF_np.__type_mapping:
             raise NotImplementedError(f"Unknown BSDF type: {self.type}")
         self.type_id = BSDF_np.__type_mapping[self.type]
-        if self.type_id == 0:
+        if self.type_id < 1:
             self.is_delta = True
 
     def export(self):
@@ -143,6 +143,10 @@ class BSDF:
     def get_pdf(self, outdir: vec3, normal: vec3, incid: vec3, medium):
         """ TODO: currently, deterministic refraction yields PDF = 0.0"""
         return 0.0
+    
+    @ti.func
+    def is_non_null(self):          # null surface is -1
+        return self._type >= 0
     
     # ========================= Surface interactions ============================
     @ti.func

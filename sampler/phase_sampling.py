@@ -20,8 +20,9 @@ def sample_hg(g: float):
     if ti.abs(g) < 1e-3:
         cos_theta = 1. - 2. * ti.random(float)
     else:
-        sqr_term = (1. - g * g) / (1. - g + 2. * g * ti.random(float))
-        cos_theta = (1. + g * g - sqr_term * sqr_term) / (2. * g)
+        g2 = g * g
+        sqr_term = (1. - g2) / (1. - g + 2. * g * ti.random(float))
+        cos_theta = (1. + g2 - sqr_term * sqr_term) / (2. * g)
     sin_theta = ti.sqrt(ti.max(0., 1. - cos_theta * cos_theta))
     phi = 2. * tm.pi * ti.random(ti.float32)
     # rotational offset w.r.t axis [0, 1, 0] & pdf

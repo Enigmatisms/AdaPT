@@ -69,7 +69,7 @@
 
 	<emitter type="rect_area" id="rect_area">
 		<rgb name="emission" value="50.0, 45.6, 42.3"/>
-		<rgb name="scaler" value="0.8"/>
+		<rgb name="scaler" value="1.0"/>
 	</emitter>
 
 	<shape type="obj">

@@ -100,9 +100,7 @@ class TracerBase:
 
     @ti.func
     def aabb_test(self, aabb_idx, ray: vec3, ray_o: vec3):
-        """
-            AABB used to skip some of the objects
-        """
+        """ AABB used to skip some of the objects """
         t_min = (self.aabbs[aabb_idx, 0] - ray_o) / ray
         t_max = (self.aabbs[aabb_idx, 1] - ray_o) / ray
         t1 = ti.min(t_min, t_max)

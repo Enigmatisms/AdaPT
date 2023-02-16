@@ -75,11 +75,10 @@ class Medium:
     
     @ti.func
     def transmittance(self, depth: float):
-        is_scattering = self._type >= 0
         transmittance = ti.exp(-self.u_e * depth)
         # transmitted without being scattered (PDF)
         transmittance /= self.pdf_no_scatter(depth)
-        return is_scattering, transmittance
+        return transmittance
     
     @ti.func
     def pdf_no_scatter(self, depth):
