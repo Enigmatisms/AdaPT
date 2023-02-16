@@ -26,6 +26,7 @@ def get_options(delayed_parse = False):
     parser.add_argument("--arch",          default = 'vulkan', choices=['cpu', 'gpu', 'vulkan', 'cuda'], help = "Backend-architecture")
     parser.add_argument("-v", "--vanilla", default = False, action = "store_true", help = "Whether to use vanilla path tracer instead of volume path tracer.")
     parser.add_argument("-p", "--profile", default = False, action = "store_true", help = "Whether to profile the program")
+    parser.add_argument("--no_gui",        default = False, action = "store_true", help = "Whether to display GUI")
 
     if delayed_parse:
         return parser

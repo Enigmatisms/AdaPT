@@ -27,21 +27,28 @@ if __name__ == "__main__":
         rdr = Renderer(emitter_configs, meshes, configs)
     else:
         rdr = VolumeRenderer(emitter_configs, meshes, configs)
-    gui = ti.GUI(f"{'' if options.vanilla else 'Volumetric '}Path Tracing", (rdr.w, rdr.h))
     # TODO: add no gui options
     max_iter_num = options.iter_num if options.iter_num > 0 else 10000
     iter_cnt = 0
     print("[INFO] starting to loop...")
-    for iter_cnt in tqdm(range(max_iter_num)):
-        gui.clear()
-        rdr.reset()
-        for e in gui.get_events(gui.PRESS):
-            if e.key == gui.ESCAPE:
-                gui.running = False
-        rdr.render()
-        gui.set_image(rdr.pixels)
-        gui.show()
-        if gui.running == False: break
+    if options.no_gui:
+        try:
+            for iter_cnt in tqdm(range(max_iter_num)):
+                rdr.render()
+        except KeyboardInterrupt:
+            print("[QUIT] Quit on Keyboard interruptions")
+    else:
+        gui = ti.GUI(f"{'' if options.vanilla else 'Volumetric '}Path Tracing", (rdr.w, rdr.h))
+        for iter_cnt in tqdm(range(max_iter_num)):
+            gui.clear()
+            rdr.reset()
+            for e in gui.get_events(gui.PRESS):
+                if e.key == gui.ESCAPE:
+                    gui.running = False
+            rdr.render()
+            gui.set_image(rdr.pixels)
+            gui.show()
+            if gui.running == False: break
     rdr.summary()
     if options.profile:
         ti.profiler.print_kernel_profiler_info() 
