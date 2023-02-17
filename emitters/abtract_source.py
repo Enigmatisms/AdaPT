@@ -26,20 +26,21 @@ class TaichiSource:
         node.place(pos); node.place(dirv); node.place(base_1); node.place(base_2); \\
         The following implementation is much simpler, and light source will not consume too much memory
     """
-    _type:      ti.i32      # 0 Point, 1 Area, 2 Spot, 3 Directional
-    obj_ref_id: ti.i32      # Referring to the attaching object
-    is_delta:   ti.i32      # indicate whether the source is a delta source
+    _type:      int      # 0 Point, 1 Area, 2 Spot, 3 Directional
+    obj_ref_id: int      # Referring to the attaching object
+    is_delta:   int      # indicate whether the source is a delta source
     intensity:  vec3
     pos:        vec3
     dirv:       vec3
     base_1:     vec3
     base_2:     vec3
-    l1:         ti.f32
-    l2:         ti.f32
-    inv_area:   ti.f32      # inverse area (for non-point emitters, like rect-area or mesh attached emitters)
+    l1:         float
+    l2:         float
+    inv_area:   float      # inverse area (for non-point emitters, like rect-area or mesh attached emitters)
 
     @ti.func
     def distance_attenuate(self, x: vec3):
+        # This falloff function is... weird
         return ti.min(1.0 / ti.max(x.norm_sqr(), 1e-5), 1.0)
 
     @ti.func
@@ -66,7 +67,7 @@ class TaichiSource:
                 mesh_num = mesh_cnt[self.obj_ref_id]
                 normal   = vec3([0, 1, 0])
                 if mesh_num:
-                    tri_id    = ti.random(ti.i32) % mesh_num       # ASSUME that triangles are similar in terms of area
+                    tri_id    = ti.random(int) % mesh_num       # ASSUME that triangles are similar in terms of area
                     normal    = normals[self.obj_ref_id, tri_id]
                     dv1       = dvs[self.obj_ref_id, tri_id, 0]
                     dv2       = dvs[self.obj_ref_id, tri_id, 1]

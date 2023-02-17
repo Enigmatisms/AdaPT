@@ -11,19 +11,26 @@ import taichi as ti
 import xml.etree.ElementTree as xet
 
 from taichi.math import vec3
+from bxdf.phase import PhaseFunction
+from la.cam_transform import delocalize_rotate
 from scene.general_parser import get, rgb_parse
+from sampler.general_sampling import random_rgb
 
 __all__ = ['Medium', 'Medium_np']
 
 class Medium_np:
-    __type_mapping = {"transparent": 0, "h-g": 1, "rayleigh": 2, "mie": 3, "air": -1}
+    __type_mapping = {"hg": 0, "multi-hg": 1, "rayleigh": 2, "mie": 3, "transparent": -1}
     def __init__(self, elem: xet.Element, is_world = False):
+        """
+            Without spectral information, Rayleigh scattering here might not be physically-based
+        """
         self.ior = 1.0
         self.u_a = np.zeros(3, np.float32)
         self.u_s = np.zeros(3, np.float32)
         self.par = np.zeros(3, np.float32)
+        self.pdf = np.float32([1., 0., 0.])
         self.type_id = -1
-        self.type_name = "air"
+        self.type_name = "transparent"
 
         elem_to_query = {"rgb": rgb_parse, "float": lambda el: get(el, "value")}
         if elem is not None:
@@ -41,12 +48,13 @@ class Medium_np:
                         self.__setattr__(name, query_func(tag_elem))
         else:
             if not is_world:
-                print("Warning: default initialization yields air, which is a trivial medium.")
+                print("Warning: default initialization yields <transparent>, which is a trivial medium.")
         self.u_e = self.u_a + self.u_s
     
     def export(self):
+        phase_func = PhaseFunction(_type = self.type_id, par = vec3(self.par), pdf = vec3(self.pdf))
         return Medium(_type = self.type_id, ior = self.ior, u_a = vec3(self.u_a), 
-            u_s = vec3(self.u_s), u_e = vec3(self.u_e), params = vec3(self.par)
+            u_s = vec3(self.u_s), u_e = vec3(self.u_e), ph = phase_func
         )
     
     def __repr__(self):
@@ -54,20 +62,57 @@ class Medium_np:
 
 @ti.dataclass
 class Medium:
-    _type:  ti.i32
-    ior:    ti.f32
-    u_s:    vec3      # scattering
-    u_a:    vec3      # absorption
-    u_e:    vec3      # precomputed extinction
-    params: vec3      # other parameters (like phase function)
+    _type:  int
+    ior:    float
+    u_s:    vec3            # scattering
+    u_a:    vec3            # absorption
+    u_e:    vec3            # precomputed extinction
+    ph:     PhaseFunction   # phase function
 
-    """ All the functions related to 'directions' are useless unless the medium is a scattering one """
-    def sample_direction(self):
-        pass
-
-    def eval_direction(self):
-        pass
-
-    def pdf_direction(self):
-        pass
+    @ti.func
+    def is_scattering(self):   # check whether the current medium is scattering medium
+        return self._type >= 0
     
+    @ti.func
+    def transmittance(self, depth: float):
+        transmittance = ti.exp(-self.u_e * depth)
+        # transmitted without being scattered (PDF)
+        transmittance /= self.pdf_no_scatter(depth)
+        return transmittance
+    
+    @ti.func
+    def pdf_no_scatter(self, depth):
+        return ti.max(ti.exp(-self.u_e * depth).sum() / 3., 1e-5)      # self.u_e * depth < 11.5 (log 1e-5 \approx -11.5)
+
+    @ti.func
+    def sample_mfp(self, max_depth):
+        random_ue = random_rgb(self.u_e)
+        sample_t = - ti.log(1. - ti.random(float)) / random_ue
+        beta = vec3([1., 1., 1.])
+        is_medium_interact = False
+        if sample_t >= max_depth:
+            sample_t = max_depth
+            pdf = self.pdf_no_scatter(max_depth)
+            beta =  ti.exp(-self.u_e * max_depth) / pdf
+        else:
+            is_medium_interact = True
+            pdf = (self.u_e * ti.exp(-self.u_e * sample_t)).sum() / 3.
+            beta =  ti.exp(-self.u_e * sample_t) * self.u_s / pdf
+        return is_medium_interact, sample_t, beta
+    
+    # ================== medium sampling & eval =======================
+    
+    @ti.func
+    def sample_new_rays(self, incid: vec3):
+        ret_dir  = vec3([0, 1, 0])
+        ret_spec = vec3([1, 1, 1])
+        ret_pdf  = 1.0
+        if self.is_scattering():   # medium interaction - evaluate phase function (currently output a float)
+            local_new_dir, ret_pdf = self.ph.sample_p(incid)     # local frame ray_dir should be transformed
+            ret_dir, _ = delocalize_rotate(incid, local_new_dir)
+            ret_spec *= ret_pdf
+        return ret_dir, ret_spec, ret_pdf
+    
+    @ti.func
+    def eval(self, ray_in: vec3, ray_out: vec3):
+        return self.ph.eval_p(ray_in, ray_out)

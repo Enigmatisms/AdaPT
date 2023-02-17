@@ -1,5 +1,7 @@
 """
-    TODO: Rectangluar area light source
+    Rectangluar area light source
+    @author: Qianyue He
+    @date: before 2023.2.1
 """
 
 import sys

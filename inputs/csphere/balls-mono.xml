@@ -170,7 +170,7 @@
 	<world name="yes!">
 		<rgb name="skybox" value="0.0"/>
 		<rgb name="ambient" value="0.0"/>
-		<medium type="air">
+		<medium type="transparent">
 			<rgb name="u_a" value="0.0"/>
 			<rgb name="u_s" value="0.0"/>
 			<rgb name="par" value="0.0"/>

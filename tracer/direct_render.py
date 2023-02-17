@@ -33,11 +33,11 @@ class BlinnPhongTracer(TracerBase):
     """
     def __init__(self, emitter: PointSource, objects: List[ObjDescriptor], prop: dict):
         super().__init__(objects, prop)
-        self.emit_int = ti.Vector(emitter.intensity, dt = ti.f32)   
+        self.emit_int = vec3(emitter.intensity, dt = float)   
             
-        self.surf_color = ti.Vector.field(3, ti.f32, self.num_objects)
-        self.shininess  = ti.Vector.field(3, ti.f32, self.num_objects)
-        self.depth_map  = ti.field(ti.f32, (self.w, self.h))                # output: gray-scale
+        self.surf_color = ti.Vector.field(3, float, self.num_objects)
+        self.shininess  = ti.Vector.field(3, float, self.num_objects)
+        self.depth_map  = ti.field(float, (self.w, self.h))                # output: gray-scale
 
         self.initialze(objects)
 
@@ -45,16 +45,16 @@ class BlinnPhongTracer(TracerBase):
         for i, obj in enumerate(objects):
             for j, (mesh, normal) in enumerate(zip(obj.meshes, obj.normals)):
                 for k, vec in enumerate(mesh):
-                    self.meshes[i, j, k]  = ti.Vector(vec)
+                    self.meshes[i, j, k]  = vec3(vec)
                 if mesh.shape[0] > 2:       # not a sphere
                     self.precom_vec[i, j, 0] = self.meshes[i, j, 1] - self.meshes[i, j, 0]                    
                     self.precom_vec[i, j, 1] = self.meshes[i, j, 2] - self.meshes[i, j, 0]                     
-                self.normals[i, j] = ti.Vector(normal) 
+                self.normals[i, j] = vec3(normal) 
             self.mesh_cnt[i]    = obj.tri_num
             self.shininess[i]   = obj.bsdf.k_g
-            self.aabbs[i, 0]    = ti.Matrix(obj.aabb[0])       # unrolled
-            self.aabbs[i, 1]    = ti.Matrix(obj.aabb[1])
-            self.surf_color[i]  = ti.Vector(obj.bsdf.k_d)
+            self.aabbs[i, 0]    = vec3(obj.aabb[0])       # unrolled
+            self.aabbs[i, 1]    = vec3(obj.aabb[1])
+            self.surf_color[i]  = vec3(obj.bsdf.k_d)
 
     @ti.kernel
     def render(self, emit_pos: vec3):

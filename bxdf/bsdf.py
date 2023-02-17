@@ -33,7 +33,7 @@ class BSDF_np(BRDF_np):
         @author: Qianyue He
         @date: 2023-2-5
     """
-    __type_mapping = {"det-refraction": 0}
+    __type_mapping = {"det-refraction": 0, "null": -1}
     def __init__(self, elem: xet.Element):
         super().__init__(elem, True)
         self.medium = Medium_np(elem.find("medium"))
@@ -46,10 +46,10 @@ class BSDF_np(BRDF_np):
         if self.type not in BSDF_np.__type_mapping:
             raise NotImplementedError(f"Unknown BSDF type: {self.type}")
         self.type_id = BSDF_np.__type_mapping[self.type]
-        if self.type_id == 0:
+        if self.type_id < 1:
             self.is_delta = True
 
-    def export(self):       # TODO: override
+    def export(self):
         return BSDF(
             _type = self.type_id, is_delta = self.is_delta, k_d = vec3(self.k_d), 
             k_s = vec3(self.k_s), k_g = vec3(self.k_g), k_a = vec3(self.k_a), medium = self.medium.export()
@@ -66,8 +66,8 @@ class BSDF:
         - implement simple BSDF first (simple refraction and mirror surface / glossy surface / lambertian surface)
         - transmission and reflection have independent distribution, yet transmission can be stochastic 
     """
-    _type:      ti.i32
-    is_delta:   ti.i32          # whether the BRDF is Dirac-delta-like
+    _type:      int
+    is_delta:   int          # whether the BRDF is Dirac-delta-like
     k_d:        vec3            # diffusive coefficient (albedo)
     k_s:        vec3            # specular coefficient
     k_g:        vec3            # glossiness coefficient
@@ -126,24 +126,46 @@ class BSDF:
                 ret_int = self.k_d * reflect_ratio
         return ret_int
     
+    # ========================= Null surface =========================
     @ti.func
+    def sample_null(self, incid):
+        return incid, vec3([1, 1, 1]), 1.0
+    
+    @ti.func
+    def eval_null(self, ray_in: vec3, ray_out: vec3):
+        ret_int = vec3([0, 0, 0])
+        if tm.dot(ray_in, ray_out) > 1 - 1e-5:
+            ret_int = vec3([1, 1, 1])
+        return ret_int
     # ========================= General operations =========================
-    def sample_new_rays(self, incid: vec3, normal: vec3, medium):
+
+    @ti.func
+    def get_pdf(self, outdir: vec3, normal: vec3, incid: vec3, medium):
+        """ TODO: currently, deterministic refraction yields PDF = 0.0"""
+        return 0.0
+    
+    @ti.func
+    def is_non_null(self):          # null surface is -1
+        return self._type >= 0
+    
+    # ========================= Surface interactions ============================
+    @ti.func
+    def eval_surf(self, incid: vec3, out: vec3, normal: vec3, medium) -> vec3:
+        ret_spec = vec3([1, 1, 1])
+        if self._type == 0:
+            ret_spec = self.eval_det_refraction(incid, out, normal, medium)
+        if self._type == -1:
+            ret_spec = self.eval_null(incid, out)
+        return ret_spec
+    
+    @ti.func
+    def sample_surf_rays(self, incid: vec3, normal: vec3, medium):
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
         pdf      = 1.0
         if self._type == 0:
             ret_dir, ret_spec, pdf = self.sample_det_refraction(incid, normal, medium)
+        elif self._type == -1:
+            ret_dir, ret_spec, pdf = self.sample_null(incid)
         return ret_dir, ret_spec, pdf
     
-    @ti.func
-    def eval(self, incid: vec3, out: vec3, normal: vec3, medium) -> vec3:
-        ret_spec = vec3([1, 1, 1])
-        if self._type == 0:
-            ret_spec = self.eval_det_refraction(incid, out, normal, medium)
-        return ret_spec
-    
-    @ti.func
-    def get_pdf(self, outdir: vec3, normal: vec3, incid: vec3, medium):
-        """ TODO: currently, deterministic refraction yields PDF = 0.0"""
-        return 0.0
