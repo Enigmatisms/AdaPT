@@ -55,7 +55,7 @@ class TracerBase:
         self.normals    = ti.Vector.field(3, float)
         self.meshes     = ti.Vector.field(3, float)                    # leveraging SSDS, shape (N, mesh_num, 3) - vector3d
         self.precom_vec = ti.Vector.field(3, float)
-        self.pixels = ti.Vector.field(3, float, (self.w, self.h))      # output: color
+        self.pixels     = ti.Vector.field(3, float, (self.w, self.h))      # output: color
 
         self.bitmasked_nodes = ti.root.dense(ti.i, self.num_objects).bitmasked(ti.j, max_tri_num)
         self.bitmasked_nodes.place(self.normals)
@@ -80,6 +80,7 @@ class TracerBase:
     def pix2ray(self, i, j):
         """
             Convert pixel coordinate to ray direction
+            For pinhole camera model, rays can be precomputed, therefore not useful
             - anti_alias: whether to use pixel sample jittering for anti-aliasing
             - str_sample: whether to use stratified sampling 
         """

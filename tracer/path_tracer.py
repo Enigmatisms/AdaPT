@@ -50,7 +50,7 @@ class PathTracer(TracerBase):
                      
         self.emit_max   = 1.0
         self.src_num    = len(emitters)
-        self.color      = ti.Vector.field(3, float, (self.w, self.h))      # color without normalization
+        self.color      = ti.Vector.field(3, float, (self.w, self.h))       # color without normalization
         self.src_field  = TaichiSource.field()
         self.brdf_field = BRDF.field()
         self.bsdf_field = BSDF.field()
