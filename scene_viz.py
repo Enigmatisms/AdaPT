@@ -7,36 +7,39 @@ import os
 import sys
 sys.path.append("..")
 
+import glfw
 import numpy as np
 import taichi as ti
+import taichi.ui as tui
 import taichi.math as tm
 from taichi.math import vec3, mat3
 
 from typing import List
 from la.cam_transform import *
+from scipy.spatial.transform import Rotation as Rot
+from tracer.tracer_base import TracerBase
 
 from scene.obj_desc import ObjDescriptor
 from scene.xml_parser import mitsuba_parsing
 from scene.opts import get_options
 from utils.tools import folder_path
 
+MAX_HEIGHT = 1024
+MAX_WIDTH  = 1024
+
 @ti.data_oriented
-class Visualizer:
+class Visualizer(TracerBase):
     """ Emitter is not supported. We only import mesh / sphere object in here """
     def __init__(self, objects: List[ObjDescriptor], prop: dict):
         self.w          = ti.field(ti.i32, ())
         self.h          = ti.field(ti.i32, ())
         self.focal      = ti.field(ti.f32, ())
         self.inv_focal  = ti.field(ti.f32, ())
-        self.half_w     = ti.field(ti.f32, ())
-        self.half_h     = ti.field(ti.f32, ())
         self.w[None]    = prop['film']['width']                              # image is a standard square
         self.h[None]    = prop['film']['height']
 
         self.focal[None]     = fov2focal(prop['fov'], min(self.w[None], self.h[None]))
         self.inv_focal[None] = 1. / self.focal[None]
-        self.half_w[None]    = float(self.w[None]) / 2.
-        self.half_h[None]    = float(self.h[None]) / 2.
 
         self.num_objects = len(objects)
         max_tri_num = max([obj.tri_num for obj in objects])
@@ -62,9 +65,20 @@ class Visualizer:
         self.bitmasked_nodes.bitmasked(ti.k, 3).place(self.meshes)      # for simple shapes, this would be efficient
         self.bitmasked_nodes.dense(ti.k, 3).place(self.precom_vec)
         self.mesh_cnt   = ti.field(int, self.num_objects)
-        self.ray_field  = ti.Vector.field(3, float, (1024, 1024))
         self.initialze(objects)
-        self.initialize_rays()
+
+    def set_width(self, val: int):
+        self.w[None] = int(val)
+    
+    def set_height(self, val: int):
+        self.h[None] = int(val)
+
+    def set_translation(self, t: np.ndarray):
+        self.cam_t[None] = vec3(t)
+
+    def set_rotation(self, rpy: np.ndarray):
+        trans_r = Rot.from_euler("zxy", rpy, degrees = True).as_matrix()
+        self.cam_r[None] = mat3(trans_r)
 
     def initialze(self, objects: List[ObjDescriptor]):
         for i, obj in enumerate(objects):
@@ -83,101 +97,115 @@ class Visualizer:
             self.aabbs[i, 0]    = vec3(obj.aabb[0])        # unrolled
             self.aabbs[i, 1]    = vec3(obj.aabb[1])
 
-    @ti.kernel
-    def initialize_rays(self):
+    @ti.func
+    def pix2ray(self, i, j):
         inv_focal = self.inv_focal[None]
-        # This is some what trivial
-        cam_r = self.cam_r[None]
-        for i, j in self.ray_field:
-            cam_dir = vec3([(512. + 0.5 - float(i)) * inv_focal, (float(j) - 512. + 0.5) * inv_focal, 1.])
-            self.ray_field[i, j] = (cam_r @ cam_dir).normalized()
+        cam_dir = vec3([(512.5 - float(i)) * inv_focal, (float(j) - 512.5) * inv_focal, 1.])
+        return (self.cam_r[None] @ cam_dir).normalized()
 
-    @ti.func
-    def aabb_test(self, aabb_idx, ray: vec3, ray_o: vec3):
-        """ AABB used to skip some of the objects """
-        t_min = (self.aabbs[aabb_idx, 0] - ray_o) / ray
-        t_max = (self.aabbs[aabb_idx, 1] - ray_o) / ray
-        t1 = ti.min(t_min, t_max)
-        t2 = ti.max(t_min, t_max)
-        t_near  = ti.max(ti.max(t1.x, t1.y), t1.z)
-        t_far   = ti.min(ti.min(t2.x, t2.y), t2.z)
-        return t_near < t_far
-
-    @ti.func
-    def ray_intersect(self, ray, start_p):
-        obj_id = -1
-        tri_id = -1
-        min_depth = 1e7
-        for aabb_idx in range(self.num_objects):
-            if self.aabb_test(aabb_idx, ray, start_p) == False: continue
-            tri_num = self.mesh_cnt[aabb_idx]
-            if tri_num:
-                for mesh_idx in range(tri_num):
-                    normal = self.normals[aabb_idx, mesh_idx]   # back-face culling removed
-                    p1 = self.meshes[aabb_idx, mesh_idx, 0]
-                    vec1 = self.precom_vec[aabb_idx, mesh_idx, 0]
-                    vec2 = self.precom_vec[aabb_idx, mesh_idx, 1]
-                    mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
-                    u, v, t = mat @ (start_p - p1)
-                    if u >= 0 and v >= 0 and u + v <= 1.0:
-                        if t > 5e-4 and t < min_depth:
-                            min_depth = t
-                            obj_id = aabb_idx
-                            tri_id = mesh_idx
-            else:
-                center  = self.meshes[aabb_idx, 0, 0]
-                radius2 = self.meshes[aabb_idx, 0, 1][0] ** 2
-                s2c     = center - start_p
-                center_norm2 = s2c.norm_sqr()
-                proj_norm = tm.dot(ray, s2c)
-                c2ray_norm = center_norm2 - proj_norm ** 2  # center to ray distance ** 2
-                if c2ray_norm >= radius2: continue
-                ray_t = proj_norm
-                if center_norm2 > radius2 + 5e-4:
-                    ray_t -= ti.sqrt(radius2 - c2ray_norm)
-                else:
-                    ray_t += ti.sqrt(radius2 - c2ray_norm)
-                if ray_t > 5e-4 and ray_t < min_depth:
-                    min_depth = ray_t
-                    obj_id = aabb_idx
-                    tri_id = -1
-        normal = vec3([1, 0, 0])
-        if obj_id >= 0:
-            if tri_id < 0:
-                center = self.meshes[obj_id, 0, 0]
-                normal = (start_p + min_depth * ray - center).normalized() 
-            else:
-                normal = self.normals[obj_id, tri_id]
-        return (obj_id, normal)
+    def calculate_focal(self, fov):
+        self.focal[None]     = fov2focal(fov, min(self.w[None], self.h[None]))
+        self.inv_focal[None] = 1. / self.focal[None]
 
     @ti.kernel
     def render(self):
         for i, j in self.pixels:
-            ray = self.ray_field[i, j]
-            obj_id, normal = self.ray_intersect(ray, self.cam_t[None])
+            ray = self.pix2ray(i, j)
+            obj_id, normal, _ = self.ray_intersect(ray, self.cam_t[None])
             if obj_id >= 0:
                 self.pixels[i, j].fill(ti.max(-tm.dot(ray, normal), 0.))
             else:
                 self.pixels[i, j].fill(0.0)
 
+def get_points(off_x, off_y):
+    start_p = np.float32([[0.5 - off_x, 0.5 - off_y, 0], [0.5 + off_x, 0.5 - off_y, 0],
+                [0.5 + off_x, 0.5 + off_y, 0], [0.5 - off_x, 0.5 + off_y, 0]])
+    result = np.zeros((8, 3), np.float32)
+    for i in range(4):
+        result[i << 1] = start_p[i]
+        result[(i << 1) + 1] = start_p[(i + 1) % 4]
+    return result
+
+def get_translation(gui, tx, ty, tz):
+    t_x = gui.slider_float('X', tx, -20., 20.)
+    t_y = gui.slider_float('Y', ty, -20., 20.)
+    t_z = gui.slider_float('Z', tz, -20., 20.)
+    return np.float32([t_x, t_y, t_z])
+
+def get_rotation(gui, r, p, y):
+    r = gui.slider_float('Roll', r, -180., 180.)
+    p = gui.slider_float('Pitch', p, -180., 180.)
+    y = gui.slider_float('Yaw', y, -180., 180.)
+    return np.float32([r, p, y])
+
 if __name__ == "__main__":
+    glfw.init()
     options = get_options()
     cache_path = folder_path(f"./cached/viz/{options.scene}", f"Cache path for scene {options.scene} not found. JIT compiling...")
     ti.init(arch = ti.vulkan, default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path)
+    vertex_field = ti.Vector.field(3, float, 8)
     input_folder = os.path.join(options.input_path, options.scene)
     _, _, meshes, configs = mitsuba_parsing(input_folder, options.name)  # complex_cornell
 
     bpt = Visualizer(meshes, configs)
-    gui = ti.GUI('Scene Interactive Visualizer', (1024, 1024))
-    while gui.running:
-        for e in gui.get_events(gui.PRESS):
-            if e.key == gui.ESCAPE:
-                gui.running = False
+    init_R = Rot.from_matrix(bpt.cam_r[None].to_numpy()).as_euler('zxy', degrees = True)
+
+    # GGUI initializations 
+    window   = tui.Window('Scene Interactive Visualizer', res = (1024, 1024), pos = (150, 150))
+    canvas   = window.get_canvas()
+    gui      = window.get_gui()
+    width    = gui.slider_int('Width', configs['film']['width'], 32, 1024)
+    height   = gui.slider_int('Height', configs['film']['height'], 32, 1024)
+    fov      = gui.slider_float('FoV', configs['fov'], 20., 80.)
+    trans_t  = get_translation(gui, *configs['transform'][1])
+    trans_r  = get_rotation(gui, *init_R)
+    reset_bt = gui.button('Reset')
+
+    last_fov   = fov
+    last_w     = width
+    last_h     = height
+    last_t   = trans_t.copy()
+    last_r   = trans_r.copy()
+    while window.running:
+        for e in window.get_events(tui.PRESS):
+            if e.key == tui.ESCAPE:
+                window.running = False
+
+        if gui.button('Reset'):
+            trans_t  = get_translation(gui, *configs['transform'][1])
+            trans_r  = get_rotation(gui, *init_R)
+            width    = configs['film']['width']
+            height   = configs['film']['height']
+            fov      = configs['fov']
            
-            # elif e.key == 'w':
-                # emitter_pos[2] += 0.05
+        width   = gui.slider_int('Width', width, 32, 1024)
+        height  = gui.slider_int('Height', height, 32, 1024)
+        fov     = gui.slider_float('FoV', fov, 20., 80.)
+        trans_t = get_translation(gui, *trans_t)
+        trans_r = get_rotation(gui, *trans_r)
+        if abs(fov - last_fov) >= 0.1:
+            bpt.calculate_focal(fov)
+            last_fov = fov
+        if width != last_w:
+            bpt.set_width(width)
+            bpt.calculate_focal(fov)
+            last_w    = width
+        if height != last_h:
+            bpt.set_height(height)
+            bpt.calculate_focal(fov)
+            last_h    = height
+        if (last_t - trans_t).any():
+            bpt.set_translation(trans_t)
+            last_t = trans_t.copy()
+        if (last_r - trans_r).any():
+            bpt.set_rotation(trans_r)
+            last_r = trans_r.copy()
+        
         bpt.render()
-        gui.set_image(bpt.pixels)
-        gui.show()
-        if gui.running == False: break
-        gui.clear()
+        canvas.set_image(bpt.pixels)
+        points = get_points(0.5 * width / MAX_WIDTH, 0.5 * height / MAX_HEIGHT)
+        for i, pt in enumerate(points):
+            vertex_field[i] = vec3(pt)
+        canvas.lines(vertex_field, width = 0.002, color = (0., 0.4, 1.0))
+        window.show()
+        if window.running == False: break

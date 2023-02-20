@@ -5,6 +5,7 @@
 """
 import os
 import taichi as ti
+import taichi.ui as tui
 from tqdm import tqdm
 
 from la.cam_transform import *
@@ -38,17 +39,18 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("[QUIT] Quit on Keyboard interruptions")
     else:
-        gui = ti.GUI(f"{'' if options.vanilla else 'Volumetric '}Path Tracing", (rdr.w, rdr.h))
+        window   = tui.Window(f"{'' if options.vanilla else 'Volumetric '}Path Tracing", res = (rdr.w, rdr.h))
+        canvas = window.get_canvas()
+        gui = window.get_gui()
         for iter_cnt in tqdm(range(max_iter_num)):
-            gui.clear()
             rdr.reset()
-            for e in gui.get_events(gui.PRESS):
-                if e.key == gui.ESCAPE:
-                    gui.running = False
+            for e in window.get_events(tui.PRESS):
+                if e.key == tui.ESCAPE:
+                    window.running = False
             rdr.render()
-            gui.set_image(rdr.pixels)
-            gui.show()
-            if gui.running == False: break
+            canvas.set_image(rdr.pixels)
+            window.show()
+            if window.running == False: break
     rdr.summary()
     if options.profile:
         ti.profiler.print_kernel_profiler_info() 
