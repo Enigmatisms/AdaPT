@@ -7,7 +7,7 @@
 	<sensor type="perspective">
 		<float name="near_clip" value="0.001"/>
 		<float name="far_clip" value="2000"/>
-		<float name="fov" value="39.3077"/>
+		<float name="fov" value="57.429"/>
         <integer name="sample_count" value="128"/>
         <integer name="max_bounce" value="12"/>
         <integer name="num_shadow_ray" value="4"/>       
@@ -18,7 +18,7 @@
         <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
 		
 		<transform name="toWorld">
-			<lookat target="2.78, 2.73, -7.99" origin="2.78, 2.73, -8.00" up="0, 1, 0"/>
+			<lookat target="2.788, 4.571, -4.571" origin="2.78, 2.73, -8.00" up="0, 1, 0"/>
 		</transform>
 
 		<film type="film">
