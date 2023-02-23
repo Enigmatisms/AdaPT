@@ -12,7 +12,7 @@ from tracer.path_tracer import PathTracer
 from emitters.abtract_source import LightSource
 
 from scene.obj_desc import ObjDescriptor
-from sampler.general_sampling import mis_weight
+from sampler.general_sampling import balance_heuristic
 
 @ti.data_oriented
 class Renderer(PathTracer):
@@ -72,8 +72,8 @@ class Renderer(PathTracer):
                     if ti.static(self.use_mis):
                         mis_w = 1.0
                         if not emitter.is_delta:
-                            bsdf_pdf = self.get_pdf(obj_id, light_dir, normal, ray_d, self.world.medium)
-                            mis_w    = mis_weight(light_pdf, bsdf_pdf)
+                            bsdf_pdf = self.get_pdf(obj_id, light_dir, normal, ray_d)
+                            mis_w    = balance_heuristic(light_pdf, bsdf_pdf)
                         direct_int  += direct_spec * shadow_int * mis_w / emitter_pdf
                     else:
                         direct_int += direct_spec * shadow_int / emitter_pdf
@@ -98,7 +98,7 @@ class Renderer(PathTracer):
                         emitter_pdf = 0.0
                         if hit_light >= 0 and self.is_delta(obj_id) == 0:
                             emitter_pdf = self.src_field[hit_light].solid_angle_pdf(ray_d, normal, min_depth)
-                        emission_weight = mis_weight(ray_pdf, emitter_pdf)
+                        emission_weight = balance_heuristic(ray_pdf, emitter_pdf)
 
             self.color[i, j] += ti.select(ti.math.isnan(color), 0., color)
             self.pixels[i, j] = self.color[i, j] / self.cnt[None]

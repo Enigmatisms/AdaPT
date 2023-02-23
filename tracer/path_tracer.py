@@ -128,12 +128,12 @@ class PathTracer(TracerBase):
         return ret_spec
     
     @ti.func
-    def get_pdf(self, idx: int, outdir: vec3, normal: vec3, incid: vec3, medium):
+    def get_pdf(self, idx: int, outdir: vec3, normal: vec3, incid: vec3):
         pdf = 0.
         if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-            pdf = self.brdf_field[idx].get_pdf(outdir, normal, incid, medium)
+            pdf = self.brdf_field[idx].get_pdf(outdir, normal, incid)
         else:
-            pdf = self.bsdf_field[idx].get_pdf(outdir, normal, incid, medium)
+            pdf = self.bsdf_field[idx].get_pdf(outdir, normal, incid, self.world.medium)
         return pdf
     
     @ti.func
@@ -147,6 +147,7 @@ class PathTracer(TracerBase):
     
     @ti.func
     def is_scattering(self, idx: int):           # check if the object with index idx is a scattering medium
+        # FIXME: if sigma_t is too small, set the scattering medium to det-refract
         is_scattering = False
         if not ti.is_active(self.brdf_nodes, idx):
             is_scattering = self.bsdf_field[idx].medium.is_scattering()

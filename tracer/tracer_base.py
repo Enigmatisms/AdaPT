@@ -108,25 +108,24 @@ class TracerBase:
         t2 = ti.max(t_min, t_max)
         t_near  = ti.max(ti.max(t1.x, t1.y), t1.z)
         t_far   = ti.min(ti.min(t2.x, t2.y), t2.z)
-        return t_near < t_far
+        return t_near < t_far, t_near
 
     @ti.func
     def ray_intersect(self, ray, start_p, min_depth = -1.0):
         """
             Intersection function and mesh organization can be reused
+            TODO: BVH can further accelerate this method
         """
         obj_id = -1
         tri_id = -1
-        if min_depth > 0.0:
-            min_depth -= 5e-4
-        else:
-            min_depth = 1e7
+        min_depth = ti.select(min_depth > 0.0, min_depth - 5e-4, 1e7)
         for aabb_idx in range(self.num_objects):
-            if self.aabb_test(aabb_idx, ray, start_p) == False: continue
+            aabb_intersect, t_near = self.aabb_test(aabb_idx, ray, start_p)
+            if aabb_intersect == False: continue
+            if t_near > min_depth: continue
             tri_num = self.mesh_cnt[aabb_idx]
             if tri_num:
                 for mesh_idx in range(tri_num):
-                    normal = self.normals[aabb_idx, mesh_idx]   # back-face culling removed
                     # Sadly, Taichi does not support slicing. I think this restrict the use cases of Matrix field
                     p1 = self.meshes[aabb_idx, mesh_idx, 0]
                     vec1 = self.precom_vec[aabb_idx, mesh_idx, 0]
@@ -147,10 +146,8 @@ class TracerBase:
                 c2ray_norm = center_norm2 - proj_norm ** 2  # center to ray distance ** 2
                 if c2ray_norm >= radius2: continue
                 ray_t = proj_norm
-                if center_norm2 > radius2 + 5e-4:
-                    ray_t -= ti.sqrt(radius2 - c2ray_norm)
-                else:
-                    ray_t += ti.sqrt(radius2 - c2ray_norm)
+                ray_cut = ti.sqrt(radius2 - c2ray_norm)
+                ray_t += ti.select(center_norm2 > radius2 + 5e-4, -ray_cut, ray_cut)
                 if ray_t > 5e-4 and ray_t < min_depth:
                     min_depth = ray_t
                     obj_id = aabb_idx
@@ -172,13 +169,12 @@ class TracerBase:
             Taichi does not support compile-time branching. Actually it does, but not flexible, for e.g \\
             C++ supports compile-time branching via template parameter, but Taichi can not "pass" compile-time constants
         """
-        if depth > 0.0:
-            depth -= 5e-4
-        else:
-            depth = 1e7
+        depth = ti.select(depth > 0.0, depth - 5e-4, 1e7)
         flag = False
         for aabb_idx in range(self.num_objects):
-            if self.aabb_test(aabb_idx, ray, start_p) == False: continue
+            aabb_intersect, t_near =  self.aabb_test(aabb_idx, ray, start_p)
+            if aabb_intersect == False: continue
+            if t_near > depth: continue
             tri_num = self.mesh_cnt[aabb_idx]
             if tri_num:
                 for mesh_idx in range(tri_num):

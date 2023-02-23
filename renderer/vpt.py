@@ -14,9 +14,7 @@ from la.cam_transform import *
 from tracer.path_tracer import PathTracer
 from emitters.abtract_source import LightSource
 
-from bxdf.medium import Medium
 from scene.obj_desc import ObjDescriptor
-from sampler.general_sampling import mis_weight
 
 """
     VPT todo: 

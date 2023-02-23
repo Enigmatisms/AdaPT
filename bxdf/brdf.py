@@ -292,7 +292,7 @@ class BRDF:
         return ret_dir, ret_spec, pdf
 
     @ti.func
-    def get_pdf(self, outdir: vec3, normal: vec3, incid: vec3, medium):
+    def get_pdf(self, outdir: vec3, normal: vec3, incid: vec3):
         """ 
             Solid angle PDF for a specific incident direction - BRDF sampling
             Some PDF has nothing to do with backward incid (from eye to the surface), like diffusive 

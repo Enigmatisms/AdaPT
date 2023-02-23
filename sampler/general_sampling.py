@@ -10,7 +10,7 @@ import taichi.math as tm
 from taichi.math import vec3
 
 __all__ = ['cosine_hemisphere', 'uniform_hemisphere', 'sample_triangle', 
-            'mis_weight', 'mod_phong_hemisphere', 'frensel_hemisphere', 'random_rgb']
+            'balance_heuristic', 'mod_phong_hemisphere', 'frensel_hemisphere', 'random_rgb']
 
 pi_inv = 1. / tm.pi
 
@@ -93,7 +93,7 @@ def sample_triangle(dv1: vec3, dv2: vec3):
     return triangle_pt
 
 @ti.func
-def mis_weight(pdf_a: float, pdf_b: float):
+def balance_heuristic(pdf_a: float, pdf_b: float):
     """ Balanced heuristic function for MIS weight computation """
     return ti.select(pdf_a > 1e-7, pdf_a / (pdf_a + pdf_b), 0.)
     
