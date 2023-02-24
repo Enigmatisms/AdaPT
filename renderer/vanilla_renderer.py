@@ -72,7 +72,7 @@ class Renderer(PathTracer):
                     if ti.static(self.use_mis):
                         mis_w = 1.0
                         if not emitter.is_delta:
-                            bsdf_pdf = self.get_pdf(obj_id, light_dir, normal, ray_d)
+                            bsdf_pdf = self.surface_pdf(obj_id, light_dir, normal, ray_d)
                             mis_w    = balance_heuristic(light_pdf, bsdf_pdf)
                         direct_int  += direct_spec * shadow_int * mis_w / emitter_pdf
                     else:

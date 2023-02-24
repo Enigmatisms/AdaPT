@@ -17,8 +17,9 @@ from la.geo_optics import *
 from la.cam_transform import *
 from sampler.general_sampling import *
 from scene.general_parser import rgb_parse
+from renderer.constants import TRANSPORT_RAD
 
-__all__ = ['BRDF_np', 'BRDF']
+__all__ = ['BRDF_np', 'BRDF', 'cosine_term']
 
 EPS = 1e-7
 INV_PI = 1. / tm.pi
@@ -91,6 +92,12 @@ class BRDF_np:
     def __repr__(self) -> str:
         return f"<{self.type.capitalize()} BRDF, default:[{int(self.kd_default), int(self.ks_default), int(self.kg_default), int(self.ka_default)}]>"
 
+
+@ti.func
+def cosine_term(incid: vec3, normal: vec3, out_dir: vec3, mode: int):
+    """ @static_method is not allowed in @dataclass struct """
+    return ti.max(0., ti.select(mode <= TRANSPORT_RAD, tm.dot(out_dir, normal), tm.dot(-incid, normal)))
+
 @ti.dataclass
 class BRDF:
     """
@@ -119,9 +126,8 @@ class BRDF:
             half_way.fill(0.0)
         dot_clamp = ti.max(0.0, tm.dot(half_way, normal))
         glossy = tm.pow(dot_clamp, self.k_g)
-        cosine_term = tm.max(0.0, tm.dot(normal, ray_out))
         # A modified Phong model (k_d + k_s should be smaller than 1, otherwise not physically plausible)
-        return (self.k_d + self.k_s * (0.5 * (self.k_g + 2.0) * glossy)) * INV_PI * cosine_term
+        return (self.k_d + self.k_s * (0.5 * (self.k_g + 2.0) * glossy)) * INV_PI
 
     @ti.func
     def sample_blinn_phong(self, incid: vec3, normal: vec3):
@@ -139,7 +145,7 @@ class BRDF:
             reflect_d = (2 * normal * dot_normal - ray_out).normalized()
             dot_view = ti.max(0.0, -tm.dot(ray_in, reflect_d))      # ray_in is on the opposite dir of reflected dir
             glossy = tm.pow(dot_view, self.k_g) * self.k_s
-            spec = 0.5 * (self.k_g + 2.) * glossy * INV_PI * dot_normal
+            spec = 0.5 * (self.k_g + 2.) * glossy * INV_PI
         return spec 
 
     @ti.func
@@ -206,7 +212,7 @@ class BRDF:
             pow5_in  = tm.pow(1. - dot_in / 2., 5)
             pow5_out = tm.pow(1. - dot_out / 2., 5)
             diffuse *= (1. - pow5_in) * (1. - pow5_out)
-            spec = (specular + diffuse) * dot_out
+            spec = (specular + diffuse)
         return spec
 
     @ti.func
@@ -222,8 +228,7 @@ class BRDF:
     # ======================= Lambertian ========================
     @ti.func
     def eval_lambertian(self, ray_out: vec3, normal: vec3):
-        cosine_term = tm.max(0.0, tm.dot(normal, ray_out))
-        return self.k_d * INV_PI * cosine_term
+        return self.k_d * INV_PI
 
     @ti.func
     def sample_lambertian(self, normal: vec3):
@@ -251,13 +256,17 @@ class BRDF:
 
     @ti.func
     def eval(self, incid: vec3, out: vec3, normal: vec3) -> vec3:
-        """ Direct component reflectance """
+        """ Direct component reflectance
+            Every evaluation function does not output cosine weighted BSDF now
+        """
         ret_spec = vec3([1, 1, 1])
+        cosine_t = tm.dot(normal, out)
         if self._type == 0:         # Blinn-Phong
             ret_spec = self.eval_blinn_phong(incid, out, normal)
         elif self._type == 1:       # Lambertian
             ret_spec = self.eval_lambertian(out, normal)
         elif self._type == 2:       # Specular
+            cosine_t = 0.
             ret_spec = self.eval_specular(incid, out, normal)
         elif self._type == 4:
             ret_spec = self.eval_mod_phong(incid, out, normal)
@@ -266,27 +275,33 @@ class BRDF:
             ret_spec = self.eval_frensel_blend(incid, out, normal, R)
         else:
             print(f"Warnning: unknown or unsupported BRDF type: {self._type} during evaluation.")
+        ret_spec *= tm.max(0.0, cosine_t)
         return ret_spec
-
+    
     @ti.func
-    def sample_new_rays(self, incid: vec3, normal: vec3):
+    def sample_new_rays(self, incid: vec3, normal: vec3, mode: int):
         """
             All the sampling function will return: (1) new ray (direction) \\
             (2) rendering equation transfer term (BRDF * cos term) (3) PDF
+            mode for separating camera / light transport cosine term
         """
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
         pdf      = 1.0
         if self._type == 0:         # Blinn-Phong
             ret_dir, ret_spec, pdf = self.sample_blinn_phong(incid, normal)
+            ret_spec *= cosine_term(incid, normal, ret_dir, mode)
         elif self._type == 1:       # Lambertian
             ret_dir, ret_spec, pdf = self.sample_lambertian(normal)
-        elif self._type == 2:       # Specular
+            ret_spec *= cosine_term(incid, normal, ret_dir, mode)
+        elif self._type == 2:       # Specular - specular has no cosine attenuation
             ret_dir, ret_spec, pdf = self.sample_specular(incid, normal)
         elif self._type == 4:       # Modified-Phong
             ret_dir, ret_spec, pdf = self.sample_mod_phong(incid, normal)
+            ret_spec *= cosine_term(incid, normal, ret_dir, mode)
         elif self._type == 5:       # Frensel-Blend
             ret_dir, ret_spec, pdf = self.sample_frensel_blend(incid, normal)
+            ret_spec *= cosine_term(incid, normal, ret_dir, mode)
         else:
             print(f"Warnning: unknown or unsupported BRDF type: {self._type} during evaluation.")
         return ret_dir, ret_spec, pdf
