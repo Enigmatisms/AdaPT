@@ -119,7 +119,6 @@ class VolumeRenderer(PathTracer):
                 hit_point = ray_d * min_depth + ray_o
                 hit_light = -1 if is_mi else self.emitter_id[obj_id]
                 # Step 4: direct component estimation
-                direct_pdf  = 1.0
                 emitter_pdf = 1.0
                 break_flag  = False
                 shadow_int  = vec3([0, 0, 0])
@@ -130,7 +129,7 @@ class VolumeRenderer(PathTracer):
                     light_dir = vec3([0, 0, 0])
                     # direct / emission component evaluation
                     if emitter_valid:
-                        emit_pos, shadow_int, direct_pdf = emitter.         \
+                        emit_pos, shadow_int, _d, _n = emitter.         \
                             sample(self.precom_vec, self.normals, self.mesh_cnt, hit_point)        # sample light
                         to_emitter  = emit_pos - hit_point
                         emitter_d   = to_emitter.norm()

@@ -13,3 +13,5 @@ VERTEX_SURFACE = 0
 VERTEX_MEDIUM  = 1 
 VERTEX_EMITTER = 2 
 VERTEX_CAMERA  = 3 
+
+ON_SURFACE = 1          # whether on surface

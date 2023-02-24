@@ -28,7 +28,7 @@ class TaichiSource:
     """
     _type:      int      # 0 Point, 1 Area, 2 Spot, 3 Directional
     obj_ref_id: int      # Referring to the attaching object
-    is_delta:   int      # indicate whether the source is a delta source
+    bool_bits:  int      # indicate whether the source is a delta source / inside free space
     intensity:  vec3
     pos:        vec3
     dirv:       vec3
@@ -39,10 +39,18 @@ class TaichiSource:
     inv_area:   float      # inverse area (for non-point emitters, like rect-area or mesh attached emitters)
 
     @ti.func
+    def is_delta_source(self):
+        return self.bool_bits & 0x01
+    
+    @ti.func
+    def in_free_space(self):
+        return self.bool_bits & 0x02
+
+    @ti.func
     def distance_attenuate(self, x: vec3):
         # This falloff function is... weird
         return ti.min(1.0 / ti.max(x.norm_sqr(), 1e-5), 1.0)
-
+    
     @ti.func
     def sample(
         self, dvs: ti.template(), normals: ti.template(), 
@@ -57,6 +65,7 @@ class TaichiSource:
         ret_int = self.intensity
         ret_pos = self.pos
         ret_pdf = 1.0
+        normal = vec3([0, 0, 0])
         if self._type == 0:     # point source
             ret_int *= self.distance_attenuate(hit_pos - ret_pos)
         elif self._type == 1:   # area source
@@ -79,7 +88,7 @@ class TaichiSource:
                     local_dir, pdf = cosine_hemisphere()
                     normal, _ = delocalize_rotate(to_hit, local_dir)
                     ret_pos   = center + normal * radius
-                    # since we can sample on any point on the sphere, yet we only choose the hemisphere, therefore we have a 0.5
+                    # We only choose the hemisphere, therefore we have a 0.5. Also, this is both sa & area measure
                     ret_pdf   = 0.5 * pdf
                 diff      = hit_pos - ret_pos
                 dot_light = ti.math.dot(diff.normalized(), normal)
@@ -96,9 +105,9 @@ class TaichiSource:
                 ret_pdf = 1.0
             else:
                 diff_norm2 = diff.norm_sqr()
-                ret_pdf   *= ti.select(dot_light > 0.0, diff_norm2 / dot_light, 0.0)
-                ret_int   /= ti.max(1e-5, ret_pdf)
-        return ret_pos, ret_int, ret_pdf
+                ret_pdf *= ti.select(dot_light > 0.0, diff_norm2 / dot_light, 0.0)
+                ret_int = ti.select(ret_pdf > 0.0, ret_int / ret_pdf, 0.)
+        return ret_pos, ret_int, ret_pdf, normal
 
     @ti.func
     def eval_le(self, inci_dir: vec3, normal: vec3):
@@ -141,6 +150,10 @@ class LightSource:
         self.id:   str = base_elem.get("id")
         self.inv_area  = 1.0        # inverse area (for non-point emitters, like rect-area or mesh attached emitters)
         self.attached  = False      # Indicated whether the light source is attached to an object (if True, new sampling strategy should be used)
+        self.in_free_space = True   # Whether the light source itself is in free space
+        bool_elem = base_elem.find("boolean")
+        if bool_elem is not None and bool_elem.get("value").lower() == "false":
+            self.in_free_space = False
 
     def export(self) -> TaichiSource:
         """

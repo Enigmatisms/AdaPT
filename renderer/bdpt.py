@@ -8,6 +8,7 @@
 
 import taichi as ti
 import taichi.math as tm
+import taichi.types as ttype
 from taichi.math import vec3
 
 from typing import List
@@ -20,6 +21,7 @@ from renderer.path_utils import Vertex
 from renderer.constants import *
 
 ZERO_V3 = vec3([0, 0, 0])
+vec2i = ttype.vector(2, int)
 
 @ti.data_oriented
 class BDPT(VolumeRenderer):
@@ -35,6 +37,10 @@ class BDPT(VolumeRenderer):
         # camera vertex and extra light vertex is not included, therefore + 2
         self.path_nodes.bitmasked(ti.k, self.max_bounce + 2).place(self.cam_paths)        
         # Put "path generation", "path connection" and "MIS weight" in one function
+        # TODO: to correctly sample points on camera, the size of the imaging plane should be considered
+        self.A = 1.
+        # TODO: whether the camera is placed inside of an object
+        self.free_space_cam = True
 
     @staticmethod
     @ti.func
@@ -87,7 +93,7 @@ class BDPT(VolumeRenderer):
             pdf_fwd = BDPT.convert_density(ray_pdf, old_pos, normal, hit_point, is_mi)
             is_delta = (not is_mi) and self.is_delta(obj_id)
             vertex_args = {"_type": BDPT.interact_mode(is_mi, hit_light), "obj_id": obj_id, "emit_id": hit_light, 
-                "bool_bits": in_free_space << 1 + is_delta, "pdf_fwd": pdf_fwd, "time": acc_time, 
+                "bool_bits": (in_free_space << 1) + is_delta, "pdf_fwd": pdf_fwd, "time": acc_time, 
                 "normal": ZERO_V3 if is_mi else normal, "pos": hit_point, "ray_in": ray_d, "beta": throughput                
             }
             if transport_mode == TRANSPORT_RAD:         # Camera path
@@ -115,7 +121,8 @@ class BDPT(VolumeRenderer):
             if not is_mi:   # If current sampling exists on the surface
                 pdf_bwd = self.surface_pdf(obj_id, -old_ray_d, normal, -ray_d)
             if is_delta:
-                pdf_fwd = pdf_bwd = 0.
+                pdf_fwd = 0.
+                pdf_bwd = 0.
             # ray_o is the position of the current vertex, which is used in prev vertex pdf_bwd
             if transport_mode == TRANSPORT_RAD:         # Camera transport mode
                 self.cam_paths[prev_vid].set_bwd_pdf(pdf_bwd, ray_o)
@@ -124,44 +131,96 @@ class BDPT(VolumeRenderer):
         return vertex_num
     
     @ti.func
-    def rasterize_pinhole(self, end_point):
+    def rasterize_pinhole(self, ray_d: vec3):
         """ For path with only one camera vertex, ray should be re-rasterized to the film"""
-        pass
+        return vec2i([0, 0]), True
+
+    @ti.func
+    def sample_camera(self, ray_d: vec3, depth: float):
+        """ Though currently, the cam model is pinhole, we still need to calculate
+            - Rasterized pixel pos / PDF (solid angle measure) / visibility
+            - returns: we, pdf, camera_normal, rasterized position, 
+        """
+        we = 0.0
+        pdf = 0.0
+        raster_p = vec2i([-1, -1])
+        camera_normal = (self.cam_r @ vec3([0, 0, 1])).normalized()
+        dot_normal = -tm.dot(ray_d, camera_normal)
+        if dot_normal > 0.:
+            raster_p, is_valid = self.rasterize_pinhole(ray_d)
+            if is_valid:        # not valid --- outside of imaging plane
+                # For pinhole camera, lens area is 1., this pdf is already in sa measure 
+                pdf = depth * depth / dot_normal
+                we = 1.0 / (self.A * dot_normal * dot_normal)
+        return we, pdf, camera_normal, raster_p
     
     @ti.func
     def connect_path(self, sid: int, tid: int):
+        """ Rigorous logic check, review and debug should be done 
+        """
         le = ZERO_V3
-        if sid == 0:            # light path is not used  
+        sampled_v = Vertex()        # a default vertex
+        vertex_sampled = False      # whether any new vertex is sampled
+        raster_p = vec2i([-1, -1])  # reprojection for light path - camera direct connection
+        if sid == 0:                # light path is not used  
             vertex = self.cam_paths[tid - 1]
             if vertex._type == 2:   # is light?
                 self.src_field[vertex.emit_id].eval_le(vertex.ray_in, vertex.normal)
         elif tid == 1:          # re-rasterize point onto the film, atomic add is allowed
-            # need to track ray from light end point to camera
             vertex = self.light_paths[sid - 1]
             if vertex.is_connectible():
                 ray_d = self.cam_t - vertex.pos
                 depth = ray_d.norm()
                 ray_d /= depth
+                in_free_space = vertex.is_in_free_space()
+                we, cam_pdf, cam_normal, raster_p = self.sample_camera(ray_d, depth)
                 tr2cam = self.track_ray(ray_d, vertex.pos, depth)       # calculate transmittance from vertex to camera
-                is_in_free_space = vertex.is_in_free_space()
-                fr2cam = self.eval(vertex.obj_id, vertex.ray_in, ray_d, vertex.normal, vertex.is_mi, is_in_free_space)
-                # divided by PDF
-                pdf2cam = self.get_pdf(vertex.obj_id, vertex.ray_in, ray_d, vertex.normal, vertex.is_mi, is_in_free_space)
-                fr2cam = ti.select(pdf2cam > 1e-5, fr2cam / pdf2cam, ZERO_V3)       # zero PDF returns zero contribution
-                # light_path beta already carries L_e value
-                tr_light = vertex.beta
-                le = tr_light * tr2cam * fr2cam
+
+                # Note that `get_pdf` and `eval` are direction dependent
+                pdf2cam = self.get_pdf(vertex.obj_id, vertex.ray_in, ray_d, vertex.normal, vertex.is_mi, in_free_space, TRANSPORT_IMP)
+                # camera importance is valid / visible / radiance transferable
+                if cam_pdf > 0. and tr2cam.max() > 0. and pdf2cam > 0.:
+                    fr2cam = self.eval(vertex.obj_id, vertex.ray_in, ray_d, vertex.normal, \
+                        vertex.is_mi, in_free_space, TRANSPORT_IMP) / pdf2cam
+                    sampled_v = Vertex(_type = VERTEX_CAMERA, obj_id = -1, emit_id = -1, 
+                        bool_bits = (self.free_space_cam << 1) + 1, time = vertex.time + depth, 
+                        normal = cam_normal, pos = self.cam_t, ray_in = ray_d, beta = we / cam_pdf
+                    )
+                    vertex_sampled = True
+                    # @note: 路径传输率 * interact 传输率 * 空间传输率 * 接收率 * (可能的，假设在表面上 - geometry term)
+                    le = vertex.beta * tr2cam * fr2cam * sampled_v.beta
+                    # vertex surface or light, since sid >= 2, this can not be a non-area light vertex
+                    if vertex._type & ON_SURFACE == 0:      
+                        # since this is vertex (area) to vertex (area), extra cos term should be applied 
+                        le *= ti.max(tm.dot(ray_d, vertex.normal), 0.)      # area unit geometry term
         elif sid == 1:          # only one light vertex is used, resample
             vertex = self.cam_paths[tid - 1]
             if vertex.is_connectible():
                 # randomly sample an emitter and corresponding point (direct component)
                 emitter, emitter_pdf, emitter_valid = self.sample_light(vertex.emit_id)
-                light_dir = vec3([0, 0, 0])
-                # direct / emission component evaluation
                 if emitter_valid:
-                    emit_pos, shadow_int, direct_pdf = emitter.         \
+                    emit_pos, emit_int, direct_pdf, normal = emitter.         \
                         sample(self.precom_vec, self.normals, self.mesh_cnt, vertex.pos)        # sample light
-                # TODO: This is a little bit trickier. If a newly sampled vertex is created, we should use it in MIS
+                    light_pdf     = direct_pdf * emitter_pdf
+                    to_emitter    = emit_pos - vertex.pos
+                    emitter_d     = to_emitter.norm()
+                    to_emitter    = to_emitter / emitter_d
+                    in_free_space = vertex.is_in_free_space()
+                    tr2light      = self.track_ray(to_emitter, vertex.pos, emitter_d)   # calculate transmittance from vertex to camera
+                    pdf2light     = self.get_pdf(vertex.obj_id, vertex.ray_in, to_emitter, vertex.normal, vertex.is_mi, in_free_space)
+                    if light_pdf > 0. and tr2light.max() > 0. and pdf2light > 0.:
+                        fr2cam    = self.eval(vertex.obj_id, vertex.ray_in, to_emitter, vertex.normal, vertex.is_mi, in_free_space) / pdf2cam
+                        bool_bits = (emitter.in_free_space() << 1) + emitter.is_delta_source()
+                        sampled_v = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(vertex.emit_id), 
+                            emit_id = vertex.emit_id, bool_bits = bool_bits, time = vertex.time + emitter_d,
+                            normal = normal, pos = emit_pos, ray_in = to_emitter, beta = emit_int / light_pdf
+                        )
+                        sampled_v.pdf_fwd = emitter.solid_angle_pdf(to_emitter, normal, emitter_d) 
+                        le = vertex.beta * tr2cam * fr2cam * sampled_v.beta
+                        if vertex._type & ON_SURFACE == 0:      
+                            le *= ti.max(tm.dot(to_emitter, vertex.normal), 0.)      # area unit geometry term
+                    pass
+
         else:                   # general cases
             pass
         pass

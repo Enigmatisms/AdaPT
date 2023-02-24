@@ -35,9 +35,6 @@ class AreaSource(LightSource):
             elif name == "base_2":
                 self.base_2 = vec3d_parse(point)
         self.normal = np.cross(self.base_1, self.base_2)
-        bool_elem = elem.find("boolean")
-        if bool_elem is not None and bool_elem.get("value").lower() == "true":
-            self.normal *= -1
 
         self.l1 = -1.0
         self.l2 = -1.0
@@ -50,13 +47,14 @@ class AreaSource(LightSource):
         self.inv_area = 1. / (self.l1 * self.l2)
 
     def export(self) -> TaichiSource:
+        bool_bits = self.in_free_space << 1
         if self.attached == False:
             if self.l1 < 0.0 or self.l2 < 0.0 or self.ctr_pos is None:
                 raise ValueError("Area emitter should be properly defined if not attached.")
             return TaichiSource(
-                _type = 1, is_delta = False, intensity = vec3(self.intensity), pos = vec3(self.ctr_pos), dirv = vec3(self.normal), 
+                _type = 1, bool_bits = bool_bits, intensity = vec3(self.intensity), pos = vec3(self.ctr_pos), dirv = vec3(self.normal), 
                 base_1 = vec3(self.base_1), base_2 = vec3(self.base_2), l1 = self.l1, l2 = self.l2, inv_area = self.inv_area
             )
         else:
-            return TaichiSource(_type = 1, is_delta = False, intensity = vec3(self.intensity), inv_area = self.inv_area)
+            return TaichiSource(_type = 1, bool_bits = bool_bits, intensity = vec3(self.intensity), inv_area = self.inv_area)
         

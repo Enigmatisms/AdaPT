@@ -20,7 +20,7 @@ from taichi.math import vec3
 from la.geo_optics import *
 from la.cam_transform import *
 from sampler.general_sampling import *
-from bxdf.brdf import BRDF_np, cosine_term
+from bxdf.brdf import BRDF_np
 from bxdf.medium import Medium, Medium_np
 from renderer.constants import TRANSPORT_RAD
 

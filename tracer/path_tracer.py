@@ -21,7 +21,7 @@ from bxdf.bsdf import BSDF, BSDF_np
 from scene.opts import get_options
 from scene.obj_desc import ObjDescriptor
 from scene.xml_parser import mitsuba_parsing
-from renderer.constants import TRANSPORT_UNI
+from renderer.constants import TRANSPORT_UNI, TRANSPORT_IMP
 
 from sampler.general_sampling import *
 from utils.tools import TicToc
@@ -128,13 +128,14 @@ class PathTracer(TracerBase):
                 ret_spec.fill(self.bsdf_field[idx].medium.eval(incid, out))
         else:                       # surface interaction
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                ret_spec = self.brdf_field[idx].eval(incid, out, normal)
+                ret_spec = self.brdf_field[idx].eval(incid, out, normal, mode)
             else:                                       # directly evaluate surface
                 ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium, mode)
         return ret_spec
     
     @ti.func
     def surface_pdf(self, idx: int, outdir: vec3, normal: vec3, incid: vec3):
+        """ Outdir: actual incident ray direction, incid: ray (from camera) """
         pdf = 0.
         if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
             pdf = self.brdf_field[idx].get_pdf(outdir, normal, incid)
@@ -143,8 +144,10 @@ class PathTracer(TracerBase):
         return pdf
     
     @ti.func
-    def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int):
+    def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI):
         pdf = 0.
+        if mode == TRANSPORT_IMP:           # backward direction should swap in / out dir, yet eval can not swap
+            incid, out = -out, -incid
         if is_mi:   # evaluate phase function
             if in_free_space:
                 pdf = self.world.medium.eval(incid, out)
@@ -189,6 +192,10 @@ class PathTracer(TracerBase):
                 if idx >= no_sample: idx += 1
                 pdf = 1. / float(self.src_num - 1)
         return self.src_field[idx], pdf, valid_sample
+    
+    @ti.func
+    def get_associated_obj(self, emit_id: int):
+        return ti.select(emit_id >= 0, self.src_field[emit_id].obj_ref_id, -1)
 
 if __name__ == "__main__":
     options = get_options()

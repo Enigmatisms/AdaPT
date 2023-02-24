@@ -55,7 +55,7 @@ class Renderer(PathTracer):
                     light_dir = vec3([0, 0, 0])
                     # direct / emission component evaluation
                     if emitter_valid:
-                        emit_pos, shadow_int, direct_pdf = emitter.         \
+                        emit_pos, shadow_int, direct_pdf, _n = emitter.         \
                             sample(self.precom_vec, self.normals, self.mesh_cnt, hit_point)        # sample light
                         to_emitter  = emit_pos - hit_point
                         emitter_d   = to_emitter.norm()
@@ -71,7 +71,7 @@ class Renderer(PathTracer):
                     light_pdf = emitter_pdf * direct_pdf
                     if ti.static(self.use_mis):
                         mis_w = 1.0
-                        if not emitter.is_delta:
+                        if not emitter.is_delta_source():
                             bsdf_pdf = self.surface_pdf(obj_id, light_dir, normal, ray_d)
                             mis_w    = balance_heuristic(light_pdf, bsdf_pdf)
                         direct_int  += direct_spec * shadow_int * mis_w / emitter_pdf

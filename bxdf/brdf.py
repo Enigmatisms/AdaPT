@@ -255,12 +255,12 @@ class BRDF:
     # ================================================================
 
     @ti.func
-    def eval(self, incid: vec3, out: vec3, normal: vec3) -> vec3:
+    def eval(self, incid: vec3, out: vec3, normal: vec3, mode: int) -> vec3:
         """ Direct component reflectance
             Every evaluation function does not output cosine weighted BSDF now
         """
         ret_spec = vec3([1, 1, 1])
-        cosine_t = tm.dot(normal, out)
+        cosine_t = cosine_term(incid, normal, out, mode)
         if self._type == 0:         # Blinn-Phong
             ret_spec = self.eval_blinn_phong(incid, out, normal)
         elif self._type == 1:       # Lambertian
