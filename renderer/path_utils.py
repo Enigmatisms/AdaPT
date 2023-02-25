@@ -8,6 +8,10 @@ import taichi as ti
 import taichi.math as tm
 from taichi.math import vec3
 
+@ti.func
+def remap_pdf(x: float) -> float:
+    return ti.select(x > 0., x, 1.)
+
 @ti.dataclass
 class Vertex:
     """
@@ -43,4 +47,8 @@ class Vertex:
     @ti.func
     def is_in_free_space(self):
         return self.bool_bits & 0x02
+    
+    @ti.func
+    def pdf_ratio(self):
+        return remap_pdf(self.pdf_bwd) / remap_pdf(self.pdf_fwd)
     

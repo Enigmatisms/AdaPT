@@ -8,7 +8,7 @@
 import taichi as ti
 import taichi.math as tm
 import taichi.types as ttype
-from taichi.math import vec3
+from taichi.math import vec3, vec4
 
 from typing import List
 from la.cam_transform import *
@@ -60,7 +60,7 @@ class BDPT(VolumeRenderer):
         return pdf
 
     @ti.func
-    def random_walk(self, ray_o, ray_d, normal, pdf: float, transport_mode: int):
+    def random_walk(self, i: int, j: int, ray_o: vec3, ray_d: vec3, normal: vec3, pdf: float, transport_mode: int):
         """ Random walk to generate path 
             pdf: initial pdf for this path
             transport mode: whether it is radiance or importance, 0 is camera radiance, 1 is light importance
@@ -96,9 +96,9 @@ class BDPT(VolumeRenderer):
                 "normal": ZERO_V3 if is_mi else normal, "pos": hit_point, "ray_in": ray_d, "beta": throughput                
             }
             if transport_mode == TRANSPORT_RAD:         # Camera path
-                self.cam_paths[vertex_num] = Vertex(**vertex_args) 
+                self.cam_paths[i, j, vertex_num] = Vertex(**vertex_args) 
             else:                          # Light path
-                self.light_paths[vertex_num] = Vertex(**vertex_args) 
+                self.light_paths[i, j, vertex_num] = Vertex(**vertex_args) 
 
             # Step 4: ray termination test - RR termination and max bounce. If ray terminates, we won't have to sample
             if vertex_num >= self.max_bounce:
@@ -125,9 +125,9 @@ class BDPT(VolumeRenderer):
                 pdf_bwd = 0.
             # ray_o is the position of the current vertex, which is used in prev vertex pdf_bwd
             if transport_mode == TRANSPORT_RAD:         # Camera transport mode
-                self.cam_paths[prev_vid].set_bwd_pdf(pdf_bwd, ray_o)
+                self.cam_paths[i, j, prev_vid].set_bwd_pdf(pdf_bwd, ray_o)
             else:
-                self.light_paths[prev_vid].set_bwd_pdf(pdf_bwd, ray_o)
+                self.light_paths[i, j, prev_vid].set_bwd_pdf(pdf_bwd, ray_o)
         return vertex_num
     
     @ti.func
@@ -155,7 +155,7 @@ class BDPT(VolumeRenderer):
         return we, pdf, camera_normal, raster_p
     
     @ti.func
-    def connect_path(self, sid: int, tid: int):
+    def connect_path(self, i: int, j: int, sid: int, tid: int, cam_vnum: int, lit_vnum: int):
         """ Rigorous logic check, review and debug should be done 
         """
         le = ZERO_V3
@@ -163,11 +163,11 @@ class BDPT(VolumeRenderer):
         vertex_sampled = False      # whether any new vertex is sampled
         raster_p = vec2i([-1, -1])  # reprojection for light path - camera direct connection
         if sid == 0:                # light path is not used  
-            vertex = self.cam_paths[tid - 1]
+            vertex = self.cam_paths[i, j, tid - 1]
             if vertex._type == 2:   # is light?
                 self.src_field[vertex.emit_id].eval_le(vertex.ray_in, vertex.normal)
         elif tid == 1:          # re-rasterize point onto the film, atomic add is allowed
-            vertex = self.light_paths[sid - 1]
+            vertex = self.light_paths[i, j, sid - 1]
             if vertex.is_connectible():
                 ray_d = self.cam_t - vertex.pos
                 depth = ray_d.norm()
@@ -190,7 +190,7 @@ class BDPT(VolumeRenderer):
                     # @note: 路径传输率 * interact 传输率 * 空间传输率 * 接收率
                     le = vertex.beta * tr2cam * fr2cam * sampled_v.beta
         elif sid == 1:          # only one light vertex is used, resample
-            vertex = self.cam_paths[tid - 1]
+            vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_connectible():
                 # randomly sample an emitter and corresponding point (direct component)
                 emitter, emitter_pdf, emitter_valid = self.sample_light(vertex.emit_id)
@@ -216,8 +216,8 @@ class BDPT(VolumeRenderer):
                         le = vertex.beta * tr2cam * fr2cam * sampled_v.beta
                         # No need to apply cosine term, since fr2cam already includes it
         else:                   # general cases
-            cam_v = self.cam_paths[tid - 1]
-            lit_v = self.light_paths[sid - 1]
+            cam_v = self.cam_paths[i, j, tid - 1]
+            lit_v = self.light_paths[i, j, sid - 1]
             if cam_v.is_connectible() and lit_v.is_connectible():
                 cam2lit_v  = lit_v.pos - cam_v.pos
                 length     = cam2lit_v.norm()
@@ -233,12 +233,81 @@ class BDPT(VolumeRenderer):
                         fr_lit = self.eval(lit_v.obj_id, lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.is_mi, lit_in_fspace)
                         # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                         le = cam_v.beta * (fr_cam / cam_pdf) * (tr_con / (length * length)) * (fr_lit / lit_pdf) * lit_v.beta
-        
+        weight = 1.
+        if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
+            weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, sid, tid)
         # Up next: MIS combination
 
     @ti.func
-    def bdpt_mis_weight():
-        pass
+    def bdpt_mis_weight(self, sampled_v, valid_sample: int, i: int, j: int, sid: int, tid: int):
+        # There will be many temporary updates, which is annoying
+        # Process index - 1 with more caution: sampled_v to be used
+        t_sampled = valid_sample & (tid == 1)
+        s_sampled = valid_sample & (sid == 1)
+        ri = 1.
+        sum_ri = 0.
+        backup = vec4([-1, -1, -1, -1])             # p(t-1), p(t-2), q(s-1), q(s-2)
+
+        backup[0] = self.cam_paths[i, j, tid - 1].pdf_bwd
+        self.cam_paths[i, j, tid - 1].pdf_bwd = 0.              # TODO: t should account for sid
+        if tid > 1:
+            backup[1] = self.cam_paths[i, j, tid - 2].pdf_bwd
+            self.cam_paths[i, j, tid - 2].pdf_bwd = 0.          # TODO: t should account for sid
+        if sid > 0:
+            backup[2] = self.light_paths[i, j, sid - 1].pdf_bwd
+            self.light_paths[i, j, sid - 1].pdf_bwd = 0.        # TODO: s needn't account for tid
+            if sid > 1:
+                backup[3] = self.light_paths[i, j, sid - 2].pdf_bwd
+                self.light_paths[i, j, sid - 2].pdf_bwd = 0.    # TODO: s needn't account for tid
+
+        index_t = tid - 1
+        index_s = sid - 1
+
+        if t_sampled:
+            sampled_v.pdf_bwd = 0.              # TODO: t should account for sid
+            ri = sampled_v.pdf_ratio()
+        else:
+            ri = self.cam_paths[i, j, index_t].pdf_ratio()
+        # Avoid indexing one vertex of cam_paths / light_paths twice 
+        not_delta = False
+        if index_t > 0 and not self.cam_paths[i, j, index_t - 1].is_delta():
+            not_delta = True
+            sum_ri += ri
+        index_t -= 1
+        while index_t > 0:
+            ri *= self.cam_paths[i, j, index_t].pdf_ratio()
+            next_not_delta = not self.cam_paths[i, j, index_t - 1].is_delta()
+            if not_delta and next_not_delta:
+                sum_ri += ri
+            not_delta = next_not_delta
+            index_t -= 1
+
+        if index_s >= 0:                        # sid can be 0, 
+            if s_sampled:
+                sampled_v.pdf_bwd = 0.          # TODO: s needn't account for tid
+                ri = sampled_v.pdf_ratio()
+            else:
+                ri = self.light_paths[i, j, index_s].pdf_ratio()
+            not_delta = False
+            if index_s > 0 and not self.light_paths[i, j, index_s - 1].is_delta():
+                not_delta = True
+                sum_ri += ri
+            index_s -= 1
+            while index_s > 0:
+                ri *= self.light_paths[i, j, index_s].pdf_ratio()
+                next_not_delta = not self.light_paths[i, j, index_s - 1].is_delta()
+                if not_delta and next_not_delta:
+                    sum_ri += ri
+                not_delta = next_not_delta
+                index_s -= 1
+
+        # Recover from the backup values
+        for idx in ti.static(range(2)):
+            if tid - 1 - idx >= 0: self.cam_paths[i, j, tid - 1 - idx].pdf_bwd = backup[idx]
+        for idx in ti.static(range(2)):
+            if sid - 1 - idx >= 0: self.light_paths[i, j, sid - 1 - idx].pdf_bwd = backup[idx + 2]
+
+        return 1. / (1. + sum_ri)
 
     @ti.kernel
     def render():
