@@ -5,7 +5,6 @@
     @date: 2023-2-20
 """
 
-
 import taichi as ti
 import taichi.math as tm
 import taichi.types as ttype
@@ -66,7 +65,7 @@ class BDPT(VolumeRenderer):
             pdf: initial pdf for this path
             transport mode: whether it is radiance or importance, 0 is camera radiance, 1 is light importance
             Before the random walk, corresponding initial vertex should be appended already
-            TODO: logic check
+            TODO: Extensive logic check and debug should be done here.
         """
         old_pos    = ray_o
         normal     = vec3([0, 1, 0])
@@ -112,6 +111,7 @@ class BDPT(VolumeRenderer):
 
             # Step 5: sample new ray. This should distinguish between surface and medium interactions
             old_ray_d = ray_d
+
             ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, old_ray_d, normal, is_mi, in_free_space, transport_mode)
             ray_o = hit_point
             throughput *= (indirect_spec / ray_pdf)
@@ -177,7 +177,7 @@ class BDPT(VolumeRenderer):
                 tr2cam = self.track_ray(ray_d, vertex.pos, depth)       # calculate transmittance from vertex to camera
 
                 # Note that `get_pdf` and `eval` are direction dependent
-                pdf2cam = self.get_pdf(vertex.obj_id, vertex.ray_in, ray_d, vertex.normal, vertex.is_mi, in_free_space, TRANSPORT_IMP)
+                pdf2cam = self.get_pdf(vertex.obj_id, vertex.ray_in, ray_d, vertex.normal, vertex.is_mi, in_free_space)
                 # camera importance is valid / visible / radiance transferable
                 if cam_pdf > 0. and tr2cam.max() > 0. and pdf2cam > 0.:
                     fr2cam = self.eval(vertex.obj_id, vertex.ray_in, ray_d, vertex.normal, \
@@ -187,12 +187,8 @@ class BDPT(VolumeRenderer):
                         normal = cam_normal, pos = self.cam_t, ray_in = ray_d, beta = we / cam_pdf
                     )
                     vertex_sampled = True
-                    # @note: 路径传输率 * interact 传输率 * 空间传输率 * 接收率 * (可能的，假设在表面上 - geometry term)
+                    # @note: 路径传输率 * interact 传输率 * 空间传输率 * 接收率
                     le = vertex.beta * tr2cam * fr2cam * sampled_v.beta
-                    # vertex surface or light, since sid >= 2, this can not be a non-area light vertex
-                    if vertex._type & ON_SURFACE == 0:      
-                        # since this is vertex (area) to vertex (area), extra cos term should be applied 
-                        le *= ti.max(tm.dot(ray_d, vertex.normal), 0.)      # area unit geometry term
         elif sid == 1:          # only one light vertex is used, resample
             vertex = self.cam_paths[tid - 1]
             if vertex.is_connectible():
@@ -215,15 +211,30 @@ class BDPT(VolumeRenderer):
                             emit_id = vertex.emit_id, bool_bits = bool_bits, time = vertex.time + emitter_d,
                             normal = normal, pos = emit_pos, ray_in = to_emitter, beta = emit_int / light_pdf
                         )
+                        vertex_sampled = True
                         sampled_v.pdf_fwd = emitter.solid_angle_pdf(to_emitter, normal, emitter_d) 
                         le = vertex.beta * tr2cam * fr2cam * sampled_v.beta
-                        if vertex._type & ON_SURFACE == 0:      
-                            le *= ti.max(tm.dot(to_emitter, vertex.normal), 0.)      # area unit geometry term
-                    pass
-
+                        # No need to apply cosine term, since fr2cam already includes it
         else:                   # general cases
-            pass
-        pass
+            cam_v = self.cam_paths[tid - 1]
+            lit_v = self.light_paths[sid - 1]
+            if cam_v.is_connectible() and lit_v.is_connectible():
+                cam2lit_v  = lit_v.pos - cam_v.pos
+                length     = cam2lit_v.norm()
+                cam2lit_v /= length
+                cam_in_fspace = cam_v.is_in_free_space()
+                lit_in_fspace = lit_v.is_in_free_space()
+                cam_pdf = self.get_pdf(cam_v.obj_id, cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.is_mi, cam_in_fspace)
+                lit_pdf = self.get_pdf(lit_v.obj_id, lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.is_mi, lit_in_fspace)
+                if cam_pdf > 0. and lit_pdf > 0.:   # if 
+                    tr_con = self.track_ray(cam2lit_v, cam_v.pos, length)   # calculate transmittance from vertex to camera
+                    if tr_con.max() > 0.:           # if not occluded
+                        fr_cam = self.eval(cam_v.obj_id, cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.is_mi, cam_in_fspace)
+                        fr_lit = self.eval(lit_v.obj_id, lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.is_mi, lit_in_fspace)
+                        # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
+                        le = cam_v.beta * (fr_cam / cam_pdf) * (tr_con / (length * length)) * (fr_lit / lit_pdf) * lit_v.beta
+        
+        # Up next: MIS combination
 
     @ti.func
     def bdpt_mis_weight():

@@ -17,11 +17,7 @@ from emitters.abtract_source import LightSource
 from scene.obj_desc import ObjDescriptor
 
 """
-    VPT todo: 
-    1. MIS for volumetric path tracing is difficult, but it needs to be done
-    2. Optimization: Rodrigues transformation / implementation optimization
-
-    The shadow of VPT seems normal (global illumination is correct, but not scattering sim)
+   MIS is required to make convergence faster and supress variance
 """
 
 @ti.data_oriented

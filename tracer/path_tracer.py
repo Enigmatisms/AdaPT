@@ -112,7 +112,7 @@ class PathTracer(TracerBase):
                 ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].medium.sample_new_rays(incid)
         else:                       # surface sampling
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                ret_dir, ret_spec, ret_pdf = self.brdf_field[idx].sample_new_rays(incid, normal, mode)
+                ret_dir, ret_spec, ret_pdf = self.brdf_field[idx].sample_new_rays(incid, normal)
             else:                                       # directly sample surface
                 ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].sample_surf_rays(incid, normal, self.world.medium, mode)
         return ret_dir, ret_spec, ret_pdf
@@ -128,7 +128,7 @@ class PathTracer(TracerBase):
                 ret_spec.fill(self.bsdf_field[idx].medium.eval(incid, out))
         else:                       # surface interaction
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                ret_spec = self.brdf_field[idx].eval(incid, out, normal, mode)
+                ret_spec = self.brdf_field[idx].eval(incid, out, normal)
             else:                                       # directly evaluate surface
                 ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium, mode)
         return ret_spec
@@ -144,10 +144,8 @@ class PathTracer(TracerBase):
         return pdf
     
     @ti.func
-    def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI):
+    def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int):
         pdf = 0.
-        if mode == TRANSPORT_IMP:           # backward direction should swap in / out dir, yet eval can not swap
-            incid, out = -out, -incid
         if is_mi:   # evaluate phase function
             if in_free_space:
                 pdf = self.world.medium.eval(incid, out)
