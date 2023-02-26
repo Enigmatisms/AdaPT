@@ -15,19 +15,18 @@ import taichi as ti
 import taichi.math as tm
 from taichi.math import vec3
 from sampler.phase_sampling import *
-
-__inv_2pi__ = 0.5 / tm.pi
+from renderer.constants import INV_2PI
 
 @ti.func
 def phase_hg(cos_theta: float, g: float):
     g2 = g * g
     denom = 1. + g2 + 2. * g * cos_theta
-    return (1. - g2) / (ti.sqrt(denom) * denom) * 0.5 * __inv_2pi__
+    return (1. - g2) / (ti.sqrt(denom) * denom) * 0.5 * INV_2PI
 
 # ============== Rayleigh ================
 @ti.func
 def phase_rayleigh(cos_theta: float):
-    return 0.375 * __inv_2pi__ * (1. + cos_theta * cos_theta)
+    return 0.375 * INV_2PI * (1. + cos_theta * cos_theta)
 
 @ti.dataclass
 class PhaseFunction:

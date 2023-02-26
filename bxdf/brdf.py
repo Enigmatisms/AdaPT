@@ -17,12 +17,11 @@ from la.geo_optics import *
 from la.cam_transform import *
 from sampler.general_sampling import *
 from scene.general_parser import rgb_parse
-from renderer.constants import TRANSPORT_RAD
+from renderer.constants import TRANSPORT_RAD, INV_PI
 
 __all__ = ['BRDF_np', 'BRDF']
 
 EPS = 1e-7
-INV_PI = 1. / tm.pi
 
 class BRDF_np:
     """
@@ -304,20 +303,19 @@ class BRDF:
         """
         pdf = 0.0
         dot_outdir = tm.dot(normal, outdir)
-        if self._type == 0:
-            pdf = tm.max(dot_outdir, 0.0) * INV_PI      # dot is cosine term
-        elif self._type == 1:
-            pdf = tm.max(dot_outdir, 0.0) * INV_PI
-        elif self._type == 4:
-            if dot_outdir > 0.0:
+        if dot_outdir > 0.:
+            if self._type == 0:
+                pdf = dot_outdir * INV_PI      # dot is cosine term
+            elif self._type == 1:
+                pdf = dot_outdir * INV_PI
+            elif self._type == 4:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, normal)
                 dot_ref_out     = tm.max(0., tm.dot(reflect_view, outdir))
-                diffuse_pdf     = tm.max(dot_outdir, 0.0) * INV_PI
+                diffuse_pdf     = dot_outdir * INV_PI
                 specular_pdf    = 0.5 * (glossiness + 1.) * INV_PI * tm.pow(dot_ref_out, glossiness)
                 pdf = self.k_d.max() * diffuse_pdf + self.k_s.max() * specular_pdf
-        elif self._type == 5:
-            if dot_outdir > 0.0: 
+            elif self._type == 5:
                 half_vec = (outdir - incid).normalized()
                 dot_half = tm.dot(half_vec, normal)
                 R = rotation_between(vec3([0, 1, 0]), normal)

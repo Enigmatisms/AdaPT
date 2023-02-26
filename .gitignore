@@ -2,7 +2,7 @@
 *.ini
 
 cached/
-fast_test/
+ti_tests/**
 **/__pycache__
 
 !assets/*.png

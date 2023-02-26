@@ -49,7 +49,6 @@ class PathTracer(TracerBase):
         # for object with attached light source, emitter id stores the reference id to the emitter
         self.emitter_id = ti.field(int, self.num_objects)   
                      
-        self.emit_max   = 1.0
         self.src_num    = len(emitters)
         self.color      = ti.Vector.field(3, float, (self.w, self.h))       # color without normalization
         self.src_field  = TaichiSource.field()
@@ -70,7 +69,6 @@ class PathTracer(TracerBase):
         for i, emitter in enumerate(emitters):
             self.src_field[i] = emitter.export()
             self.src_field[i].obj_ref_id = -1
-            self.emit_max = max(emitter.intensity.max(), self.emit_max)
         for i, obj in enumerate(objects):
             for j, (mesh, normal) in enumerate(zip(obj.meshes, obj.normals)):
                 self.normals[i, j] = vec3(normal) 

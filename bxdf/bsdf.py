@@ -22,11 +22,9 @@ from la.cam_transform import *
 from sampler.general_sampling import *
 from bxdf.brdf import BRDF_np
 from bxdf.medium import Medium, Medium_np
-from renderer.constants import TRANSPORT_RAD
+from renderer.constants import TRANSPORT_RAD, INV_PI
 
 __all__ = ['BSDF_np', 'BSDF']
-
-INV_PI = 1. / tm.pi
 
 class BSDF_np(BRDF_np):
     """
@@ -146,7 +144,7 @@ class BSDF:
 
     @ti.func
     def get_pdf(self, outdir: vec3, normal: vec3, incid: vec3, medium):
-        """ TODO: currently, deterministic refraction yields PDF = 0.0"""
+        """ TODO: currently, deterministic refraction / Null transmission yields PDF = 0.0 """
         return 0.0
     
     @ti.func

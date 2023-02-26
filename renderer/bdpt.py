@@ -22,6 +22,15 @@ from renderer.constants import *
 ZERO_V3 = vec3([0, 0, 0])
 vec2i = ttype.vector(2, int)
 
+"""
+    TODO for 2.26: 
+    1. Connect Path wrapping up
+    2. Implement render function
+        1. Create the first vertex of light path and camera path
+        2. calculate the correct vertex number
+        3. Why camera path is longer?
+"""
+
 @ti.data_oriented
 class BDPT(VolumeRenderer):
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
@@ -40,11 +49,46 @@ class BDPT(VolumeRenderer):
         self.A = 1.
         # TODO: whether the camera is placed inside of an object
         self.free_space_cam = True
+        self.null = Vertex(_type = VERTEX_NULL)
 
     @staticmethod
     @ti.func
     def interact_mode(is_mi: int, hit_light: int):
         return ti.select(is_mi, VERTEX_MEDIUM, ti.select(hit_light >= 0, VERTEX_EMITTER, VERTEX_SURFACE))
+    
+    @ti.func
+    def rasterize_pinhole(self, ray_d: vec3):
+        """ For path with only one camera vertex, ray should be re-rasterized to the film"""
+        return vec2i([0, 0]), True
+
+    @ti.func
+    def sample_camera(self, ray_d: vec3, depth: float):
+        """ Though currently, the cam model is pinhole, we still need to calculate
+            - Rasterized pixel pos / PDF (solid angle measure) / visibility
+            - returns: we, pdf, camera_normal, rasterized position, 
+        """
+        we = 0.0
+        pdf = 0.0
+        raster_p = vec2i([-1, -1])
+        camera_normal = (self.cam_r @ vec3([0, 0, 1])).normalized()
+        dot_normal = -tm.dot(ray_d, camera_normal)
+        if dot_normal > 0.:
+            raster_p, is_valid = self.rasterize_pinhole(ray_d)
+            if is_valid:        # not valid --- outside of imaging plane
+                # For pinhole camera, lens area is 1., this pdf is already in sa measure 
+                pdf = depth * depth / dot_normal
+                we = 1.0 / (self.A * dot_normal * dot_normal)
+        return we, pdf, camera_normal, raster_p
+    
+    @ti.func
+    def pdf_camera(self, ray_d: vec3, depth: float):
+        """ PDF camera does not rasterize point """
+        pdf = 0.0
+        camera_normal = (self.cam_r @ vec3([0, 0, 1])).normalized()
+        dot_normal = -tm.dot(ray_d, camera_normal)
+        if dot_normal > 0.:     # No need to rasterize again
+            pdf = depth * depth / dot_normal
+        return pdf
     
     @staticmethod
     @ti.func
@@ -131,30 +175,6 @@ class BDPT(VolumeRenderer):
         return vertex_num
     
     @ti.func
-    def rasterize_pinhole(self, ray_d: vec3):
-        """ For path with only one camera vertex, ray should be re-rasterized to the film"""
-        return vec2i([0, 0]), True
-
-    @ti.func
-    def sample_camera(self, ray_d: vec3, depth: float):
-        """ Though currently, the cam model is pinhole, we still need to calculate
-            - Rasterized pixel pos / PDF (solid angle measure) / visibility
-            - returns: we, pdf, camera_normal, rasterized position, 
-        """
-        we = 0.0
-        pdf = 0.0
-        raster_p = vec2i([-1, -1])
-        camera_normal = (self.cam_r @ vec3([0, 0, 1])).normalized()
-        dot_normal = -tm.dot(ray_d, camera_normal)
-        if dot_normal > 0.:
-            raster_p, is_valid = self.rasterize_pinhole(ray_d)
-            if is_valid:        # not valid --- outside of imaging plane
-                # For pinhole camera, lens area is 1., this pdf is already in sa measure 
-                pdf = depth * depth / dot_normal
-                we = 1.0 / (self.A * dot_normal * dot_normal)
-        return we, pdf, camera_normal, raster_p
-    
-    @ti.func
     def connect_path(self, i: int, j: int, sid: int, tid: int, cam_vnum: int, lit_vnum: int):
         """ Rigorous logic check, review and debug should be done 
         """
@@ -187,7 +207,6 @@ class BDPT(VolumeRenderer):
                         normal = cam_normal, pos = self.cam_t, ray_in = ray_d, beta = we / cam_pdf
                     )
                     vertex_sampled = True
-                    # @note: 路径传输率 * interact 传输率 * 空间传输率 * 接收率
                     le = vertex.beta * tr2cam * fr2cam * sampled_v.beta
         elif sid == 1:          # only one light vertex is used, resample
             vertex = self.cam_paths[i, j, tid - 1]
@@ -204,15 +223,16 @@ class BDPT(VolumeRenderer):
                     in_free_space = vertex.is_in_free_space()
                     tr2light      = self.track_ray(to_emitter, vertex.pos, emitter_d)   # calculate transmittance from vertex to camera
                     pdf2light     = self.get_pdf(vertex.obj_id, vertex.ray_in, to_emitter, vertex.normal, vertex.is_mi, in_free_space)
-                    if light_pdf > 0. and tr2light.max() > 0. and pdf2light > 0.:
-                        fr2cam    = self.eval(vertex.obj_id, vertex.ray_in, to_emitter, vertex.normal, vertex.is_mi, in_free_space) / pdf2cam
+                    # emitter should have non-zero emission / visible / transferable
+                    if emit_int.max() > 0. and tr2light.max() > 0. and pdf2light > 0.:
+                        fr2cam    = self.eval(vertex.obj_id, vertex.ray_in, to_emitter, vertex.normal, vertex.is_mi, in_free_space) / pdf2light
                         bool_bits = (emitter.in_free_space() << 1) + emitter.is_delta_source()
                         sampled_v = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(vertex.emit_id), 
                             emit_id = vertex.emit_id, bool_bits = bool_bits, time = vertex.time + emitter_d,
                             normal = normal, pos = emit_pos, ray_in = to_emitter, beta = emit_int / light_pdf
                         )
                         vertex_sampled = True
-                        sampled_v.pdf_fwd = emitter.solid_angle_pdf(to_emitter, normal, emitter_d) 
+                        sampled_v.pdf_fwd = emitter.area_pdf(to_emitter, normal) 
                         le = vertex.beta * tr2cam * fr2cam * sampled_v.beta
                         # No need to apply cosine term, since fr2cam already includes it
         else:                   # general cases
@@ -233,73 +253,87 @@ class BDPT(VolumeRenderer):
                         fr_lit = self.eval(lit_v.obj_id, lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.is_mi, lit_in_fspace)
                         # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                         le = cam_v.beta * (fr_cam / cam_pdf) * (tr_con / (length * length)) * (fr_lit / lit_pdf) * lit_v.beta
-        weight = 1.
-        if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
-            weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, sid, tid)
-        # Up next: MIS combination
+        weight = 0.
+        if le.max > 0.:             # zero-contribution will not have MIS weight
+            weight = 1.0
+            if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
+                weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, sid, tid)
 
     @ti.func
-    def bdpt_mis_weight(self, sampled_v, valid_sample: int, i: int, j: int, sid: int, tid: int):
-        # There will be many temporary updates, which is annoying
-        # Process index - 1 with more caution: sampled_v to be used
+    def update_endpoint(self, cam_end: ti.template(), lit_end: ti.template(), i: int, j: int, idx_t: int, idx_s: int):
+        # s + t > 2, since s + t == 2 will not enter `mis_weight`, and s + t < 2 will not have path connection
+        if idx_s >= 0:                  # If lit_end is not null vertex
+            lit_end.pdf(self, cam_end, self.null)  # Update camera endpoint
+            if idx_t >= 1:
+                cam_end.pdf(self, self.cam_paths[i, j, idx_t - 1], lit_end)
+                cam_end.pdf(self, lit_end, self.null)  
+            if idx_s >= 1:
+                lit_end.pdf(self, self.light_paths[i, j, idx_s - 1], cam_end)
+        else:           # idx_t must >= 2
+            # if the camera hits an emitter
+            cam_end.pdf_light_origin(self)
+            if idx_t >= 1:
+                cam_end.pdf_light(self, self.cam_paths[i, j, idx_t - 1])
+
+    @ti.func
+    def bdpt_mis_weight(self, sampled_v: ti.template(), valid_sample: int, i: int, j: int, sid: int, tid: int):
+        """ Extensive logic check and debugging should be done 
+            This is definitely the most complex part, logically
+        """
         t_sampled = valid_sample & (tid == 1)
         s_sampled = valid_sample & (sid == 1)
-        ri = 1.
         sum_ri = 0.
         backup = vec4([-1, -1, -1, -1])             # p(t-1), p(t-2), q(s-1), q(s-2)
 
         backup[0] = self.cam_paths[i, j, tid - 1].pdf_bwd
-        self.cam_paths[i, j, tid - 1].pdf_bwd = 0.              # TODO: t should account for sid
         if tid > 1:
             backup[1] = self.cam_paths[i, j, tid - 2].pdf_bwd
-            self.cam_paths[i, j, tid - 2].pdf_bwd = 0.          # TODO: t should account for sid
         if sid > 0:
             backup[2] = self.light_paths[i, j, sid - 1].pdf_bwd
-            self.light_paths[i, j, sid - 1].pdf_bwd = 0.        # TODO: s needn't account for tid
             if sid > 1:
                 backup[3] = self.light_paths[i, j, sid - 2].pdf_bwd
-                self.light_paths[i, j, sid - 2].pdf_bwd = 0.    # TODO: s needn't account for tid
+        idx_t = tid - 1
+        idx_s = sid - 1
 
-        index_t = tid - 1
-        index_s = sid - 1
-
-        if t_sampled:
-            sampled_v.pdf_bwd = 0.              # TODO: t should account for sid
-            ri = sampled_v.pdf_ratio()
+        if t_sampled:       # tid == 1, therefore sid > 1 (tid + sid >= 2 and tid sid can't both be 1)
+            self.update_endpoint(sampled_v, self.light_paths[i, j, idx_s], i, j, idx_t, idx_s)
+        elif s_sampled:
+            self.update_endpoint(self.cam_paths[i, j, idx_t], sampled_v, i, j, idx_t, idx_s)
         else:
-            ri = self.cam_paths[i, j, index_t].pdf_ratio()
+            if idx_s < 0:
+                self.update_endpoint(self.cam_paths[i, j, idx_t], self.null, i, j, idx_t, idx_s)
+            else:
+                self.update_endpoint(self.cam_paths[i, j, idx_t], self.light_paths[i, j, idx_s], i, j, idx_t, idx_s)
+
+        ri = ti.select(t_sampled, sampled_v.pdf_ratio(), self.cam_paths[i, j, idx_t].pdf_ratio())
         # Avoid indexing one vertex of cam_paths / light_paths twice 
         not_delta = False
-        if index_t > 0 and not self.cam_paths[i, j, index_t - 1].is_delta():
+        if idx_t > 0 and not self.cam_paths[i, j, idx_t - 1].is_delta():
             not_delta = True
             sum_ri += ri
-        index_t -= 1
-        while index_t > 0:
-            ri *= self.cam_paths[i, j, index_t].pdf_ratio()
-            next_not_delta = not self.cam_paths[i, j, index_t - 1].is_delta()
+        idx_t -= 1
+        while idx_t > 0:
+            ri *= self.cam_paths[i, j, idx_t].pdf_ratio()
+            next_not_delta = not self.cam_paths[i, j, idx_t - 1].is_delta()
             if not_delta and next_not_delta:
                 sum_ri += ri
             not_delta = next_not_delta
-            index_t -= 1
+            idx_t -= 1
 
-        if index_s >= 0:                        # sid can be 0, 
-            if s_sampled:
-                sampled_v.pdf_bwd = 0.          # TODO: s needn't account for tid
-                ri = sampled_v.pdf_ratio()
-            else:
-                ri = self.light_paths[i, j, index_s].pdf_ratio()
+        if idx_s >= 0:                        # sid can be 0, 
+            ri = ti.select(s_sampled, sampled_v.pdf_ratio(), self.light_paths[i, j, idx_s].pdf_ratio())
             not_delta = False
-            if index_s > 0 and not self.light_paths[i, j, index_s - 1].is_delta():
+            if idx_s > 0 and not self.light_paths[i, j, idx_s - 1].is_delta():
                 not_delta = True
                 sum_ri += ri
-            index_s -= 1
-            while index_s > 0:
-                ri *= self.light_paths[i, j, index_s].pdf_ratio()
-                next_not_delta = not self.light_paths[i, j, index_s - 1].is_delta()
+            idx_s -= 1
+            while idx_s > 0:
+                ri *= self.light_paths[i, j, idx_s].pdf_ratio()
+                next_not_delta = not self.light_paths[i, j, idx_s - 1].is_delta()
                 if not_delta and next_not_delta:
                     sum_ri += ri
                 not_delta = next_not_delta
-                index_s -= 1
+                idx_s -= 1
 
         # Recover from the backup values
         for idx in ti.static(range(2)):
