@@ -23,7 +23,7 @@ from scene.obj_desc import ObjDescriptor
 @ti.data_oriented
 class VolumeRenderer(PathTracer):
     """
-        Volumetric Renderer Final Class
+        Volumetric Renderer Class
     """
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
         super().__init__(emitters, objects, prop)

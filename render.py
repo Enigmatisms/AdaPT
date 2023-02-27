@@ -8,14 +8,19 @@ import taichi as ti
 import taichi.ui as tui
 from tqdm import tqdm
 
-from la.cam_transform import *
-from renderer.vanilla_renderer import Renderer
+from renderer.bdpt import BDPT
 from renderer.vpt import VolumeRenderer
+from renderer.vanilla_renderer import Renderer
+from tracer.path_tracer import PathTracer
+from la.cam_transform import *
 
 from utils.tools import folder_path
 from utils.watermark import apply_watermark
 from scene.xml_parser import mitsuba_parsing
 from scene.opts import get_options, mapped_arch
+
+rdr_mapping = {"pt": Renderer, "vpt": VolumeRenderer, "bdpt": BDPT}
+name_mapping = {"pt": "", "vpt": "Volumetric ", "bdpt": "Bidirectional "}
 
 if __name__ == "__main__":
     options = get_options()
@@ -24,11 +29,9 @@ if __name__ == "__main__":
             default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path)
     input_folder = os.path.join(options.input_path, options.scene)
     emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, options.name)  # complex_cornell
-    if options.vanilla:
-        rdr = Renderer(emitter_configs, meshes, configs)
-    else:
-        rdr = VolumeRenderer(emitter_configs, meshes, configs)
-    # TODO: add no gui options
+
+    rdr: PathTracer = rdr_mapping[options.type](emitter_configs, meshes, configs)
+
     max_iter_num = options.iter_num if options.iter_num > 0 else 10000
     iter_cnt = 0
     print("[INFO] starting to loop...")
@@ -39,7 +42,7 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("[QUIT] Quit on Keyboard interruptions")
     else:
-        window   = tui.Window(f"{'' if options.vanilla else 'Volumetric '}Path Tracing", res = (rdr.w, rdr.h))
+        window   = tui.Window(f"{name_mapping[options.type]}Path Tracing", res = (rdr.w, rdr.h))
         canvas = window.get_canvas()
         gui = window.get_gui()
         for iter_cnt in tqdm(range(max_iter_num)):

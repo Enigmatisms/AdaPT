@@ -32,7 +32,7 @@ def phase_rayleigh(cos_theta: float):
 class PhaseFunction:
     _type:  int
     par:    vec3
-    pdf:    vec3            # for multiple H-G, an extra pdf is required
+    mpdf:    vec3            # for multiple H-G, an extra pdf is required
     
     @ti.func
     def sample_p(self, incid: vec3):
@@ -51,9 +51,9 @@ class PhaseFunction:
             eps = ti.random(float)
             cos_t = 0.
             g = 0.
-            if eps < self.pdf[0]:
+            if eps < self.mpdf[0]:
                 g = self.par[0]
-            elif eps < self.pdf[0] + self.pdf[1]:
+            elif eps < self.mpdf[0] + self.mpdf[1]:
                 g = self.par[1]
             else:
                 g = self.par[2]
@@ -73,9 +73,9 @@ class PhaseFunction:
             # TODO: the spectral difference is actually simple, we can do this according to mfp sampling
             ret_p = phase_hg(cos_theta, self.par[0])
         elif self._type == 1:           # multiple H-G
-            ret_p = phase_hg(cos_theta, self.par[0]) * self.pdf[0] + phase_hg(cos_theta, self.par[1]) * self.pdf[1]
-            if self.pdf[1] > 1e-4:
-                ret_p += phase_hg(cos_theta, self.par[2]) * self.pdf[2]
+            ret_p = phase_hg(cos_theta, self.par[0]) * self.mpdf[0] + phase_hg(cos_theta, self.par[1]) * self.mpdf[1]
+            if self.mpdf[1] > 1e-4:
+                ret_p += phase_hg(cos_theta, self.par[2]) * self.mpdf[2]
         elif self._type == 2:           # Rayleigh
             ret_p = phase_rayleigh(cos_theta)
         return ret_p

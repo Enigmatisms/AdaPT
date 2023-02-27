@@ -134,7 +134,7 @@
 		<medium type="hg">
 			<rgb name="u_a" value="0.01"/>
 			<rgb name="u_s" value="0.1"/>
-			<rgb name="par" value="0.2"/>
+			<rgb name="par" value="0.8"/>
 			<float name="ior" value="1.0"/>
 		</medium>
 	</world>

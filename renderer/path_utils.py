@@ -119,3 +119,7 @@ class Vertex:
     def pdf_ratio(self):
         return remap_pdf(self.pdf_bwd) / remap_pdf(self.pdf_fwd)
     
+    @ti.func
+    def v_is_mi(self):
+        return self._type == VERTEX_MEDIUM
+    

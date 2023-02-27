@@ -96,7 +96,7 @@ class TracerBase:
             else:    # uniform sampling
                 vx = ti.random(float) * __inv_eps__ + __eps__
                 vy = ti.random(float) * __inv_eps__ + __eps__
-        cam_dir = vec3([(self.half_w + vx - pi) * self.inv_focal, (pj - self.half_h + vy) * self.inv_focal, 1.])
+        cam_dir = vec3([(self.half_w + vx - pi) * self.inv_focal, (pj - self.half_h - vy) * self.inv_focal, 1.])
         return (self.cam_r @ cam_dir).normalized()
 
     @ti.func
@@ -211,8 +211,7 @@ class TracerBase:
 
     @ti.kernel
     def reset(self):
-        for i, j in self.pixels:
-            self.pixels[i, j].fill(0.0)
+        pass
     
 if __name__ == "__main__":
     ti.init()

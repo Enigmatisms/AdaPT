@@ -38,11 +38,14 @@ class BDPT(VolumeRenderer):
         # light vertex is not included, therefore +1
         self.path_nodes.bitmasked(ti.k, self.max_bounce + 1).place(self.light_paths)       
         # camera vertex and extra light vertex is not included, therefore + 2
-        self.path_nodes.bitmasked(ti.k, self.max_bounce + 2).place(self.cam_paths)        
-        # Put "path generation", "path connection" and "MIS weight" in one function
+        self.path_nodes.bitmasked(ti.k, self.max_bounce + 1).place(self.cam_paths)        
+        self.inv_cam_r = self.cam_r.inverse()
         self.cam_normal = (self.cam_r @ vec3([0, 0, 1])).normalized()
-        # TODO: to correctly sample points on camera, the size of the imaging plane should be considered
-        self.A = 1.
+
+        # self.A is the area of the imaging space on z = 1 plane
+        self.A = float(self.w * self.h) * (self.inv_focal * self.inv_focal)
+        # TODO: max_depth is different from max_bounce
+        self.max_depth = 16
         # TODO: whether the camera is placed inside of an object
         self.free_space_cam = True
         self.null = Vertex(_type = VERTEX_NULL)
@@ -51,11 +54,25 @@ class BDPT(VolumeRenderer):
         self.init_time = 0.      
 
     @ti.kernel
-    def render():
-        # TODO: Generate two path and connect them
-        pass
+    def render(self):
+        self.cnt[None] += 1
+        for i, j in self.pixels:
+            cam_vnum = self.generate_eye_path(i, j)
+            lit_vnum = self.generate_light_path(i, j)
+            for t in range(1, cam_vnum):
+                for s in range(0, lit_vnum):
+                    depth = s + t - 2
+                    if (s == 1 and t == 1) or depth < 0 or depth > self.max_depth:
+                        continue
+                    radiance, raster_p = self.connect_path(i, j, s, t)
+                    if t == 1 and raster_p.min() >= 0:      # non-local contribution
+                        ri, rj = raster_p
+                        self.color[ri, rj] += radiance      # this op should be atomic
+                    else:                                   # local contribution
+                        self.color[i, j] += radiance
+            # TODO: Synchronization will introduce overhead? (Is ti.sync necessary?)
+            self.pixels[i, j] = self.color[i, j] / self.cnt[None]
     
-    @ti.kernel
     def reset(self):
         """ Resetting path vertex container """
         self.path_nodes.deactivate_all()
@@ -120,7 +137,7 @@ class BDPT(VolumeRenderer):
             is_delta = (not is_mi) and self.is_delta(obj_id)
             vertex_args = {"_type": BDPT.interact_mode(is_mi, hit_light), "obj_id": obj_id, "emit_id": hit_light, 
                 "bool_bits": (in_free_space << 1) + is_delta, "pdf_fwd": pdf_fwd, "time": acc_time, 
-                "normal": ZERO_V3 if is_mi else normal, "pos": hit_point, "ray_in": ray_d, "beta": throughput                
+                "normal": ti.select(is_mi, ZERO_V3, normal), "pos": hit_point, "ray_in": ray_d, "beta": throughput                
             }
             if transport_mode == TRANSPORT_RAD:         # Camera path
                 self.cam_paths[i, j, vertex_num] = Vertex(**vertex_args) 
@@ -152,9 +169,9 @@ class BDPT(VolumeRenderer):
                 pdf_bwd = 0.
             # ray_o is the position of the current vertex, which is used in prev vertex pdf_bwd
             if transport_mode == TRANSPORT_RAD:         # Camera transport mode
-                self.cam_paths[i, j, prev_vid].set_bwd_pdf(pdf_bwd, ray_o)
+                self.cam_paths[i, j, prev_vid].set_pdf_bwd(pdf_bwd, ray_o)
             else:
-                self.light_paths[i, j, prev_vid].set_bwd_pdf(pdf_bwd, ray_o)
+                self.light_paths[i, j, prev_vid].set_pdf_bwd(pdf_bwd, ray_o)
         return vertex_num
     
     @ti.func
@@ -180,11 +197,11 @@ class BDPT(VolumeRenderer):
                 tr2cam = self.track_ray(ray_d, vertex.pos, depth)       # calculate transmittance from vertex to camera
 
                 # Note that `get_pdf` and `eval` are direction dependent
-                pdf2cam = self.get_pdf(vertex.obj_id, vertex.ray_in, ray_d, vertex.normal, vertex.is_mi, in_free_space)
+                pdf2cam = self.get_pdf(vertex.obj_id, vertex.ray_in, ray_d, vertex.normal, vertex.v_is_mi(), in_free_space)
                 # camera importance is valid / visible / radiance transferable
                 if cam_pdf > 0. and tr2cam.max() > 0. and pdf2cam > 0.:
                     fr2cam = self.eval(vertex.obj_id, vertex.ray_in, ray_d, vertex.normal, \
-                        vertex.is_mi, in_free_space, TRANSPORT_IMP) / pdf2cam
+                        vertex.v_is_mi(), in_free_space, TRANSPORT_IMP) / pdf2cam
                     sampled_v = Vertex(_type = VERTEX_CAMERA, obj_id = -1, emit_id = -1, 
                         bool_bits = (self.free_space_cam << 1) + 1, time = vertex.time + depth, 
                         normal = self.cam_normal, pos = self.cam_t, ray_in = ray_d, beta = we / cam_pdf
@@ -205,10 +222,10 @@ class BDPT(VolumeRenderer):
                     to_emitter    = to_emitter / emitter_d
                     in_free_space = vertex.is_in_free_space()
                     tr2light      = self.track_ray(to_emitter, vertex.pos, emitter_d)   # calculate transmittance from vertex to camera
-                    pdf2light     = self.get_pdf(vertex.obj_id, vertex.ray_in, to_emitter, vertex.normal, vertex.is_mi, in_free_space)
+                    pdf2light     = self.get_pdf(vertex.obj_id, vertex.ray_in, to_emitter, vertex.normal, vertex.v_is_mi(), in_free_space)
                     # emitter should have non-zero emission / visible / transferable
                     if emit_int.max() > 0. and tr2light.max() > 0. and pdf2light > 0.:
-                        fr2cam    = self.eval(vertex.obj_id, vertex.ray_in, to_emitter, vertex.normal, vertex.is_mi, in_free_space) / pdf2light
+                        fr2cam    = self.eval(vertex.obj_id, vertex.ray_in, to_emitter, vertex.normal, vertex.v_is_mi(), in_free_space) / pdf2light
                         sampled_v = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(vertex.emit_id), 
                             emit_id = emit_id, bool_bits = emitter.bool_bits, time = vertex.time + emitter_d,
                             normal = normal, pos = emit_pos, ray_in = to_emitter, beta = emit_int / light_pdf
@@ -226,13 +243,13 @@ class BDPT(VolumeRenderer):
                 cam2lit_v /= length
                 cam_in_fspace = cam_v.is_in_free_space()
                 lit_in_fspace = lit_v.is_in_free_space()
-                cam_pdf = self.get_pdf(cam_v.obj_id, cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.is_mi, cam_in_fspace)
-                lit_pdf = self.get_pdf(lit_v.obj_id, lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.is_mi, lit_in_fspace)
+                cam_pdf = self.get_pdf(cam_v.obj_id, cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.v_is_mi(), cam_in_fspace)
+                lit_pdf = self.get_pdf(lit_v.obj_id, lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.v_is_mi(), lit_in_fspace)
                 if cam_pdf > 0. and lit_pdf > 0.:   # if 
                     tr_con = self.track_ray(cam2lit_v, cam_v.pos, length)   # calculate transmittance from vertex to camera
                     if tr_con.max() > 0.:           # if not occluded
-                        fr_cam = self.eval(cam_v.obj_id, cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.is_mi, cam_in_fspace)
-                        fr_lit = self.eval(lit_v.obj_id, lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.is_mi, lit_in_fspace)
+                        fr_cam = self.eval(cam_v.obj_id, cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.v_is_mi(), cam_in_fspace)
+                        fr_lit = self.eval(lit_v.obj_id, lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.v_is_mi(), lit_in_fspace)
                         # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                         le = cam_v.beta * (fr_cam / cam_pdf) * (tr_con / (length * length)) * (fr_lit / lit_pdf) * lit_v.beta
         weight = 0.
@@ -333,8 +350,21 @@ class BDPT(VolumeRenderer):
     
     @ti.func
     def rasterize_pinhole(self, ray_d: vec3):
-        """ For path with only one camera vertex, ray should be re-rasterized to the film"""
-        return vec2i([0, 0]), True
+        """ For path with only one camera vertex, ray should be re-rasterized to the film
+            ray_d is pointing into the camera, therefore should be negated
+        """
+        valid_raster = False
+        raster_p = vec2i([-1, -1])
+        local_ray = self.inv_cam_r @ (-ray_d)
+        z = local_ray[2]
+        if z > 0:
+            local_ray /= z
+            pi = int(self.half_w + 0.5 - local_ray[0] / self.inv_focal)
+            pj = int(self.half_h + 0.5 + local_ray[1] / self.inv_focal)
+            if pi >= 0 and pj >= 0 and pi < self.w and pj < self.h:
+                raster_p = vec2i([pi, pj]) 
+                valid_raster = True
+        return raster_p, valid_raster
 
     @ti.func
     def sample_camera(self, ray_d: vec3, depth: float):
@@ -382,3 +412,7 @@ class BDPT(VolumeRenderer):
         if not next_mi:
             pdf *= ti.abs(tm.dot(next_nv, diff_vec * ti.sqrt(inv_norm2)))
         return pdf
+    
+    def summary(self):
+        print(f"[INFO] BDPT Finished rendering. SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s")
+    
