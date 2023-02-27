@@ -231,8 +231,8 @@ class BDPT(VolumeRenderer):
                             normal = normal, pos = emit_pos, ray_in = to_emitter, beta = emit_int / light_pdf
                         )
                         vertex_sampled = True
-                        sampled_v.pdf_fwd = emitter.area_pdf(to_emitter, normal) 
-                        le = vertex.beta * tr2cam * fr2cam * sampled_v.beta
+                        sampled_v.pdf_fwd = emitter.area_pdf() / self.src_num
+                        le = vertex.beta * tr2light * fr2cam * sampled_v.beta
                         # No need to apply cosine term, since fr2cam already includes it
         else:                   # general cases
             cam_v = self.cam_paths[i, j, tid - 1]
@@ -253,10 +253,10 @@ class BDPT(VolumeRenderer):
                         # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                         le = cam_v.beta * (fr_cam / cam_pdf) * (tr_con / (length * length)) * (fr_lit / lit_pdf) * lit_v.beta
         weight = 0.
-        if le.max > 0.:             # zero-contribution will not have MIS weight
+        if le.max() > 0.:             # zero-contribution will not have MIS weight
             weight = 1.0
             if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
-                weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, sid, tid)
+                weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, i, j, sid, tid)
         return ti.select(weight > 0., le / weight, ZERO_V3), raster_p
 
     @ti.func
@@ -372,8 +372,8 @@ class BDPT(VolumeRenderer):
             - Rasterized pixel pos / PDF (solid angle measure) / visibility
             - returns: we, pdf, camera_normal, rasterized position, 
         """
-        we = 0.0
         pdf = 0.0
+        we = ZERO_V3
         raster_p = vec2i([-1, -1])
         dot_normal = -tm.dot(ray_d, self.cam_normal)
         if dot_normal > 0.:
@@ -381,7 +381,7 @@ class BDPT(VolumeRenderer):
             if is_valid:        # not valid --- outside of imaging plane
                 # For pinhole camera, lens area is 1., this pdf is already in sa measure 
                 pdf = depth * depth / dot_normal
-                we = 1.0 / (self.A * dot_normal * dot_normal)
+                we.fill(1.0 / (self.A * ti.pow(dot_normal, 4)))
         return we, pdf, raster_p
     
     @ti.func

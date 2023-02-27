@@ -59,7 +59,7 @@ class Vertex:
             ray_out = ti.select(prev_v._type == VERTEX_NULL, -self.ray_in, (prev_v.pos - self.pos).normalized())
             pdf_sa = renderer.get_pdf(self.obj_id, normed_ray_in, ray_out, self.normal, self._type == VERTEX_MEDIUM, is_in_fspace)
             # convert to area measure for the next node
-            next_v.pdf_bwd = self.convert_density(pdf_sa, next_v)
+            next_v.pdf_bwd = self.convert_density(next_v, pdf_sa, ray_in)
 
     @ti.func
     def convert_density(self, next_v: ti.template(), pdf, ray):
@@ -91,8 +91,9 @@ class Vertex:
     def pdf_light_origin(self, renderer: ti.template()):
         """ Calculate density if the current vertex is an emitter vertex """
         # FIXME: if there is no logic bug, the boundary check `emit_id > 0` can be removed
+        pdf = 0.0
         if self.emit_id >= 0:
-            pdf = renderer.src_field[self.emit_id].area_pdf() / float(self.src_num)     # uniform emitter selection
+            pdf = renderer.src_field[self.emit_id].area_pdf() / float(renderer.src_num)     # uniform emitter selection
         else:
             print("Warning: Current v can't be non-emitter for pdf_light_origin to be called")
         return pdf
