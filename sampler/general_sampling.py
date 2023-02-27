@@ -8,11 +8,10 @@
 import taichi as ti
 import taichi.math as tm
 from taichi.math import vec3
+from renderer.constants import INV_PI, INV_2PI, PI2
 
 __all__ = ['cosine_hemisphere', 'uniform_hemisphere', 'sample_triangle', 
             'balance_heuristic', 'mod_phong_hemisphere', 'frensel_hemisphere', 'random_rgb']
-
-pi_inv = 1. / tm.pi
 
 @ti.func
 def random_rgb(vector):
@@ -36,8 +35,8 @@ def cosine_hemisphere():
     eps = ti.random(float)
     cos_theta = ti.sqrt(eps)       # zenith angle
     sin_theta = ti.sqrt(1. - eps)
-    phi = 2. * tm.pi * ti.random(float)         # uniform dist azimuth angle
-    pdf = cos_theta * pi_inv        # easy to deduct, just try it
+    phi = PI2 * ti.random(float)         # uniform dist azimuth angle
+    pdf = cos_theta * INV_PI        # easy to deduct, just try it
     # rotational offset w.r.t axis [0, 1, 0] & pdf
     
     return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), pdf
@@ -50,20 +49,25 @@ def mod_phong_hemisphere(alpha: float):
     """
     cos_theta = tm.pow(ti.random(float), 1. / (alpha + 1.))
     sin_theta = ti.sqrt(1. - cos_theta * cos_theta)
-    phi = 2. * tm.pi * ti.random(float) 
-    pdf = 0.5 * (1. + alpha) * tm.pow(cos_theta, alpha) * pi_inv
+    phi = PI2 * ti.random(float) 
+    pdf = 0.5 * (1. + alpha) * tm.pow(cos_theta, alpha) * INV_PI
     return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), pdf
 
 @ti.func
 def uniform_hemisphere():
-    """
-        Both zenith (cosine) and azimuth angle (original) are uniformly distributed
-    """
+    """ Both zenith (cosine) and azimuth angle (original) are uniformly distributed """
     cos_theta = ti.random(float)
     sin_theta =  ti.sqrt(1 - cos_theta * cos_theta)
-    phi = 2. * tm.pi * ti.random(float)
-    pdf = 0.5 * pi_inv
-    return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), pdf
+    phi = PI2 * ti.random(float)
+    return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), INV_2PI
+
+@ti.func
+def uniform_sphere():
+    """ Uniform direction sampling on a sphere """
+    cos_theta = 2. * ti.random(float) - 1.
+    sin_theta =  ti.sqrt(1 - cos_theta * cos_theta)
+    phi = PI2 * ti.random(float)
+    return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), INV_2PI * 0.5
 
 @ti.func
 def frensel_hemisphere(nu: float, nv: float):
@@ -82,9 +86,7 @@ def frensel_hemisphere(nu: float, nv: float):
 
 @ti.func
 def sample_triangle(dv1: vec3, dv2: vec3):
-    """
-        Sample on a mesh triangle
-    """
+    """ Sample on a mesh triangle """
     u1 = ti.random(float)
     u2 = ti.random(float)
     triangle_pt = dv1 * u1 + dv2 * u2

@@ -51,12 +51,12 @@ class Renderer(PathTracer):
                 direct_int  = vec3([0, 0, 0])
                 direct_spec = vec3([1, 1, 1])
                 for _j in range(self.num_shadow_ray):    # more shadow ray samples
-                    emitter, emitter_pdf, emitter_valid = self.sample_light(hit_light)
+                    emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
                     light_dir = vec3([0, 0, 0])
                     # direct / emission component evaluation
                     if emitter_valid:
                         emit_pos, shadow_int, direct_pdf, _n = emitter.         \
-                            sample(self.precom_vec, self.normals, self.mesh_cnt, hit_point)        # sample light
+                            sample_hit(self.precom_vec, self.normals, self.mesh_cnt, hit_point)        # sample light
                         to_emitter  = emit_pos - hit_point
                         emitter_d   = to_emitter.norm()
                         light_dir   = to_emitter / emitter_d

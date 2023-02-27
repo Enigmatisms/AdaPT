@@ -171,7 +171,7 @@ class PathTracer(TracerBase):
         return is_scattering
 
     @ti.func
-    def sample_light(self, no_sample: int):
+    def sample_light(self, no_sample: int = -1):
         """
             return selected light source, pdf and whether the current source is valid
             if can only sample <id = no_sample>, then the sampled source is invalid
@@ -187,7 +187,7 @@ class PathTracer(TracerBase):
                 idx = ti.random(int) % (self.src_num - 1)
                 if idx >= no_sample: idx += 1
                 pdf = 1. / float(self.src_num - 1)
-        return self.src_field[idx], pdf, valid_sample
+        return self.src_field[idx], pdf, valid_sample, idx
     
     @ti.func
     def get_associated_obj(self, emit_id: int):

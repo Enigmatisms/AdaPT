@@ -112,7 +112,8 @@ class Vertex:
     
     @ti.func
     def on_surface(self):
-        return (self._type & ON_SURFACE) == 0
+        # The vertex on the surface or vertex is on an [area] emitter
+        return (self._type == VERTEX_SURFACE) or (self._type == VERTEX_EMITTER and self.is_connectible())
     
     @ti.func
     def pdf_ratio(self):
