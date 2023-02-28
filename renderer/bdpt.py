@@ -56,8 +56,8 @@ class BDPT(VolumeRenderer):
     def render(self):
         self.cnt[None] += 1
         for i, j in self.pixels:
-            cam_vnum = self.generate_eye_path(i, j)
-            lit_vnum = self.generate_light_path(i, j)
+            cam_vnum = self.generate_eye_path(i, j) + 1
+            lit_vnum = self.generate_light_path(i, j) + 1
             # print(f"Processing {i}, {j},  = {cam_vnum}, {lit_vnum}")
             for t in range(1, cam_vnum):
                 for s in range(0, lit_vnum):
@@ -112,7 +112,6 @@ class BDPT(VolumeRenderer):
             TODO: Extensive logic check and debug should be done here.
             can not reassign function parameter (non-scalar): https://github.com/taichi-dev/taichi/pull/3607
         """
-        old_pos    = init_ray_o
         ray_o      = init_ray_o
         ray_d      = init_ray_d
         throughput = ONES_V3
@@ -130,14 +129,13 @@ class BDPT(VolumeRenderer):
             # Step 2: check for mean free path sampling
             # Calculate mfp, path_beta = transmittance / PDF
             is_mi, min_depth, path_beta = self.sample_mfp(obj_id, in_free_space, min_depth) 
-            hit_point = ray_d * min_depth + ray_o
+            diff_vec = ray_d * min_depth
+            hit_point = diff_vec + ray_o
             hit_light = -1 if is_mi else self.emitter_id[obj_id]
             acc_time += min_depth
             throughput *= path_beta         # attenuate first
 
             # Step 3: Create a new vertex and calculate pdf_fwd
-            # TODO: logic with old / new updates tend to be erroneous
-            diff_vec = hit_point - old_pos
             pdf_fwd = BDPT.convert_density(ray_pdf, diff_vec, normal, is_mi)
             is_delta = (not is_mi) and self.is_delta(obj_id)
             vertex_args = {"_type": BDPT.interact_mode(is_mi, hit_light), "obj_id": obj_id, "emit_id": hit_light, 
@@ -152,16 +150,15 @@ class BDPT(VolumeRenderer):
             # Step 4: ray termination test - RR termination and max bounce. If ray terminates, we won't have to sample
             if vertex_num >= self.max_bounce:
                 break
-            max_value = throughput.max()
-            if ti.random(float) > max_value: break
-            else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
+            if throughput.max() < 1e-4: break
+            # if ti.random(float) > max_value: break
+            # else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
             prev_vid = vertex_num - 1
 
             # Step 5: sample new ray. This should distinguish between surface and medium interactions
             old_ray_d = ray_d
 
             ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, old_ray_d, normal, is_mi, in_free_space, transport_mode)
-            old_pos = ray_o
             ray_o = hit_point
             throughput *= (indirect_spec / ray_pdf)
 
@@ -170,7 +167,7 @@ class BDPT(VolumeRenderer):
             if not is_mi:   # If current sampling exists on the surface
                 pdf_bwd = self.surface_pdf(obj_id, -old_ray_d, normal, -ray_d)
             if is_delta:
-                pdf_fwd = 0.
+                ray_pdf = 0.0
                 pdf_bwd = 0.
             # ray_o is the position of the current vertex, which is used in prev vertex pdf_bwd
             if transport_mode == TRANSPORT_RAD:         # Camera transport mode
@@ -184,13 +181,13 @@ class BDPT(VolumeRenderer):
         """ Rigorous logic check, review and debug should be done 
         """
         le = ZERO_V3
-        sampled_v = Vertex()        # a default vertex
+        sampled_v = Vertex(_type = VERTEX_NULL)        # a default vertex
         vertex_sampled = False      # whether any new vertex is sampled
         raster_p = vec2i([-1, -1])  # reprojection for light path - camera direct connection
         if sid == 0:                # light path is not used  
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex._type == VERTEX_EMITTER:   # is the current vertex an emitter vertex?
-                le = self.src_field[int(vertex.emit_id)].eval_le(vertex.ray_in, vertex.normal)
+                le = self.src_field[int(vertex.emit_id)].eval_le(vertex.ray_in, vertex.normal) * vertex.beta
         elif tid == 1:          # re-rasterize point onto the film, atomic add is allowed
             vertex = self.light_paths[i, j, sid - 1]
             if vertex.is_connectible():
@@ -201,11 +198,9 @@ class BDPT(VolumeRenderer):
                 we, cam_pdf, raster_p = self.sample_camera(ray_d, depth)
                 tr2cam = self.track_ray(ray_d, vertex.pos, depth)       # calculate transmittance from vertex to camera
                 # Note that `get_pdf` and `eval` are direction dependent
-                pdf2cam = self.get_pdf(int(vertex.obj_id), vertex.ray_in, ray_d, vertex.normal, vertex.v_is_mi(), in_free_space)
                 # camera importance is valid / visible / radiance transferable
-                if cam_pdf > 0. and tr2cam.max() > 0. and pdf2cam > 0.:
-                    fr2cam = self.eval(int(vertex.obj_id), vertex.ray_in, ray_d, vertex.normal, \
-                        vertex.v_is_mi(), in_free_space, TRANSPORT_IMP) / pdf2cam
+                if cam_pdf > 0. and tr2cam.max() > 0:
+                    fr2cam = self.eval(int(vertex.obj_id), vertex.ray_in, ray_d, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_IMP)
                     sampled_v = Vertex(_type = VERTEX_CAMERA, obj_id = -1, emit_id = -1, 
                         bool_bits = (self.free_space_cam << 1) + 1, time = vertex.time + depth, 
                         normal = self.cam_normal, pos = self.cam_t, ray_in = ray_d, beta = we / cam_pdf
@@ -226,17 +221,16 @@ class BDPT(VolumeRenderer):
                     to_emitter    = to_emitter / emitter_d
                     in_free_space = vertex.is_in_free_space()
                     tr2light      = self.track_ray(to_emitter, vertex.pos, emitter_d)   # calculate transmittance from vertex to camera
-                    pdf2light     = self.get_pdf(int(vertex.obj_id), vertex.ray_in, to_emitter, vertex.normal, vertex.v_is_mi(), in_free_space)
                     # emitter should have non-zero emission / visible / transferable
-                    if emit_int.max() > 0. and tr2light.max() > 0. and pdf2light > 0.:
-                        fr2cam    = self.eval(int(vertex.obj_id), vertex.ray_in, to_emitter, vertex.normal, vertex.v_is_mi(), in_free_space) / pdf2light
-                        sampled_v = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(int(vertex.emit_id)), 
+                    if emit_int.max() > 0 and tr2light.max() > 0:
+                        fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, to_emitter, vertex.normal, vertex.is_mi(), in_free_space)
+                        sampled_v   = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(int(vertex.emit_id)), 
                             emit_id = emit_id, bool_bits = emitter.bool_bits, time = vertex.time + emitter_d,
-                            normal = normal, pos = emit_pos, ray_in = to_emitter, beta = emit_int / light_pdf
+                            normal  = normal, pos = emit_pos, ray_in = to_emitter, beta = emit_int / light_pdf
                         )
                         vertex_sampled = True
                         sampled_v.pdf_fwd = emitter.area_pdf() / self.src_num
-                        le = vertex.beta * tr2light * fr2cam * sampled_v.beta
+                        le = vertex.beta * tr2light * fr2light * sampled_v.beta
                         # No need to apply cosine term, since fr2cam already includes it
         else:                   # general cases
             cam_v = self.cam_paths[i, j, tid - 1]
@@ -247,21 +241,18 @@ class BDPT(VolumeRenderer):
                 cam2lit_v /= length
                 cam_in_fspace = cam_v.is_in_free_space()
                 lit_in_fspace = lit_v.is_in_free_space()
-                cam_pdf = self.get_pdf(int(cam_v.obj_id), cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.v_is_mi(), cam_in_fspace)
-                lit_pdf = self.get_pdf(int(lit_v.obj_id), lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.v_is_mi(), lit_in_fspace)
-                if cam_pdf > 0. and lit_pdf > 0.:   # if 
-                    tr_con = self.track_ray(cam2lit_v, cam_v.pos, length)   # calculate transmittance from vertex to camera
-                    if tr_con.max() > 0.:           # if not occluded
-                        fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.v_is_mi(), cam_in_fspace)
-                        fr_lit = self.eval(int(lit_v.obj_id), lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.v_is_mi(), lit_in_fspace)
-                        # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
-                        le = cam_v.beta * (fr_cam / cam_pdf) * (tr_con / (length * length)) * (fr_lit / lit_pdf) * lit_v.beta
+                tr_con = self.track_ray(cam2lit_v, cam_v.pos, length)   # calculate transmittance from vertex to camera
+                if tr_con.max() > 0.:           # if not occluded
+                    fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.is_mi(), cam_in_fspace)
+                    fr_lit = self.eval(int(lit_v.obj_id), lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.is_mi(), lit_in_fspace)
+                    # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
+                    le = cam_v.beta * fr_cam * (tr_con / (length * length)) * fr_lit * lit_v.beta
         weight = 0.
         if le.max() > 0.:             # zero-contribution will not have MIS weight
             weight = 1.0
             if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
                 weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, i, j, sid, tid)
-        return ti.select(weight > 0., le / weight, ZERO_V3), raster_p
+        return ti.select(weight > 0., le * weight, ZERO_V3), raster_p
     
     @ti.func
     def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int):

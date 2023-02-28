@@ -57,7 +57,8 @@ class Vertex:
         
     @ti.func
     def is_connectible(self):
-        return self.bool_bits & 0x01
+        # the [0]th bit of bool bits indicates whether the vertex is delta, if NOT delta then it's connectible
+        return (self.bool_bits & 0x01) == 0
         
     @ti.func
     def is_in_free_space(self):
@@ -73,6 +74,6 @@ class Vertex:
         return remap_pdf(self.pdf_bwd) / remap_pdf(self.pdf_fwd)
     
     @ti.func
-    def v_is_mi(self):
+    def is_mi(self):
         return self._type == VERTEX_MEDIUM
     
