@@ -263,10 +263,10 @@ class BDPT(VolumeRenderer):
     def update_endpoint(self, cam_end: ti.template(), lit_end: ti.template(), i: int, j: int, idx_t: int, idx_s: int):
         # s + t > 2, since s + t == 2 will not enter `mis_weight`, and s + t < 2 will not have path connection
         if idx_s >= 0:                  # If lit_end is not null vertex
-            lit_end.pdf(self, cam_end, self.null)  # Update camera endpoint
+            lit_end.pdf(self, cam_end, Vertex(_type = VERTEX_NULL))  # Update camera endpoint
             if idx_t >= 1:
                 cam_end.pdf(self, self.cam_paths[i, j, idx_t - 1], lit_end)
-                cam_end.pdf(self, lit_end, self.null)       # 1
+                cam_end.pdf(self, lit_end, Vertex(_type = VERTEX_NULL))       # 1
             if idx_s >= 1:
                 lit_end.pdf(self, self.light_paths[i, j, idx_s - 1], cam_end)       # 2
         else:           # idx_t must >= 2       
@@ -301,20 +301,20 @@ class BDPT(VolumeRenderer):
             self.update_endpoint(self.cam_paths[i, j, idx_t], sampled_v, i, j, idx_t, idx_s)
         else:
             if idx_s < 0:
-                self.update_endpoint(self.cam_paths[i, j, idx_t], self.null, i, j, idx_t, idx_s)
+                self.update_endpoint(self.cam_paths[i, j, idx_t], Vertex(_type = VERTEX_NULL), i, j, idx_t, idx_s)
             else:           # Here idx_s can not be 0 (sid == 1 will go to s_sampled logic above)
                 self.update_endpoint(self.cam_paths[i, j, idx_t], self.light_paths[i, j, idx_s], i, j, idx_t, idx_s)
 
         ri = ti.select(t_sampled, sampled_v.pdf_ratio(), self.cam_paths[i, j, idx_t].pdf_ratio())
         # Avoid indexing one vertex of cam_paths / light_paths twice 
         not_delta = False
-        if idx_t > 0 and not self.cam_paths[i, j, idx_t - 1].is_delta():
+        if idx_t > 0 and self.cam_paths[i, j, idx_t - 1].is_connectible():
             not_delta = True
             sum_ri += ri
         idx_t -= 1
         while idx_t > 0:
             ri *= self.cam_paths[i, j, idx_t].pdf_ratio()
-            next_not_delta = not self.cam_paths[i, j, idx_t - 1].is_delta()
+            next_not_delta = self.cam_paths[i, j, idx_t - 1].is_connectible()
             if not_delta and next_not_delta:
                 sum_ri += ri
             not_delta = next_not_delta
@@ -323,13 +323,13 @@ class BDPT(VolumeRenderer):
         if idx_s >= 0:                        # sid can be 0, 
             ri = ti.select(s_sampled, sampled_v.pdf_ratio(), self.light_paths[i, j, idx_s].pdf_ratio())
             not_delta = False
-            if idx_s > 0 and not self.light_paths[i, j, idx_s - 1].is_delta():
+            if idx_s > 0 and self.light_paths[i, j, idx_s - 1].is_connectible():
                 not_delta = True
                 sum_ri += ri
             idx_s -= 1
             while idx_s > 0:
                 ri *= self.light_paths[i, j, idx_s].pdf_ratio()
-                next_not_delta = not self.light_paths[i, j, idx_s - 1].is_delta()
+                next_not_delta = self.light_paths[i, j, idx_s - 1].is_connectible()
                 if not_delta and next_not_delta:
                     sum_ri += ri
                 not_delta = next_not_delta

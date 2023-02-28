@@ -57,7 +57,7 @@ class Vertex:
             """ if prev_v = NULL, yet prev vertex in the path actually exists: self.ray_in is the correct direction or is zero vec
                 otherwise, prev vertex does not exist therefore provided with the ertex from another path: calculate """
             ray_out = ti.select(prev_v._type == VERTEX_NULL, -self.ray_in, (prev_v.pos - self.pos).normalized())
-            pdf_sa = renderer.get_pdf(self.obj_id, normed_ray_in, ray_out, self.normal, self._type == VERTEX_MEDIUM, is_in_fspace)
+            pdf_sa = renderer.get_pdf(int(self.obj_id), normed_ray_in, ray_out, self.normal, self._type == VERTEX_MEDIUM, is_in_fspace)
             # convert to area measure for the next node
             next_v.pdf_bwd = self.convert_density(next_v, pdf_sa, ray_in)
 
@@ -79,7 +79,7 @@ class Vertex:
             ray_dir  = prev_v.pos - self.pos
             inv_len  = 1. / ray_dir.norm()
             ray_dir *= inv_len
-            pdf = renderer.src_field[self.emit_id].direction_pdf(ray_dir, self.normal)
+            pdf = renderer.src_field[int(self.emit_id)].direction_pdf(ray_dir, self.normal)
             if prev_v.on_surface():
                 pdf *= ti.max(-tm.dot(ray_dir, prev_v.normal), 0.)
             pdf *= (inv_len * inv_len)
@@ -93,7 +93,7 @@ class Vertex:
         # FIXME: if there is no logic bug, the boundary check `emit_id > 0` can be removed
         pdf = 0.0
         if self.emit_id >= 0:
-            pdf = renderer.src_field[self.emit_id].area_pdf() / float(renderer.src_num)     # uniform emitter selection
+            pdf = renderer.src_field[int(self.emit_id)].area_pdf() / float(renderer.src_num)     # uniform emitter selection
         else:
             print("Warning: Current v can't be non-emitter for pdf_light_origin to be called")
         return pdf
@@ -101,7 +101,7 @@ class Vertex:
     @ti.func
     def get_pdf_context(self):
         """ FIXME: save this for future uses, if `pdf` passes correctly, this will be deprecated """
-        return self.obj_id, self.ray_in, self.normal, self._type == VERTEX_MEDIUM, self.is_in_free_space(), self.pos
+        return int(self.obj_id), self.ray_in, self.normal, self._type == VERTEX_MEDIUM, self.is_in_free_space(), self.pos
         
     @ti.func
     def is_connectible(self):
