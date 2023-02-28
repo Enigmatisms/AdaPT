@@ -26,7 +26,7 @@ if __name__ == "__main__":
     options = get_options()
     cache_path = folder_path(f"./cached/{options.scene}", f"Cache path for scene {options.scene} not found. JIT compilation might take some time (~30s)...")
     ti.init(arch = mapped_arch(options.arch), kernel_profiler = options.profile, \
-            default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path)
+            default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path, debug = options.debug)
     input_folder = os.path.join(options.input_path, options.scene)
     emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, options.name)  # complex_cornell
 

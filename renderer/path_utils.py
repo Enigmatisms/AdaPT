@@ -42,26 +42,6 @@ class Vertex:
         self.pdf_bwd = pdf
 
     @ti.func
-    def pdf(self, renderer: ti.template(), next_v: ti.template(), prev_v: ti.template()):
-        """ Renderer passed in is a reference to BDPT class
-            When connect to a new path, end point bwd pdf should be updated
-            PDF is used when all three points are presented, next_v is directly modified (no race condition)
-            Note that when calling `pdf`, self can never be VERTEX_CAMERA (you can check the logic)
-        """
-        if self._type == VERTEX_EMITTER:
-            next_v.pdf_bwd = self.pdf_light(renderer, next_v)
-        else:
-            is_in_fspace = self.is_in_free_space()
-            ray_in = self.pos - next_v.pos
-            normed_ray_in = ray_in.normalized()
-            """ if prev_v = NULL, yet prev vertex in the path actually exists: self.ray_in is the correct direction or is zero vec
-                otherwise, prev vertex does not exist therefore provided with the ertex from another path: calculate """
-            ray_out = ti.select(prev_v._type == VERTEX_NULL, -self.ray_in, (prev_v.pos - self.pos).normalized())
-            pdf_sa = renderer.get_pdf(int(self.obj_id), normed_ray_in, ray_out, self.normal, self._type == VERTEX_MEDIUM, is_in_fspace)
-            # convert to area measure for the next node
-            next_v.pdf_bwd = self.convert_density(next_v, pdf_sa, ray_in)
-
-    @ti.func
     def convert_density(self, next_v: ti.template(), pdf, ray):
         """ Vertex method for converting solid angle density to unit area measure """
         depth = ray.norm()
@@ -69,34 +49,6 @@ class Vertex:
         if next_v.on_surface():
             pdf *= ti.abs(tm.dot(next_v.normal, ray))
         return pdf / (depth * depth)
-
-    @ti.func
-    def pdf_light(self, renderer: ti.template(), prev_v: ti.template()):
-        """ Calculate directional density (then convert to area measure) for prev_v.pdf_bwd """
-        pdf = 0.
-        # FIXME: if there is no logic bug, the boundary check `emit_id > 0` can be removed
-        if self.emit_id >= 0:
-            ray_dir  = prev_v.pos - self.pos
-            inv_len  = 1. / ray_dir.norm()
-            ray_dir *= inv_len
-            pdf = renderer.src_field[int(self.emit_id)].direction_pdf(ray_dir, self.normal)
-            if prev_v.on_surface():
-                pdf *= ti.max(-tm.dot(ray_dir, prev_v.normal), 0.)
-            pdf *= (inv_len * inv_len)
-        else:
-            print("Warning: Current v can't be non-emitter for pdf_light to be called")
-        return pdf
-
-    @ti.func
-    def pdf_light_origin(self, renderer: ti.template()):
-        """ Calculate density if the current vertex is an emitter vertex """
-        # FIXME: if there is no logic bug, the boundary check `emit_id > 0` can be removed
-        pdf = 0.0
-        if self.emit_id >= 0:
-            pdf = renderer.src_field[int(self.emit_id)].area_pdf() / float(renderer.src_num)     # uniform emitter selection
-        else:
-            print("Warning: Current v can't be non-emitter for pdf_light_origin to be called")
-        return pdf
 
     @ti.func
     def get_pdf_context(self):

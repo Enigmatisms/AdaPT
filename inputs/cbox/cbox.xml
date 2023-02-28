@@ -22,8 +22,8 @@
 		</transform>
 
 		<film type="film">
-			<integer name="width" value="800"/>
-			<integer name="height" value="800"/>
+			<integer name="width" value="512"/>
+			<integer name="height" value="512"/>
 			<integer name="sub_samples" value="8"/>
 		</film>
 	</sensor>

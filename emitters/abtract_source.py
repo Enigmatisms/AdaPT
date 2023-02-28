@@ -151,7 +151,7 @@ class TaichiSource:
         return pdf
     
     @ti.func
-    def direction_pdf(self, exit_dir: vec3, light_n: vec3):
+    def direction_pdf(self, exit_dir, light_n):
         """ Compute solid angle PDF for emitting in certain direction """
         pdf = 0.0
         if self._type == 0:         # uniform sphere PDF
