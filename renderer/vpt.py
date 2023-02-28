@@ -32,12 +32,13 @@ class VolumeRenderer(PathTracer):
     @ti.func
     def get_transmittance(self, idx: int, in_free_space: int, depth: float):
         transmittance = vec3([1., 1., 1.])
-        if in_free_space:
-            transmittance = self.world.medium.transmittance(depth)
-        else:
+        pdf = 1.0
+        if in_free_space and self.world.medium.is_scattering():
+            transmittance, pdf = self.world.medium.transmittance(depth)
+        elif self.bsdf_field[idx].medium.is_scattering():
             # if not in_free_space, bsdf_field[idx] must be valid
-            transmittance = self.bsdf_field[idx].medium.transmittance(depth)
-        return transmittance
+            transmittance, pdf = self.bsdf_field[idx].medium.transmittance(depth)
+        return transmittance, pdf
     
     @ti.func
     def non_null_surface(self, idx: int):
@@ -68,7 +69,7 @@ class VolumeRenderer(PathTracer):
         return is_mi, mfp, beta
     
     @ti.func
-    def track_ray(self, ray, start_p, depth):
+    def track_ray(self, ray, start_p, depth, div_pdf = True):
         """ 
             For medium interaction, check if the path to one point is not blocked (by non-null surface object)
             And also we need to calculate the attenuation along the path, e.g.: if the ray passes through
@@ -83,10 +84,11 @@ class VolumeRenderer(PathTracer):
                 tr.fill(0.0)
                 break  
             in_free_space = tm.dot(normal, ray) < 0
-            tr *= self.get_transmittance(obj_id, in_free_space, min_depth)
+            transmittance, pdf = self.get_transmittance(obj_id, in_free_space, min_depth)
+            tr = ti.select(div_pdf, tr * transmittance / pdf, tr * transmittance)
             start_p += ray * min_depth
             depth -= min_depth
-            if depth <= 5e-4: break     # reach the target point: break
+            if depth <= 1e-3: break     # reach the target point: break
         return tr
         
     @ti.kernel
@@ -130,6 +132,7 @@ class VolumeRenderer(PathTracer):
                         to_emitter  = emit_pos - hit_point
                         emitter_d   = to_emitter.norm()
                         light_dir   = to_emitter / emitter_d
+                        # TODO: should we divide the transimattance by pdf here?
                         tr = self.track_ray(to_emitter, hit_point, emitter_d)
                         shadow_int *= tr
                         direct_spec = self.eval(obj_id, ray_d, light_dir, normal, is_mi, in_free_space)
