@@ -51,11 +51,6 @@ class Vertex:
         return pdf / (depth * depth)
 
     @ti.func
-    def get_pdf_context(self):
-        """ FIXME: save this for future uses, if `pdf` passes correctly, this will be deprecated """
-        return int(self.obj_id), self.ray_in, self.normal, self._type == VERTEX_MEDIUM, self.is_in_free_space(), self.pos
-        
-    @ti.func
     def is_connectible(self):
         # the [0]th bit of bool bits indicates whether the vertex is delta, if NOT delta then it's connectible
         return (self.bool_bits & 0x01) == 0

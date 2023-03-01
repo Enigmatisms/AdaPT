@@ -63,12 +63,15 @@ class BDPT(VolumeRenderer):
                     depth = s + t - 2
                     if (s == 1 and t == 1) or depth < 0 or depth > self.max_depth:
                         continue
-                    radiance, raster_p = self.connect_path(i, j, s, t)
-                    if t == 1 and raster_p.min() >= 0:      # non-local contribution
-                        ri, rj = raster_p
-                        self.color[ri, rj] += radiance      # this op should be atomic
-                    else:                                   # local contribution
-                        self.color[i, j] += radiance
+                    # if cam path is valid and hits emitter eventually, with non-empty light path, we can not connect the two paths
+                    multi_light_con = (t > 1) and (s > 0) and (self.cam_paths[i, j, t - 1]._type == VERTEX_EMITTER)
+                    if not multi_light_con:
+                        radiance, raster_p = self.connect_path(i, j, s, t)
+                        if t == 1 and raster_p.min() >= 0:      # non-local contribution
+                            ri, rj = raster_p
+                            self.color[ri, rj] += ti.select(ti.math.isnan(radiance), 0., radiance)      # this op should be atomic
+                        else:                                   # local contribution
+                            self.color[i, j] += ti.select(ti.math.isnan(radiance), 0., radiance)
             # TODO: Synchronization will introduce overhead? (Is ti.sync necessary?)
             self.pixels[i, j] = self.color[i, j] / self.cnt[None]
     
@@ -86,24 +89,27 @@ class BDPT(VolumeRenderer):
             bool_bits = (self.free_space_cam << 1) + 1, time = self.init_time,
             normal = self.cam_normal, pos = self.cam_t, ray_in = ZERO_V3, beta = vec3([1., 1., 1.])
         )
-        return self.random_walk(i, j, self.cam_t, ray_d, pdf_dir, TRANSPORT_RAD) + 1
+        return self.random_walk(i, j, self.cam_t, ray_d, pdf_dir, ONES_V3, TRANSPORT_RAD) + 1
 
     @ti.func
     def generate_light_path(self, i: int, j: int):
         # TODO: emitter emitting time is not set
-        emitter, _, _ , emit_id = self.sample_light()
-        ret_int, ray_o, ray_d, pdf_dir, normal = emitter.sample_le(self.precom_vec, self.normals, self.mesh_cnt)
+        emitter, emitter_pdf, _ , emit_id = self.sample_light()
+        ret_int, ray_o, ray_d, pdf_pos, pdf_dir, normal = emitter.sample_le(self.precom_vec, self.normals, self.mesh_cnt)
+        vertex_pdf = pdf_pos * emitter_pdf
         self.light_paths[i, j, 0] = Vertex(_type = VERTEX_EMITTER, obj_id = emitter.obj_ref_id, 
-            emit_id = emit_id, bool_bits = emitter.bool_bits, time = 0., normal = normal, 
-            pos = ray_o, ray_in = ZERO_V3, beta = ret_int
+            emit_id = emit_id, bool_bits = emitter.bool_bits, time = 0., pdf_fwd = vertex_pdf, 
+            normal = normal, pos = ray_o, ray_in = ZERO_V3, beta = ret_int
         )
         vertex_num = 0
-        if pdf_dir > 0. or ret_int.max() > 0.:      # black emitter / inpossible direction 
-            vertex_num = self.random_walk(i, j, ray_o, ray_d, pdf_dir, TRANSPORT_IMP) + 1
+        if pdf_dir > 0. and ret_int.max() > 0. and vertex_pdf > 0.:      # black emitter / inpossible direction 
+            beta = ret_int * ti.abs(tm.dot(ray_d, normal)) / (vertex_pdf * pdf_dir)
+            # Why we need to put beta in here?
+            vertex_num = self.random_walk(i, j, ray_o, ray_d, pdf_dir, beta, TRANSPORT_IMP) + 1
         return vertex_num
 
     @ti.func
-    def random_walk(self, i: int, j: int, init_ray_o, init_ray_d, pdf: float, transport_mode: int):
+    def random_walk(self, i: int, j: int, init_ray_o, init_ray_d, pdf: float, beta, transport_mode: int):
         """ Random walk to generate path 
             pdf: initial pdf for this path
             transport mode: whether it is radiance or importance, 0 is camera radiance, 1 is light importance
@@ -113,7 +119,7 @@ class BDPT(VolumeRenderer):
         """
         ray_o      = init_ray_o
         ray_d      = init_ray_d
-        throughput = ONES_V3
+        throughput = beta
         vertex_num = 0
         acc_time   = 0.         # accumulated time
         ray_pdf    = pdf        # PDF is of solid angle measure, therefore should be converted
@@ -403,13 +409,13 @@ class BDPT(VolumeRenderer):
             self.pdf_light(cur, next)
         else:
             is_in_fspace = cur.is_in_free_space()
-            ray_in = cur.pos - next.pos
-            normed_ray_in = ray_in.normalized()
+            ray_out = next.pos -  cur.pos
+            normed_ray_out = ray_out.normalized()
 
-            ray_out = ti.select(prev._type == VERTEX_NULL, -cur.ray_in, (prev.pos - cur.pos).normalized())
-            pdf_sa = self.get_pdf(int(cur.obj_id), normed_ray_in, ray_out, cur.normal, cur._type == VERTEX_MEDIUM, is_in_fspace)
+            ray_in = ti.select(prev._type == VERTEX_NULL, cur.ray_in, (cur.pos - prev.pos).normalized())
+            pdf_sa = self.get_pdf(int(cur.obj_id), ray_in, normed_ray_out, cur.normal, cur._type == VERTEX_MEDIUM, is_in_fspace)
             # convert to area measure for the next node
-            next.pdf_bwd = cur.convert_density(next, pdf_sa, ray_in)
+            next.pdf_bwd = cur.convert_density(next, pdf_sa, ray_out)
 
     @ti.func
     def pdf_light(self, cur: ti.template(), prev: ti.template()):
@@ -419,7 +425,7 @@ class BDPT(VolumeRenderer):
         ray_dir *= inv_len
         pdf = self.src_field[int(cur.emit_id)].direction_pdf(ray_dir, cur.normal)
         if prev.on_surface():
-            pdf *= ti.max(-tm.dot(ray_dir, prev.normal), 0.)
+            pdf *= ti.abs(tm.dot(ray_dir, prev.normal))
         pdf *= (inv_len * inv_len)
         prev.pdf_bwd = pdf
     

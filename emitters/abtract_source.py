@@ -103,11 +103,13 @@ class TaichiSource:
         ray_o   = ZERO_V3
         ray_d   = AXIS_Y
         normal  = AXIS_Y
-        pdf     = 0.
+        pdf_dir = 0.
+        pdf_pos = 1.
         if self._type == 0:
             # Uniform sampling the sphere, since its uniform, we don't have to set its frame
-            ray_d, pdf = uniform_sphere()
+            ray_d, pdf_dir = uniform_sphere()
             ray_o = self.pos
+            normal = ray_d
         elif self._type == 1:       # sampling cosine hemisphere for a given point
             mesh_num = mesh_cnt[self.obj_ref_id]
             normal   = AXIS_Y
@@ -122,9 +124,10 @@ class TaichiSource:
                 center = dvs[self.obj_ref_id, 0, 0]
                 radius = dvs[self.obj_ref_id, 0, 1][0]
                 ray_o  = center + normal * radius
-            local_d, pdf = cosine_hemisphere()
+            local_d, pdf_dir = cosine_hemisphere()
             ray_d, _R = delocalize_rotate(normal, local_d)
-        return ret_int, ray_o, ray_d, pdf, normal
+            pdf_pos = self.inv_area
+        return ret_int, ray_o, ray_d, pdf_pos, pdf_dir, normal
 
     @ti.func
     def eval_le(self, inci_dir: vec3, normal: vec3):
