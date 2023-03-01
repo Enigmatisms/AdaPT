@@ -9,7 +9,7 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="16"/>
+        <integer name="max_bounce" value="12"/>
         <integer name="num_shadow_ray" value="4"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
@@ -22,8 +22,8 @@
 		</transform>
 
 		<film type="film">
-			<integer name="width" value="720"/>
-			<integer name="height" value="720"/>
+			<integer name="width" value="512"/>
+			<integer name="height" value="512"/>
 			<integer name="sub_samples" value="8"/>
 		</film>
 	</sensor>

@@ -99,7 +99,6 @@ class TaichiSource:
     @ti.func
     def sample_le(self, dvs: ti.template(), normals: ti.template(), mesh_cnt: ti.template()):
         """ Sample a point on the emitter and sample a random ray without ref point """
-        ret_int = self.intensity
         ray_o   = ZERO_V3
         ray_d   = AXIS_Y
         normal  = AXIS_Y
@@ -112,7 +111,6 @@ class TaichiSource:
             normal = ray_d
         elif self._type == 1:       # sampling cosine hemisphere for a given point
             mesh_num = mesh_cnt[self.obj_ref_id]
-            normal   = AXIS_Y
             if mesh_num:
                 tri_id = ti.random(int) % mesh_num       # ASSUME that triangles are similar in terms of area
                 normal = normals[self.obj_ref_id, tri_id]
@@ -127,7 +125,7 @@ class TaichiSource:
             local_d, pdf_dir = cosine_hemisphere()
             ray_d, _R = delocalize_rotate(normal, local_d)
             pdf_pos = self.inv_area
-        return ret_int, ray_o, ray_d, pdf_pos, pdf_dir, normal
+        return self.intensity, ray_o, ray_d, pdf_pos, pdf_dir, normal
 
     @ti.func
     def eval_le(self, inci_dir: vec3, normal: vec3):

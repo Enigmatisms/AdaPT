@@ -102,7 +102,7 @@ class PathTracer(TracerBase):
         """
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
-        ret_pdf      = 1.0
+        ret_pdf  = 1.0
         if is_mi:
             if in_free_space:       # sample world medium
                 ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
@@ -191,7 +191,10 @@ class PathTracer(TracerBase):
     
     @ti.func
     def get_associated_obj(self, emit_id: int):
-        return ti.select(emit_id >= 0, self.src_field[emit_id].obj_ref_id, -1)
+        ret_obj_id = -1
+        if emit_id >= 0:
+            ret_obj_id = self.src_field[emit_id].obj_ref_id
+        return ret_obj_id
 
 if __name__ == "__main__":
     options = get_options()

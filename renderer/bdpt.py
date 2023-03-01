@@ -69,9 +69,9 @@ class BDPT(VolumeRenderer):
                         radiance, raster_p = self.connect_path(i, j, s, t)
                         if t == 1 and raster_p.min() >= 0:      # non-local contribution
                             ri, rj = raster_p
-                            self.color[ri, rj] += ti.select(ti.math.isnan(radiance), 0., radiance)      # this op should be atomic
+                            self.color[ri, rj] += ti.select(ti.math.isnan(radiance) | ti.math.isinf(radiance), 0., radiance)      # this op should be atomic
                         else:                                   # local contribution
-                            self.color[i, j] += ti.select(ti.math.isnan(radiance), 0., radiance)
+                            self.color[i, j] += ti.select(ti.math.isnan(radiance) | ti.math.isinf(radiance), 0., radiance)
             # TODO: Synchronization will introduce overhead? (Is ti.sync necessary?)
             self.pixels[i, j] = self.color[i, j] / self.cnt[None]
     
@@ -155,10 +155,10 @@ class BDPT(VolumeRenderer):
             # Step 4: ray termination test - RR termination and max bounce. If ray terminates, we won't have to sample
             if vertex_num >= self.max_bounce:
                 break
-            # if throughput.max() < 1e-4: break
-            max_value = throughput.max()
-            if ti.random(float) > max_value: break
-            else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
+            if throughput.max() < 1e-4: break
+            # max_value = throughput.max()
+            # if ti.random(float) > max_value: break
+            # else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
             prev_vid = vertex_num - 1
 
             # Step 5: sample new ray. This should distinguish between surface and medium interactions
@@ -170,11 +170,11 @@ class BDPT(VolumeRenderer):
 
             # Step 6: re-evaluate backward PDF
             pdf_bwd = ray_pdf
-            if not is_mi:   # If current sampling exists on the surface
-                pdf_bwd = self.surface_pdf(obj_id, -old_ray_d, normal, -ray_d)
             if is_delta:
                 ray_pdf = 0.0
                 pdf_bwd = 0.
+            elif not is_mi: # If current sampling exists on the surface
+                pdf_bwd = self.surface_pdf(obj_id, -old_ray_d, normal, -ray_d)
             # ray_o is the position of the current vertex, which is used in prev vertex pdf_bwd
             if transport_mode == TRANSPORT_RAD:         # Camera transport mode
                 self.cam_paths[i, j, prev_vid].set_pdf_bwd(pdf_bwd, ray_o)
@@ -319,10 +319,10 @@ class BDPT(VolumeRenderer):
                     sum_ri += ri
                 not_delta = next_not_delta
 
-        if idx_s > 0:                        # sid can be 0, 
+        if idx_s >= 0:                        # sid can be 0, 
             ri = ti.select(s_sampled, sampled_v.pdf_ratio(), self.light_paths[i, j, idx_s].pdf_ratio())
             not_delta = False
-            if idx_s > 0 and self.light_paths[i, j, idx_s - 1].is_connectible():
+            if idx_s >= 0 and self.light_paths[i, j, ti.max(idx_s - 1, 0)].is_connectible():
                 not_delta = True
                 sum_ri += ri
             while idx_s >= 1:
@@ -336,7 +336,6 @@ class BDPT(VolumeRenderer):
         # Recover from the backup values
         for idx in ti.static(range(2)):
             if tid - 1 - idx >= 0: self.cam_paths[i, j, tid - 1 - idx].pdf_bwd = backup[idx]
-        for idx in ti.static(range(2)):
             if sid - 1 - idx >= 0: self.light_paths[i, j, sid - 1 - idx].pdf_bwd = backup[idx + 2]
 
         return 1. / (1. + sum_ri)
@@ -392,7 +391,7 @@ class BDPT(VolumeRenderer):
         pdf_pos = 1.
         pdf_dir = 1.
         if dot_normal > 0.:     # No need to rasterize again
-            pdf_dir /=  (self.A * ti.pow(dot_normal, 3))
+            pdf_dir /= (self.A * ti.pow(dot_normal, 3))
         else:
             pdf_pos = 0.
             pdf_dir = 0.

@@ -37,7 +37,7 @@ class Vertex:
         diff_vec = self.pos - prev_point
         inv_norm2 = 1. / diff_vec.norm_sqr()
         pdf *= inv_norm2
-        if self._type == 0 or self._type == 2:      # camera has no normal, for now (pin-hole)
+        if self._type == 0 or (self._type == 2 and self.is_connectible()):      # camera has no normal, for now (pin-hole)
             pdf *= ti.abs(tm.dot(self.normal, diff_vec * ti.sqrt(inv_norm2)))
         self.pdf_bwd = pdf
 
