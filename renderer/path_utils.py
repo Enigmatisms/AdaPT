@@ -21,7 +21,7 @@ class Vertex:
     _type:      ti.i8       # 0 for surface, 1 for medium, 2 for light, 3 for camera
     obj_id:     ti.i8       # hit object (BSDF) id
     emit_id:    ti.i8       # if the vertex is on a area emitter, just store the emitter info
-    bool_bits:  ti.i8       # bit value: [0: is_delta, 1: in_free_space, 2-8: reserved]
+    bool_bits:  ti.i8       # bit value: [0: is_delta, 1: in_free_space, 2: vertex is on the light (which by itself is not a light vertex), 3-8: reserved]
 
     pdf_fwd:    float      # forward pdf
     pdf_bwd:    float      # backward pdf
@@ -37,7 +37,7 @@ class Vertex:
         diff_vec = self.pos - prev_point
         inv_norm2 = 1. / diff_vec.norm_sqr()
         pdf *= inv_norm2
-        if self._type == 0 or (self._type == 2 and self.is_connectible()):      # camera has no normal, for now (pin-hole)
+        if self._type == 0 or self._type == 2:      # camera has no normal, for now (pin-hole)
             pdf *= ti.abs(tm.dot(self.normal, diff_vec * ti.sqrt(inv_norm2)))
         self.pdf_bwd = pdf
 
@@ -71,4 +71,8 @@ class Vertex:
     @ti.func
     def is_mi(self):
         return self._type == VERTEX_MEDIUM
+    
+    @ti.func
+    def is_light(self):
+        return (self._type == VERTEX_EMITTER) or (self.bool_bits & 0x04)
     

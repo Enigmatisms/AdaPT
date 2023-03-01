@@ -125,7 +125,7 @@ class TaichiSource:
             local_d, pdf_dir = cosine_hemisphere()
             ray_d, _R = delocalize_rotate(normal, local_d)
             pdf_pos = self.inv_area
-        return self.intensity, ray_o, ray_d, pdf_pos, pdf_dir, normal
+        return ray_o, ray_d, pdf_pos, pdf_dir, normal
 
     @ti.func
     def eval_le(self, inci_dir: vec3, normal: vec3):
