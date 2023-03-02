@@ -33,11 +33,13 @@ class VolumeRenderer(PathTracer):
     def get_transmittance(self, idx: int, in_free_space: int, depth: float):
         transmittance = vec3([1., 1., 1.])
         pdf = 1.0
-        if in_free_space and self.world.medium.is_scattering():
-            transmittance, pdf = self.world.medium.transmittance(depth)
-        elif self.bsdf_field[idx].medium.is_scattering():
-            # if not in_free_space, bsdf_field[idx] must be valid
-            transmittance, pdf = self.bsdf_field[idx].medium.transmittance(depth)
+        world_valid_scat = in_free_space and self.world_scattering
+        if world_valid_scat or self.is_scattering(idx):
+            if world_valid_scat:
+                transmittance, pdf = self.world.medium.transmittance(depth)
+            elif not in_free_space:
+                # if not in_free_space, bsdf_field[idx] must be valid
+                transmittance, pdf = self.bsdf_field[idx].medium.transmittance(depth)
         return transmittance, pdf
     
     @ti.func
@@ -69,14 +71,15 @@ class VolumeRenderer(PathTracer):
         return is_mi, mfp, beta
     
     @ti.func
-    def track_ray(self, ray, start_p, depth, div_pdf = True):
+    def track_ray(self, ray, start_p, depth):
         """ 
             For medium interaction, check if the path to one point is not blocked (by non-null surface object)
             And also we need to calculate the attenuation along the path, e.g.: if the ray passes through
             two clouds of smoke and between the two clouds there is a transparent medium
+            FIXME: the seed of this method should be boosted
         """
         tr = vec3([1., 1., 1.])
-        for _i in range(5):             # maximum tracking depth = 5 (corresponding to at most 2 clouds of smoke)
+        for _i in range(7):             # maximum tracking depth = 7 (corresponding to at most 2 clouds of smoke)
             obj_id, normal, min_depth = self.ray_intersect(ray, start_p, depth)
             if obj_id < 0: break        # does not intersect anything - break (point source in the void with no medium)
             # invalid medium can be "BRDF" or "transparent medium". Transparent medium has non-null surface, therefore invalid
@@ -84,15 +87,15 @@ class VolumeRenderer(PathTracer):
                 tr.fill(0.0)
                 break  
             in_free_space = tm.dot(normal, ray) < 0
-            transmittance, pdf = self.get_transmittance(obj_id, in_free_space, min_depth)
-            tr = ti.select(div_pdf, tr * transmittance / pdf, tr * transmittance)
+            transmittance, _p = self.get_transmittance(obj_id, in_free_space, min_depth)
+            tr *= transmittance
             start_p += ray * min_depth
             depth -= min_depth
-            if depth <= 1e-3: break     # reach the target point: break
+            if depth <= 2e-4: break     # reach the target point: break
         return tr
         
     @ti.kernel
-    def render(self):
+    def render(self, _t_start: int, _t_end: int, _s_start: int, _s_end: int):
         self.cnt[None] += 1
         for i, j in self.pixels:
             # TODO: MIS in VPT is not considered yet (too complex)

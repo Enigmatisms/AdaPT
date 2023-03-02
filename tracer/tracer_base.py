@@ -118,7 +118,7 @@ class TracerBase:
         """
         obj_id = -1
         tri_id = -1
-        min_depth = ti.select(min_depth > 0.0, min_depth - 5e-4, 1e7)
+        min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
         for aabb_idx in range(self.num_objects):
             aabb_intersect, t_near = self.aabb_test(aabb_idx, ray, start_p)
             if aabb_intersect == False: continue
@@ -133,7 +133,7 @@ class TracerBase:
                     mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
                     u, v, t = mat @ (start_p - p1)
                     if u >= 0 and v >= 0 and u + v <= 1.0:
-                        if t > 5e-4 and t < min_depth:
+                        if t > 1e-4 and t < min_depth:
                             min_depth = t
                             obj_id = aabb_idx
                             tri_id = mesh_idx
@@ -147,8 +147,8 @@ class TracerBase:
                 if c2ray_norm >= radius2: continue
                 ray_t = proj_norm
                 ray_cut = ti.sqrt(radius2 - c2ray_norm)
-                ray_t += ti.select(center_norm2 > radius2 + 5e-4, -ray_cut, ray_cut)
-                if ray_t > 5e-4 and ray_t < min_depth:
+                ray_t += ti.select(center_norm2 > radius2 + 1e-4, -ray_cut, ray_cut)
+                if ray_t > 1e-4 and ray_t < min_depth:
                     min_depth = ray_t
                     obj_id = aabb_idx
                     tri_id = -1
@@ -169,7 +169,7 @@ class TracerBase:
             Taichi does not support compile-time branching. Actually it does, but not flexible, for e.g \\
             C++ supports compile-time branching via template parameter, but Taichi can not "pass" compile-time constants
         """
-        depth = ti.select(depth > 0.0, depth - 5e-4, 1e7)
+        depth = ti.select(depth > 0.0, depth - 1e-4, 1e7)
         flag = False
         for aabb_idx in range(self.num_objects):
             aabb_intersect, t_near =  self.aabb_test(aabb_idx, ray, start_p)
@@ -184,7 +184,7 @@ class TracerBase:
                     mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
                     u, v, t = mat @ (start_p - p1)
                     if u >= 0 and v >= 0 and u + v <= 1.0:
-                        if t > 5e-4 and t < depth:
+                        if t > 1e-4 and t < depth:
                             flag = True
                             break
             else:
@@ -196,11 +196,11 @@ class TracerBase:
                 c2ray_norm = center_norm2 - proj_norm ** 2  # center to ray distance ** 2
                 if c2ray_norm >= radius2: continue
                 ray_t = proj_norm
-                if center_norm2 > radius2 + 5e-4:
+                if center_norm2 > radius2 + 1e-4:
                     ray_t -= ti.sqrt(radius2 - c2ray_norm)
                 else:
                     ray_t += ti.sqrt(radius2 - c2ray_norm)
-                if ray_t > 5e-4 and ray_t < depth:
+                if ray_t > 1e-4 and ray_t < depth:
                     flag = True
             if flag == True: break
         return flag

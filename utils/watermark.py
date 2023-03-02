@@ -22,7 +22,8 @@ def apply_watermark(raw, verbose = False):
         print(f"[INFO] pixel max value = {img.max():.3f}")
     h, w = water_mark.shape
     img[-w-1:-1, :h, :] += water_mark.T[..., None]
-    img /= np.quantile(img, 0.99)
+    print(img[317, 282], img[224, 67], img[240, 231], img[274, 197])
+    # img /= np.quantile(img, 0.99)
     return img
 
 if __name__ == "__main__":

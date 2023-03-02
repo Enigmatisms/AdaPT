@@ -38,7 +38,7 @@ if __name__ == "__main__":
     if options.no_gui:
         try:
             for iter_cnt in tqdm(range(max_iter_num)):
-                rdr.render()
+                rdr.render(1, 100, 0, 100)
         except KeyboardInterrupt:
             print("[QUIT] Quit on Keyboard interruptions")
     else:
@@ -50,7 +50,7 @@ if __name__ == "__main__":
             for e in window.get_events(tui.PRESS):
                 if e.key == tui.ESCAPE:
                     window.running = False
-            rdr.render()
+            rdr.render(2, 3, 2, 3)
             canvas.set_image(rdr.pixels)
             window.show()
             if window.running == False: break
@@ -58,4 +58,4 @@ if __name__ == "__main__":
     if options.profile:
         ti.profiler.print_kernel_profiler_info() 
     image = apply_watermark(rdr.pixels, True)
-    ti.tools.imwrite(image, f"{folder_path(options.output_path)}{options.img_name}-{options.name[:-4]}.{options.img_ext}")
+    ti.tools.imwrite(image, f"{folder_path(options.output_path)}{options.img_name}-{options.name[:-4]}-{options.type}.{options.img_ext}")

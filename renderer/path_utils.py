@@ -37,7 +37,7 @@ class Vertex:
         diff_vec = self.pos - prev_point
         inv_norm2 = 1. / diff_vec.norm_sqr()
         pdf *= inv_norm2
-        if self._type == 0 or self._type == 2:      # camera has no normal, for now (pin-hole)
+        if self.has_normal():      # camera has no normal, for now (pin-hole)
             pdf *= ti.abs(tm.dot(self.normal, diff_vec * ti.sqrt(inv_norm2)))
         self.pdf_bwd = pdf
 
@@ -45,10 +45,14 @@ class Vertex:
     def convert_density(self, next_v: ti.template(), pdf, ray):
         """ Vertex method for converting solid angle density to unit area measure """
         depth = ray.norm()
-        ray  /= depth
-        if next_v.on_surface():
-            pdf *= ti.abs(tm.dot(next_v.normal, ray))
-        return pdf / (depth * depth)
+        if depth > 0:
+            ray /= depth
+            if next_v.has_normal():
+                pdf *= ti.abs(tm.dot(next_v.normal, ray))
+            pdf /= (depth * depth)
+        else:
+            pdf = 0.
+        return pdf
 
     @ti.func
     def is_connectible(self):
@@ -60,9 +64,9 @@ class Vertex:
         return self.bool_bits & 0x02
     
     @ti.func
-    def on_surface(self):
-        # The vertex on the surface or vertex is on an [area] emitter
-        return (self._type == VERTEX_SURFACE) or (self._type == VERTEX_EMITTER and self.is_connectible())
+    def has_normal(self):
+        # Point Source / Area Source / Surface interaction vertex all have a normal
+        return (self.normal != ZERO_V3).any()
     
     @ti.func
     def pdf_ratio(self):
