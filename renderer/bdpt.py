@@ -20,6 +20,7 @@ from renderer.path_utils import Vertex
 from renderer.constants import *
 
 vec2i = ttype.vector(2, int)
+MAX_BOUNCE = 16
 
 @ti.data_oriented
 class BDPT(VolumeRenderer):
@@ -31,15 +32,14 @@ class BDPT(VolumeRenderer):
 
         self.path_nodes = ti.root.dense(ti.ij, (self.w, self.h))
         # light vertex is not included, therefore +1
-        self.path_nodes.bitmasked(ti.k, self.max_bounce + 1).place(self.light_paths)       
+        self.path_nodes.bitmasked(ti.k, MAX_BOUNCE + 1).place(self.light_paths)       
         # camera vertex and extra light vertex is not included, therefore + 2
-        self.path_nodes.bitmasked(ti.k, self.max_bounce + 1).place(self.cam_paths)        
+        self.path_nodes.bitmasked(ti.k, MAX_BOUNCE + 1).place(self.cam_paths)        
         self.inv_cam_r = self.cam_r.inverse()
         self.cam_normal = (self.cam_r @ vec3([0, 0, 1])).normalized()
 
         # self.A is the area of the imaging space on z = 1 plane
         self.A = float(self.w * self.h) * (self.inv_focal * self.inv_focal)
-        self.max_depth = self.max_bounce
         # TODO: whether the camera is placed inside of an object
         self.free_space_cam = True
         
@@ -47,18 +47,18 @@ class BDPT(VolumeRenderer):
         self.init_time = 0.      
 
     @ti.kernel
-    def render(self, t_start: int, t_end: int, s_start: int, s_end: int):
+    def render(self, t_start: int, t_end: int, s_start: int, s_end: int, max_bnc: int, max_depth: int):
         self.cnt[None] += 1
         for i, j in self.pixels:
-            cam_vnum = self.generate_eye_path(i, j) + 1
-            lit_vnum = self.generate_light_path(i, j) + 1
+            cam_vnum = self.generate_eye_path(i, j, max_bnc) + 1
+            lit_vnum = self.generate_light_path(i, j, max_bnc) + 1
             # print(f"Processing {i}, {j},  = {cam_vnum}, {lit_vnum}")
             s_end_i = ti.min(lit_vnum, s_end)
             t_end_i = ti.min(cam_vnum, t_end)
             for t in range(t_start, t_end_i):
                 for s in range(s_start, s_end_i):
                     depth = s + t - 2
-                    if (s == 1 and t == 1) or depth < 0 or depth > self.max_depth:
+                    if (s == 1 and t == 1) or depth < 0 or depth > max_depth:
                         continue
                     multi_light_con = (t > 1) and (s > 0) and (self.cam_paths[i, j, t - 1]._type == VERTEX_EMITTER)
                     if not multi_light_con:
@@ -75,19 +75,19 @@ class BDPT(VolumeRenderer):
         self.path_nodes.deactivate_all()
 
     @ti.func
-    def generate_eye_path(self, i: int, j: int):
+    def generate_eye_path(self, i: int, j: int, max_bnc: int):
         ray_d = self.pix2ray(i, j)
         dot_ray = tm.dot(ray_d, self.cam_normal)
         _, pdf_dir = self.pdf_camera(dot_ray)
-        # Starting vertex assignment
+        # Starting vertex assignment, note that camera should be a connectible vertex
         self.cam_paths[i, j, 0] = Vertex(_type = VERTEX_CAMERA, obj_id = -1, emit_id = -1, 
-            bool_bits = (self.free_space_cam << 1) + 1, time = self.init_time,
+            bool_bits = BDPT.get_bool(p_delta = True, in_fspace = self.free_space_cam), time = self.init_time,
             normal = self.cam_normal, pos = self.cam_t, ray_in = ZERO_V3, beta = vec3([1., 1., 1.])
         )
-        return self.random_walk(i, j, self.cam_t, ray_d, pdf_dir, ONES_V3, TRANSPORT_RAD) + 1
+        return self.random_walk(i, j, max_bnc, self.cam_t, ray_d, pdf_dir, ONES_V3, TRANSPORT_RAD) + 1
 
     @ti.func
-    def generate_light_path(self, i: int, j: int):
+    def generate_light_path(self, i: int, j: int, max_bnc: int):
         # TODO: emitter emitting time is not set
         emitter, emitter_pdf, _ , emit_id = self.sample_light()
         ray_o, ray_d, pdf_pos, pdf_dir, normal = emitter.sample_le(self.precom_vec, self.normals, self.mesh_cnt)
@@ -101,11 +101,11 @@ class BDPT(VolumeRenderer):
         if pdf_dir > 0. and ret_int.max() > 0. and vertex_pdf > 0.:      # black emitter / inpossible direction 
             beta = ret_int * ti.abs(tm.dot(ray_d, normal)) / (vertex_pdf * pdf_dir)
             # Why we need to put beta in here?
-            vertex_num = self.random_walk(i, j, ray_o, ray_d, pdf_dir, beta, TRANSPORT_IMP) + 1
+            vertex_num = self.random_walk(i, j, max_bnc, ray_o, ray_d, pdf_dir, beta, TRANSPORT_IMP) + 1
         return vertex_num
 
     @ti.func
-    def random_walk(self, i: int, j: int, init_ray_o, init_ray_d, pdf: float, beta, transport_mode: int):
+    def random_walk(self, i: int, j: int, max_bnc: int, init_ray_o, init_ray_d, pdf: float, beta, transport_mode: int):
         """ Random walk to generate path 
             pdf: initial pdf for this path
             transport mode: whether it is radiance or importance, 0 is camera radiance, 1 is light importance
@@ -145,7 +145,7 @@ class BDPT(VolumeRenderer):
             # Step 3: Create a new vertex and calculate pdf_fwd
             pdf_fwd = BDPT.convert_density(ray_pdf, diff_vec, normal, is_mi)
             is_delta = (not is_mi) and self.is_delta(obj_id)
-            bool_bits = BDPT.get_bool_bits(is_delta, in_free_space, hit_light >= 0)
+            bool_bits = BDPT.get_bool(d_delta = is_delta, is_area = (hit_light >= 0), in_fspace = in_free_space)
             vertex_args = {"_type": ti.select(is_mi, VERTEX_MEDIUM, VERTEX_SURFACE), "obj_id": obj_id, "emit_id": hit_light, 
                 "bool_bits": bool_bits, "pdf_fwd": pdf_fwd, "time": acc_time, "pos": hit_point,
                 "normal": ti.select(is_mi, ZERO_V3, normal), "ray_in": ray_d, "beta": throughput                
@@ -156,7 +156,7 @@ class BDPT(VolumeRenderer):
                 self.cam_paths[i, j, vertex_num] = Vertex(**vertex_args) 
 
             # Step 4: ray termination test - RR termination and max bounce. If ray terminates, we won't have to sample
-            if vertex_num >= self.max_bounce:
+            if vertex_num >= max_bnc:
                 break
             if throughput.max() < 1e-4: break
             prev_vid = vertex_num - 1
@@ -207,7 +207,7 @@ class BDPT(VolumeRenderer):
                 # camera importance is valid / visible / radiance transferable
                 if cam_pdf > 0. and tr2cam.max() > 0:
                     fr2cam = self.eval(int(vertex.obj_id), vertex.ray_in, ray_d, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_IMP)
-                    bool_bits = self.get_bool_bits(True, self.free_space_cam, False)
+                    bool_bits = BDPT.get_bool(True, in_fspace = self.free_space_cam)
                     sampled_v = Vertex(_type = VERTEX_CAMERA, obj_id = -1, emit_id = -1, 
                         bool_bits = bool_bits, time = vertex.time + depth, 
                         normal = self.cam_normal, pos = self.cam_t, ray_in = ray_d, beta = we / cam_pdf
@@ -452,8 +452,8 @@ class BDPT(VolumeRenderer):
     
     @staticmethod
     @ti.func
-    def get_bool_bits(delta: int, in_fspace: int, is_light: int = False) -> ti.u8:
-        return delta | (in_fspace << 1) | (is_light << 2)
+    def get_bool(p_delta = False, d_delta = False, is_area = False, is_inf = False, in_fspace = True):
+        return p_delta | (d_delta << 1) | (is_area << 2) | (is_inf << 3) | (in_fspace << 4)
     
     def summary(self):
         print(f"[INFO] BDPT Finished rendering. SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s")

@@ -21,7 +21,9 @@ class Vertex:
     _type:      ti.i8       # 0 for surface, 1 for medium, 2 for light, 3 for camera
     obj_id:     ti.i8       # hit object (BSDF) id
     emit_id:    ti.i8       # if the vertex is on a area emitter, just store the emitter info
-    bool_bits:  ti.i8       # bit value: [0: is_delta, 1: in_free_space, 2: vertex is on the light (which by itself is not a light vertex), 3-8: reserved]
+
+    # Bool bits: [0 pos delta, 1 dir delta, 2 is area, 3 is inifite, 4 is in free space, others reserved]
+    bool_bits:  ti.i8
 
     pdf_fwd:    float      # forward pdf
     pdf_bwd:    float      # backward pdf
@@ -56,12 +58,24 @@ class Vertex:
 
     @ti.func
     def is_connectible(self):
-        # the [0]th bit of bool bits indicates whether the vertex is delta, if NOT delta then it's connectible
-        return (self.bool_bits & 0x01) == 0
+        connectible = False
+        if self._type == VERTEX_CAMERA or self._type == VERTEX_MEDIUM:
+            connectible = True
+        elif self._type == VERTEX_SURFACE or self._type == VERTEX_EMITTER:
+            connectible = (self.bool_bits & 0x02) == 0          # not directional delta
+        return connectible
+    
+    @ti.func
+    def set_bool(self, p_delta = False, d_delta = False, is_area = False, is_inf = False, in_fspace = True):
+        self.bool_bits = p_delta | (d_delta << 1) | (is_area << 2) | (is_inf << 3) | (in_fspace << 4)
+    
+    @ti.func
+    def is_infinite(self):
+        return self.bool_bits & 0x08
         
     @ti.func
     def is_in_free_space(self):
-        return self.bool_bits & 0x02
+        return self.bool_bits & 0x10
     
     @ti.func
     def has_normal(self):

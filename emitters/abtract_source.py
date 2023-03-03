@@ -29,18 +29,32 @@ class TaichiSource:
     """
     _type:      int      # 0 Point, 1 Area, 2 Spot, 3 Directional
     obj_ref_id: int      # Referring to the attaching object
+
+    # Bool bits: [0 pos delta, 1 dir delta, 2 is area, 3 is inifite, 4 is in free space, others reserved]
     bool_bits:  int      # indicate whether the source is a delta source / inside free space
     intensity:  vec3
     pos:        vec3
     inv_area:   float      # inverse area (for non-point emitters, like rect-area or mesh attached emitters)
 
     @ti.func
-    def is_delta_source(self):
+    def is_delta_pos(self):             # 0-th bits
         return self.bool_bits & 0x01
     
     @ti.func
-    def in_free_space(self):
+    def is_delta_dir(self):             # 1-th bits
         return self.bool_bits & 0x02
+    
+    @ti.func
+    def is_area(self):                  # 2-th bits
+        return self.bool_bits & 0x04
+    
+    @ti.func
+    def is_infite(self):                # 3-th bits
+        return self.bool_bits & 0x08
+
+    @ti.func
+    def in_free_space(self):            # 4-th bits
+        return self.bool_bits & 0x10
 
     @ti.func
     def distance_attenuate(self, x: vec3):
