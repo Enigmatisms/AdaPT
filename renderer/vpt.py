@@ -95,7 +95,7 @@ class VolumeRenderer(PathTracer):
         return tr
         
     @ti.kernel
-    def render(self, _t_start: int, _t_end: int, _s_start: int, _s_end: int):
+    def render(self, _t_start: int, _t_end: int, _s_start: int, _s_end: int, _a: int, _b: int):
         self.cnt[None] += 1
         for i, j in self.pixels:
             # TODO: MIS in VPT is not considered yet (too complex)

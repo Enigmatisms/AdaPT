@@ -50,7 +50,7 @@ if __name__ == "__main__":
             for e in window.get_events(tui.PRESS):
                 if e.key == tui.ESCAPE:
                     window.running = False
-            rdr.render(1, 100, 0, 100, 8, 8)
+            rdr.render(1, 100, 0, 100, 12, 12)
             canvas.set_image(rdr.pixels)
             window.show()
             if window.running == False: break

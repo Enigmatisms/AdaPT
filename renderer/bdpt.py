@@ -113,6 +113,7 @@ class BDPT(VolumeRenderer):
             TODO: Extensive logic check and debug should be done here.
             can not reassign function parameter (non-scalar): https://github.com/taichi-dev/taichi/pull/3607
         """
+        last_v_pos = init_ray_o
         ray_o      = init_ray_o
         ray_d      = init_ray_d
         throughput = beta
@@ -143,13 +144,14 @@ class BDPT(VolumeRenderer):
                 continue
 
             # Step 3: Create a new vertex and calculate pdf_fwd
-            pdf_fwd = BDPT.convert_density(ray_pdf, diff_vec, normal, is_mi)
+            pdf_fwd = BDPT.convert_density(ray_pdf, hit_point - last_v_pos, normal, is_mi)
             is_delta = (not is_mi) and self.is_delta(obj_id)
             bool_bits = BDPT.get_bool(d_delta = is_delta, is_area = (hit_light >= 0), in_fspace = in_free_space)
             vertex_args = {"_type": ti.select(is_mi, VERTEX_MEDIUM, VERTEX_SURFACE), "obj_id": obj_id, "emit_id": hit_light, 
                 "bool_bits": bool_bits, "pdf_fwd": pdf_fwd, "time": acc_time, "pos": hit_point,
                 "normal": ti.select(is_mi, ZERO_V3, normal), "ray_in": ray_d, "beta": throughput                
             }
+            last_v_pos = hit_point
             if transport_mode == TRANSPORT_IMP:         # Camera path
                 self.light_paths[i, j, vertex_num] = Vertex(**vertex_args) 
             else:                          # Light path
