@@ -61,16 +61,16 @@
 	<bsdf type="det-refraction" id="scattering">
 		<rgb name="k_d" value="#FAFAFA"/>
 		<medium type="hg">
-			<rgb name="u_a" value="0.1"/>
-			<rgb name="u_s" value="0.1"/>
-			<rgb name="par" value="0.5"/>
+			<rgb name="u_a" value="0.05"/>
+			<rgb name="u_s" value="0.2"/>
+			<rgb name="par" value="0.0"/>
 			<float name="ior" value="1.5"/>
 		</medium>
 	</bsdf>
 
 	<emitter type="rect_area" id="rect_area">
 		<rgb name="emission" value="30.0, 30.0, 30.0"/>
-		<rgb name="scaler" value="1.5"/>
+		<rgb name="scaler" value="0.5"/>
 	</emitter>
 
 	<!-- <emitter type="point" id="point">

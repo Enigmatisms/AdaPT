@@ -58,7 +58,7 @@ class Medium_np:
         )
     
     def __repr__(self):
-        return f"<Medium {self.type_name.capitalize()} with ior {self.ior:.3f}, extinction: {self.u_e}>"
+        return f"<Medium {self.type_name.capitalize()} with ior {self.ior:.3f}, extinction: {self.u_e}, scattering: {self.u_s}>"
 
 @ti.dataclass
 class Medium:
@@ -75,15 +75,9 @@ class Medium:
     
     @ti.func
     def transmittance(self, depth: float):
-        transmittance = ti.exp(-self.u_e * depth)
         # transmitted without being scattered (PDF)
-        pdf = self.pdf_no_scatter(depth)
-        return transmittance, pdf
+        return ti.exp(-self.u_e * depth)
     
-    @ti.func
-    def pdf_no_scatter(self, depth):
-        return ti.max(ti.exp(-self.u_e * depth).sum() / 3., 1e-5)      # self.u_e * depth < 11.5 (log 1e-5 \approx -11.5)
-
     @ti.func
     def sample_mfp(self, max_depth):
         random_ue = random_rgb(self.u_e)
@@ -92,12 +86,16 @@ class Medium:
         is_medium_interact = False
         if sample_t >= max_depth:
             sample_t = max_depth
-            pdf = self.pdf_no_scatter(max_depth)
-            beta =  ti.exp(-self.u_e * max_depth) / pdf
+            tr = ti.exp(-self.u_e * max_depth)
+            pdf = tr.sum() / 3.
+            pdf = ti.select(pdf > 0., pdf, 1.)
+            beta = tr / pdf
         else:
             is_medium_interact = True
-            pdf = (self.u_e * ti.exp(-self.u_e * sample_t)).sum() / 3.
-            beta =  ti.exp(-self.u_e * sample_t) * self.u_s / pdf
+            tr = ti.exp(-self.u_e * sample_t)
+            pdf = (self.u_e * tr).sum() / 3.
+            pdf = ti.select(pdf > 0., pdf, 1.)
+            beta =  tr * self.u_s / pdf
         return is_medium_interact, sample_t, beta
     
     # ================== medium sampling & eval =======================

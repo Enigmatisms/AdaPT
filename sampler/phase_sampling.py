@@ -17,7 +17,7 @@ pi_inv = 1. / tm.pi
 def sample_hg(g: float):
     """ H-G sphere sampling: returns sampled direction and cos_theta """
     cos_theta = 0.
-    if ti.abs(g) < 1e-3:
+    if ti.abs(g) < 1e-4:
         cos_theta = 1. - 2. * ti.random(float)
     else:
         g2 = g * g

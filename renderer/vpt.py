@@ -32,15 +32,14 @@ class VolumeRenderer(PathTracer):
     @ti.func
     def get_transmittance(self, idx: int, in_free_space: int, depth: float):
         transmittance = vec3([1., 1., 1.])
-        pdf = 1.0
         world_valid_scat = in_free_space and self.world_scattering
         if world_valid_scat or self.is_scattering(idx):
             if world_valid_scat:
-                transmittance, pdf = self.world.medium.transmittance(depth)
+                transmittance = self.world.medium.transmittance(depth)
             elif not in_free_space:
                 # if not in_free_space, bsdf_field[idx] must be valid
-                transmittance, pdf = self.bsdf_field[idx].medium.transmittance(depth)
-        return transmittance, pdf
+                transmittance = self.bsdf_field[idx].medium.transmittance(depth)
+        return transmittance
     
     @ti.func
     def non_null_surface(self, idx: int):
@@ -79,19 +78,21 @@ class VolumeRenderer(PathTracer):
             FIXME: the seed of this method should be boosted
         """
         tr = vec3([1., 1., 1.])
+        cur_point = start_p
+        cur_ray = ray.normalized()
         for _i in range(7):             # maximum tracking depth = 7 (corresponding to at most 2 clouds of smoke)
-            obj_id, normal, min_depth = self.ray_intersect(ray, start_p, depth)
+            obj_id, normal, min_depth = self.ray_intersect(cur_ray, cur_point, depth)
             if obj_id < 0: break        # does not intersect anything - break (point source in the void with no medium)
             # invalid medium can be "BRDF" or "transparent medium". Transparent medium has non-null surface, therefore invalid
             if self.non_null_surface(obj_id):        # non-null surface blocks the ray path, break
                 tr.fill(0.0)
                 break  
-            in_free_space = tm.dot(normal, ray) < 0
-            transmittance, _p = self.get_transmittance(obj_id, in_free_space, min_depth)
+            in_free_space = tm.dot(normal, cur_ray) < 0
+            transmittance = self.get_transmittance(obj_id, in_free_space, min_depth)
             tr *= transmittance
-            start_p += ray * min_depth
+            cur_point += cur_ray * min_depth
             depth -= min_depth
-            if depth <= 2e-4: break     # reach the target point: break
+            if depth <= 1e-4: break     # reach the target point: break
         return tr
         
     @ti.kernel
@@ -118,6 +119,10 @@ class VolumeRenderer(PathTracer):
                 # Calculate mfp, path_beta = transmittance / PDF
                 is_mi, min_depth, path_beta = self.sample_mfp(obj_id, in_free_space, min_depth) 
                 hit_point = ray_d * min_depth + ray_o
+                throughput *= path_beta         # attenuate first
+                if not is_mi and not self.non_null_surface(obj_id):
+                    ray_o = hit_point
+                    continue
                 hit_light = -1 if is_mi else self.emitter_id[obj_id]
                 # Step 4: direct component estimation
                 emitter_pdf = 1.0
@@ -135,8 +140,7 @@ class VolumeRenderer(PathTracer):
                         to_emitter  = emit_pos - hit_point
                         emitter_d   = to_emitter.norm()
                         light_dir   = to_emitter / emitter_d
-                        # TODO: should we divide the transimattance by pdf here?
-                        tr = self.track_ray(to_emitter, hit_point, emitter_d)
+                        tr = self.track_ray(light_dir, hit_point, emitter_d)
                         shadow_int *= tr
                         direct_spec = self.eval(obj_id, ray_d, light_dir, normal, is_mi, in_free_space)
                     else:       # the only situation for being invalid, is when there is only one source and the ray hit the source
@@ -153,9 +157,9 @@ class VolumeRenderer(PathTracer):
                 # Step 6: sample new ray. This should distinguish between surface and medium interactions
                 ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, is_mi, in_free_space)
                 ray_o = hit_point
-                throughput *= path_beta         # attenuate first
                 color += (direct_int + emit_int) * throughput
-                throughput *= (indirect_spec / ray_pdf)
+                if not is_mi:
+                    throughput *= (indirect_spec / ray_pdf)
 
             self.color[i, j] += ti.select(ti.math.isnan(color), 0., color)
             self.pixels[i, j] = self.color[i, j] / self.cnt[None]

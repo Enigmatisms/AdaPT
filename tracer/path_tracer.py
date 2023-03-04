@@ -42,8 +42,10 @@ class PathTracer(TracerBase):
         self.stratified_sample  = prop['stratified_sampling']   # whether to use stratified sampling
         self.use_mis            = prop['use_mis']               # whether to use multiple importance sampling
         self.num_shadow_ray     = prop['num_shadow_ray']        # number of shadow samples to trace
-        assert(self.num_shadow_ray >= 1)
-        self.inv_num_shadow_ray = 1. / float(self.num_shadow_ray)
+        if self.num_shadow_ray > 0:
+            self.inv_num_shadow_ray = 1. / float(self.num_shadow_ray)
+        else:
+            self.inv_num_shadow_ray = 1.
         
         self.world              = prop['world'].export()        # world (free space / ambient light / background props)
         # for object with attached light source, emitter id stores the reference id to the emitter

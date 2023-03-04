@@ -9,8 +9,8 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="8"/>
-        <integer name="num_shadow_ray" value="4"/>       
+        <integer name="max_bounce" value="12"/>
+        <integer name="num_shadow_ray" value="1"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
@@ -68,8 +68,8 @@
 	</bsdf>
 
 	<emitter type="rect_area" id="rect_area">
-		<rgb name="emission" value="50.0, 45.6, 42.3"/>
-		<rgb name="scaler" value="0.5"/>
+		<rgb name="emission" value="50.0, 50.0, 50.0"/>
+		<rgb name="scaler" value="1.0"/>
 	</emitter>
 
 	<shape type="obj">
@@ -122,7 +122,7 @@
 		<string name="filename" value="../meshes/cornell/cbox_largebox.obj"/>
 		<transform name="toWorld">
 			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
-			<translate x="0" y="0.01" z="0"/>
+			<translate x="0" y="0.002" z="0"/>
 		</transform>
 		<ref type="material" id="scattering"/>
 		
