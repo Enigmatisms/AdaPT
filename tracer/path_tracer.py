@@ -193,10 +193,7 @@ class PathTracer(TracerBase):
     
     @ti.func
     def get_associated_obj(self, emit_id: int):
-        ret_obj_id = -1
-        if emit_id >= 0:
-            ret_obj_id = self.src_field[emit_id].obj_ref_id
-        return ret_obj_id
+        return self.src_field[emit_id].obj_ref_id
 
 if __name__ == "__main__":
     options = get_options()

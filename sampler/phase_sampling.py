@@ -21,7 +21,7 @@ def sample_hg(g: float):
         cos_theta = 1. - 2. * ti.random(float)
     else:
         g2 = g * g
-        sqr_term = (1. - g2) / (1. - g + 2. * g * ti.random(float))
+        sqr_term = (1. - g2) / (1. + g - 2. * g * ti.random(float))
         cos_theta = (1. + g2 - sqr_term * sqr_term) / (2. * g)
     sin_theta = ti.sqrt(ti.max(0., 1. - cos_theta * cos_theta))
     phi = 2. * tm.pi * ti.random(ti.float32)

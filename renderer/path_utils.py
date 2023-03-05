@@ -35,8 +35,8 @@ class Vertex:
     beta:       vec3        # path throughput
 
     @ti.func
-    def set_pdf_bwd(self, pdf: float, prev_point: vec3):
-        diff_vec = self.pos - prev_point
+    def set_pdf_bwd(self, pdf: float, next_point: vec3):
+        diff_vec = self.pos - next_point
         inv_norm2 = 1. / diff_vec.norm_sqr()
         pdf *= inv_norm2
         if self.has_normal():      # camera has no normal, for now (pin-hole)
@@ -44,35 +44,12 @@ class Vertex:
         self.pdf_bwd = pdf
 
     @ti.func
-    def convert_density(self, next_v: ti.template(), pdf, ray):
-        """ Vertex method for converting solid angle density to unit area measure """
-        depth = ray.norm()
-        if depth > 0:
-            ray /= depth
-            if next_v.has_normal():
-                pdf *= ti.abs(tm.dot(next_v.normal, ray))
-            pdf /= (depth * depth)
-        else:
-            pdf = 0.
-        return pdf
-
-    @ti.func
     def is_connectible(self):
-        connectible = False
-        if self._type == VERTEX_CAMERA or self._type == VERTEX_MEDIUM:
-            connectible = True
-        elif self._type == VERTEX_SURFACE or self._type == VERTEX_EMITTER:
+        connectible = True
+        if self._type == VERTEX_SURFACE or self._type == VERTEX_EMITTER:
             connectible = (self.bool_bits & 0x02) == 0          # not directional delta
         return connectible
     
-    @ti.func
-    def set_bool(self, p_delta = False, d_delta = False, is_area = False, is_inf = False, in_fspace = True):
-        self.bool_bits = p_delta | (d_delta << 1) | (is_area << 2) | (is_inf << 3) | (in_fspace << 4)
-    
-    @ti.func
-    def is_infinite(self):
-        return self.bool_bits & 0x08
-        
     @ti.func
     def is_in_free_space(self):
         return self.bool_bits & 0x10

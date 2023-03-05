@@ -133,18 +133,6 @@ class BSDF:
                 if tm.dot(ref_dir, ray_in) > 1 - 1e-4:            # ray_in close to reflected dir
                     ret_int = self.k_d
         return ret_int
-    
-    # ========================= Null surface =========================
-    @ti.func
-    def sample_null(self, incid):
-        return incid, vec3([1, 1, 1]), 1.0
-    
-    @ti.func
-    def eval_null(self, ray_in: vec3, ray_out: vec3):
-        ret_int = vec3([0, 0, 0])
-        if tm.dot(ray_in, ray_out) > 1 - 1e-5:
-            ret_int = vec3([1, 1, 1])
-        return ret_int
     # ========================= General operations =========================
 
     @ti.func
@@ -179,22 +167,18 @@ class BSDF:
     # ========================= Surface interactions ============================
     @ti.func
     def eval_surf(self, incid: vec3, out: vec3, normal: vec3, medium, mode) -> vec3:
-        ret_spec = vec3([1, 1, 1])
+        ret_spec = vec3([0, 0, 0])
         if self._type == 0:
             ret_spec = self.eval_det_refraction(incid, out, normal, medium, mode)
-        if self._type == -1:
-            ret_spec = self.eval_null(incid, out)
         return ret_spec
     
     @ti.func
     def sample_surf_rays(self, incid: vec3, normal: vec3, medium, mode):
         # TODO: we need mode here (and in eval)
-        ret_dir  = vec3([0, 1, 0])
-        ret_spec = vec3([1, 1, 1])
-        pdf      = 1.0
+        ret_dir  = vec3([0, 0, 0])
+        ret_spec = vec3([0, 0, 0])
+        pdf      = 0.0
         if self._type == 0:
             ret_dir, ret_spec, pdf = self.sample_det_refraction(incid, normal, medium, mode)
-        elif self._type == -1:
-            ret_dir, ret_spec, pdf = self.sample_null(incid)
         return ret_dir, ret_spec, pdf
     

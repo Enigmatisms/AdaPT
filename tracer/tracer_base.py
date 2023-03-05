@@ -104,11 +104,9 @@ class TracerBase:
         """ AABB used to skip some of the objects """
         t_min = (self.aabbs[aabb_idx, 0] - ray_o) / ray
         t_max = (self.aabbs[aabb_idx, 1] - ray_o) / ray
-        t1 = ti.min(t_min, t_max)
-        t2 = ti.max(t_min, t_max)
-        t_near  = ti.max(ti.max(t1.x, t1.y), t1.z)
-        t_far   = ti.min(ti.min(t2.x, t2.y), t2.z)
-        return t_near < t_far, t_near
+        t_near = ti.min(t_min, t_max).max()
+        t_far = ti.max(t_min, t_max).min()
+        return (t_near < t_far) and t_far > 0, t_near
 
     @ti.func
     def ray_intersect(self, ray, start_p, min_depth = -1.0):
@@ -206,7 +204,7 @@ class TracerBase:
         return flag
 
     @ti.kernel
-    def render(self):
+    def render(self, t_start: int, t_end: int, s_start: int, s_end: int, max_bnc: int, max_depth: int):
         pass
 
     @ti.kernel

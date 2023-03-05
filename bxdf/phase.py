@@ -20,7 +20,7 @@ from renderer.constants import INV_2PI
 @ti.func
 def phase_hg(cos_theta: float, g: float):
     g2 = g * g
-    denom = 1. + g2 + 2. * g * cos_theta
+    denom = 1. + g2 - 2. * g * cos_theta
     return (1. - g2) / (ti.sqrt(denom) * denom) * 0.5 * INV_2PI
 
 # ============== Rayleigh ================

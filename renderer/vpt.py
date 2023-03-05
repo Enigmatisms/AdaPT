@@ -28,6 +28,16 @@ class VolumeRenderer(PathTracer):
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
         super().__init__(emitters, objects, prop)
         self.world_scattering = self.world.medium._type >= 0
+
+        min_val = vec3([1e3, 1e3, 1e3])
+        max_val = vec3([-1e3, -1e3, -1e3])
+        for i in range(self.num_objects):
+            min_val = ti.min(min_val, self.aabbs[i, 0])
+            max_val = ti.max(max_val, self.aabbs[i, 1])
+        
+        # world aabb for unbounded scene
+        self.w_aabb_min = ti.min(self.cam_t, min_val) - 0.1         
+        self.w_aabb_max = ti.max(self.cam_t, max_val) + 0.1
         
     @ti.func
     def get_transmittance(self, idx: int, in_free_space: int, depth: float):
@@ -76,6 +86,7 @@ class VolumeRenderer(PathTracer):
             And also we need to calculate the attenuation along the path, e.g.: if the ray passes through
             two clouds of smoke and between the two clouds there is a transparent medium
             FIXME: the seed of this method should be boosted
+            FIXME: unbounded scene problem only occurs when the source is point source and during vertex connection
         """
         tr = vec3([1., 1., 1.])
         cur_point = start_p
@@ -105,7 +116,9 @@ class VolumeRenderer(PathTracer):
             normal          = vec3([0, 1, 0])
             color           = vec3([0, 0, 0])
             throughput      = vec3([1, 1, 1])
-            for _i in range(self.max_bounce):
+            bounce = 0
+            while True:
+                # for _i in range(self.max_bounce):
                 # Step 1: ray termination test - Only RR termination is allowed
                 max_value = throughput.max()
                 if ti.random(float) > max_value: break
@@ -159,7 +172,11 @@ class VolumeRenderer(PathTracer):
                 ray_o = hit_point
                 color += (direct_int + emit_int) * throughput
                 if not is_mi:
+                    if indirect_spec.max() == 0. or ray_pdf == 0.: break
                     throughput *= (indirect_spec / ray_pdf)
+                bounce += 1
+                if bounce >= self.max_bounce:
+                    break
 
             self.color[i, j] += ti.select(ti.math.isnan(color), 0., color)
             self.pixels[i, j] = self.color[i, j] / self.cnt[None]

@@ -254,20 +254,22 @@ class BRDF:
         """ Direct component reflectance
             Every evaluation function does not output cosine weighted BSDF now
         """
-        ret_spec = vec3([1, 1, 1])
-        if self._type == 0:         # Blinn-Phong
-            ret_spec = self.eval_blinn_phong(incid, out, normal)
-        elif self._type == 1:       # Lambertian
-            ret_spec = self.eval_lambertian(out, normal)
-        elif self._type == 2:       # Specular
-            ret_spec = self.eval_specular(incid, out, normal)
-        elif self._type == 4:
-            ret_spec = self.eval_mod_phong(incid, out, normal)
-        elif self._type == 5:
-            R = rotation_between(vec3([0, 1, 0]), normal)
-            ret_spec = self.eval_frensel_blend(incid, out, normal, R)
-        else:
-            print(f"Warnning: unknown or unsupported BRDF type: {self._type} during evaluation.")
+        ret_spec = vec3([0, 0, 0])
+        # For reflection, incident (in reverse direction) & outdir should be in the same hemisphere defined by the normal 
+        if tm.dot(incid, normal) * tm.dot(out, normal) < 0:
+            if self._type == 0:         # Blinn-Phong
+                ret_spec = self.eval_blinn_phong(incid, out, normal)
+            elif self._type == 1:       # Lambertian
+                ret_spec = self.eval_lambertian(out, normal)
+            elif self._type == 2:       # Specular
+                ret_spec = self.eval_specular(incid, out, normal)
+            elif self._type == 4:
+                ret_spec = self.eval_mod_phong(incid, out, normal)
+            elif self._type == 5:
+                R = rotation_between(vec3([0, 1, 0]), normal)
+                ret_spec = self.eval_frensel_blend(incid, out, normal, R)
+            else:
+                print(f"Warnning: unknown or unsupported BRDF type: {self._type} during evaluation.")
         return ret_spec
     
     @ti.func
@@ -303,9 +305,10 @@ class BRDF:
         """
         pdf = 0.0
         dot_outdir = tm.dot(normal, outdir)
-        if dot_outdir > 0.:
+        dot_indir  = tm.dot(normal, incid)
+        if dot_outdir * dot_indir < 0.:         # same hemisphere         
             if self._type == 0:
-                pdf = dot_outdir * INV_PI      # dot is cosine term
+                pdf = dot_outdir * INV_PI       # dot is cosine term
             elif self._type == 1:
                 pdf = dot_outdir * INV_PI
             elif self._type == 4:

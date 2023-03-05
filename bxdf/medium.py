@@ -102,8 +102,8 @@ class Medium:
     
     @ti.func
     def sample_new_rays(self, incid: vec3):
-        ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
+        ret_dir  = incid
         ret_pdf  = 1.0
         if self.is_scattering():   # medium interaction - evaluate phase function (currently output a float)
             local_new_dir, ret_pdf = self.ph.sample_p(incid)     # local frame ray_dir should be transformed

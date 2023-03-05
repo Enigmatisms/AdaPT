@@ -23,7 +23,7 @@ class Renderer(PathTracer):
         super().__init__(emitters, objects, prop)
         
     @ti.kernel
-    def render(self, t_start: int, t_end: int, s_start: int, s_end: int):
+    def render(self, _t_start: int, _t_end: int, _s_start: int, _s_end: int, _a: int, _b: int):
         self.cnt[None] += 1
         for i, j in self.pixels:
             ray_d = self.pix2ray(i, j)
