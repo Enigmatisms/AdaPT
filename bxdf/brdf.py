@@ -293,7 +293,7 @@ class BRDF:
         elif self._type == 5:       # Frensel-Blend
             ret_dir, ret_spec, pdf = self.sample_frensel_blend(incid, normal)
         else:
-            print(f"Warnning: unknown or unsupported BRDF type: {self._type} during evaluation.")
+            print(f"Warnning: unknown or unsupported BRDF type: {self._type} during sampling.")
         return ret_dir, ret_spec, pdf
 
     @ti.func

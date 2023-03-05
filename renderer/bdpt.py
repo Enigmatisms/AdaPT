@@ -112,7 +112,6 @@ class BDPT(VolumeRenderer):
             pdf: initial pdf for this path
             transport mode: whether it is radiance or importance, 0 is camera radiance, 1 is light importance
             Before the random walk, corresponding initial vertex should be appended already
-            TODO: Extensive logic check and debug should be done here.
             can not reassign function parameter (non-scalar): https://github.com/taichi-dev/taichi/pull/3607
         """
         last_v_pos = init_ray_o
@@ -122,19 +121,28 @@ class BDPT(VolumeRenderer):
         vertex_num = 0
         acc_time   = 0.         # accumulated time
         ray_pdf    = pdf        # PDF is of solid angle measure, therefore should be converted
+        in_free_space = True
 
         while True:
             # Step 1: ray intersection
             obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
 
-            if obj_id < 0: break    # nothing is hit, break
+            if obj_id < 0:     
+                if not self.world_scattering: break     # nothing is hit, break
+                else:                                   # the world is filled with scattering medium
+                    min_depth = self.world_bound_time(ray_o, ray_d)
+                    in_free_space = True
+                    obj_id = -1
+            else:
+                in_free_space = tm.dot(normal, ray_d) < 0
+
             # FIXME: It is not good to break from here directly, since in the unbounded scene we can have rays pointing towards the void
             # FIXME: world boundary AABB (camera should be included)
-            in_free_space = tm.dot(normal, ray_d) < 0
             # Step 2: check for mean free path sampling
             # Calculate mfp, path_beta = transmittance / PDF
             is_mi, min_depth, path_beta = self.sample_mfp(obj_id, in_free_space, min_depth) 
-            throughput *= path_beta         # attenuate first
+            if obj_id < 0 and not is_mi: break  # exiting world bound
+            throughput *= path_beta             # attenuate first
             if throughput.max() < 1e-4: break
                 
             hit_point = ray_d * min_depth + ray_o

@@ -62,15 +62,15 @@
 		<rgb name="k_d" value="#FAFAFA"/>
 		<medium type="hg">
 			<rgb name="u_a" value="0.05"/>
-			<rgb name="u_s" value="0.2"/>
-			<rgb name="par" value="0.0"/>
+			<rgb name="u_s" value="1.0"/>
+			<rgb name="par" value="0.5"/>
 			<float name="ior" value="1.5"/>
 		</medium>
 	</bsdf>
 
 	<emitter type="rect_area" id="rect_area">
 		<rgb name="emission" value="30.0, 30.0, 30.0"/>
-		<rgb name="scaler" value="0.5"/>
+		<rgb name="scaler" value="0.6"/>
 	</emitter>
 
 	<!-- <emitter type="point" id="point">
@@ -123,8 +123,8 @@
 	</shape>
 
 	<shape type="sphere">
-		<point name="center" x="1.7" y="1.2" z="3.8"/>
-		<float name="radius" value="1.2"/>
+		<point name="center" x="1.7" y="1.4" z="3.4"/>
+		<float name="radius" value="1.4"/>
 		<ref type="material" id="white"/>
 	</shape>
 
@@ -132,9 +132,9 @@
 		<rgb name="skybox" value="0.0"/>
 		<rgb name="ambient" value="0.0"/>
 		<medium type="hg">
-			<rgb name="u_a" value="0.01"/>
-			<rgb name="u_s" value="0.1"/>
-			<rgb name="par" value="0.8"/>
+			<rgb name="u_a" value="0.05"/>
+			<rgb name="u_s" value="0.6"/>
+			<rgb name="par" value="0.1"/>
 			<float name="ior" value="1.0"/>
 		</medium>
 	</world>

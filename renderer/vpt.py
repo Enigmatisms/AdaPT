@@ -54,7 +54,8 @@ class VolumeRenderer(PathTracer):
     @ti.func
     def non_null_surface(self, idx: int):
         non_null = True
-        if not ti.is_active(self.brdf_nodes, idx):      # BRDF is non-null, BSDF can be non-null
+        # All these idx >= 0 check is for world scattering medium
+        if idx >= 0 and not ti.is_active(self.brdf_nodes, idx):      # BRDF is non-null, BSDF can be non-null
             non_null = self.bsdf_field[idx].is_non_null()
         return non_null
 
@@ -105,6 +106,12 @@ class VolumeRenderer(PathTracer):
             depth -= min_depth
             if depth <= 1e-4: break     # reach the target point: break
         return tr
+    
+    @ti.func
+    def world_bound_time(self, ray_o, ray_d):
+        t_min = (self.w_aabb_min - ray_o) / ray_d
+        t_max = (self.w_aabb_max - ray_o) / ray_d
+        return ti.max(t_min, t_max).min()
         
     @ti.kernel
     def render(self, _t_start: int, _t_end: int, _s_start: int, _s_end: int, _a: int, _b: int):

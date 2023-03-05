@@ -106,7 +106,7 @@ class TracerBase:
         t_max = (self.aabbs[aabb_idx, 1] - ray_o) / ray
         t_near = ti.min(t_min, t_max).max()
         t_far = ti.max(t_min, t_max).min()
-        return (t_near < t_far) and t_far > 0, t_near
+        return (t_near < t_far) and t_far > 0, t_near, t_far
 
     @ti.func
     def ray_intersect(self, ray, start_p, min_depth = -1.0):
@@ -118,7 +118,7 @@ class TracerBase:
         tri_id = -1
         min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
         for aabb_idx in range(self.num_objects):
-            aabb_intersect, t_near = self.aabb_test(aabb_idx, ray, start_p)
+            aabb_intersect, t_near, _f = self.aabb_test(aabb_idx, ray, start_p)
             if aabb_intersect == False: continue
             if t_near > min_depth: continue
             tri_num = self.mesh_cnt[aabb_idx]
@@ -170,7 +170,7 @@ class TracerBase:
         depth = ti.select(depth > 0.0, depth - 1e-4, 1e7)
         flag = False
         for aabb_idx in range(self.num_objects):
-            aabb_intersect, t_near =  self.aabb_test(aabb_idx, ray, start_p)
+            aabb_intersect, t_near, _f =  self.aabb_test(aabb_idx, ray, start_p)
             if aabb_intersect == False: continue
             if t_near > depth: continue
             tri_num = self.mesh_cnt[aabb_idx]
