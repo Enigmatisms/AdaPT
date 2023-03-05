@@ -9,7 +9,7 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="12"/>
+        <integer name="max_bounce" value="1"/>
         <integer name="num_shadow_ray" value="4"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
@@ -58,19 +58,25 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<emitter type="rect_area" id="rect_area">
+	<!-- <emitter type="rect_area" id="rect_area">
 		<rgb name="emission" value="50.0, 45.6, 42.3"/>
 		<rgb name="scaler" value="1.0"/>
-	</emitter>
+	</emitter> -->
 
-	<shape type="obj">
+	<!-- <shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
 		<transform name="toWorld">
 			<translate x="0" y="-0.001" z="0"/>
 		</transform>
 		<ref type="material" id="light"/>
 		<ref type="emitter" id="rect_area"/>
-	</shape>
+	</shape> -->
+
+	<emitter type="point" id="point">
+		<rgb name="emission" value="60.0, 60., 60.0"/>
+		<rgb name="scaler" value="0.15"/>
+		<point name="center" x="2.779" y="3.0" z="-1.0"/>
+	</emitter>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>

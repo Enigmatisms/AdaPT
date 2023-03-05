@@ -59,7 +59,7 @@ def rotation_between(fixed: vec3, target: vec3) -> mat3:
     ret_R = ti.Matrix.zero(float, 3, 3)
     if ti.abs(cos_theta) < 1. - 1e-5:
         normed_axis = axis.normalized()
-        ret_R = ti.Matrix.diag(3, cos_theta) + colv3((1 - cos_theta) * normed_axis) @ rowv3(normed_axis) + skew_symmetry(axis)
+        ret_R = ti.Matrix.diag(3, cos_theta) + ((1 - cos_theta) * colv3(*normed_axis)) @ rowv3(*normed_axis) + skew_symmetry(axis)
     else:
         ret_R = ti.Matrix.diag(3, tm.sign(cos_theta))
     return ret_R

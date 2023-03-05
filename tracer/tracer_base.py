@@ -96,7 +96,7 @@ class TracerBase:
             else:    # uniform sampling
                 vx = ti.random(float) * __inv_eps__ + __eps__
                 vy = ti.random(float) * __inv_eps__ + __eps__
-        cam_dir = vec3([(self.half_w + vx - pi) * self.inv_focal, (pj - self.half_h + vy) * self.inv_focal, 1.])
+        cam_dir = vec3([(self.half_w + vx - pi) * self.inv_focal, (pj - self.half_h - vy) * self.inv_focal, 1.])
         return (self.cam_r @ cam_dir).normalized()
 
     @ti.func
@@ -104,11 +104,9 @@ class TracerBase:
         """ AABB used to skip some of the objects """
         t_min = (self.aabbs[aabb_idx, 0] - ray_o) / ray
         t_max = (self.aabbs[aabb_idx, 1] - ray_o) / ray
-        t1 = ti.min(t_min, t_max)
-        t2 = ti.max(t_min, t_max)
-        t_near  = ti.max(ti.max(t1.x, t1.y), t1.z)
-        t_far   = ti.min(ti.min(t2.x, t2.y), t2.z)
-        return t_near < t_far, t_near
+        t_near = ti.min(t_min, t_max).max()
+        t_far = ti.max(t_min, t_max).min()
+        return (t_near < t_far) and t_far > 0, t_near, t_far
 
     @ti.func
     def ray_intersect(self, ray, start_p, min_depth = -1.0):
@@ -118,9 +116,9 @@ class TracerBase:
         """
         obj_id = -1
         tri_id = -1
-        min_depth = ti.select(min_depth > 0.0, min_depth - 5e-4, 1e7)
+        min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
         for aabb_idx in range(self.num_objects):
-            aabb_intersect, t_near = self.aabb_test(aabb_idx, ray, start_p)
+            aabb_intersect, t_near, _f = self.aabb_test(aabb_idx, ray, start_p)
             if aabb_intersect == False: continue
             if t_near > min_depth: continue
             tri_num = self.mesh_cnt[aabb_idx]
@@ -133,7 +131,7 @@ class TracerBase:
                     mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
                     u, v, t = mat @ (start_p - p1)
                     if u >= 0 and v >= 0 and u + v <= 1.0:
-                        if t > 5e-4 and t < min_depth:
+                        if t > 1e-4 and t < min_depth:
                             min_depth = t
                             obj_id = aabb_idx
                             tri_id = mesh_idx
@@ -147,8 +145,8 @@ class TracerBase:
                 if c2ray_norm >= radius2: continue
                 ray_t = proj_norm
                 ray_cut = ti.sqrt(radius2 - c2ray_norm)
-                ray_t += ti.select(center_norm2 > radius2 + 5e-4, -ray_cut, ray_cut)
-                if ray_t > 5e-4 and ray_t < min_depth:
+                ray_t += ti.select(center_norm2 > radius2 + 1e-4, -ray_cut, ray_cut)
+                if ray_t > 1e-4 and ray_t < min_depth:
                     min_depth = ray_t
                     obj_id = aabb_idx
                     tri_id = -1
@@ -169,10 +167,10 @@ class TracerBase:
             Taichi does not support compile-time branching. Actually it does, but not flexible, for e.g \\
             C++ supports compile-time branching via template parameter, but Taichi can not "pass" compile-time constants
         """
-        depth = ti.select(depth > 0.0, depth - 5e-4, 1e7)
+        depth = ti.select(depth > 0.0, depth - 1e-4, 1e7)
         flag = False
         for aabb_idx in range(self.num_objects):
-            aabb_intersect, t_near =  self.aabb_test(aabb_idx, ray, start_p)
+            aabb_intersect, t_near, _f =  self.aabb_test(aabb_idx, ray, start_p)
             if aabb_intersect == False: continue
             if t_near > depth: continue
             tri_num = self.mesh_cnt[aabb_idx]
@@ -184,7 +182,7 @@ class TracerBase:
                     mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
                     u, v, t = mat @ (start_p - p1)
                     if u >= 0 and v >= 0 and u + v <= 1.0:
-                        if t > 5e-4 and t < depth:
+                        if t > 1e-4 and t < depth:
                             flag = True
                             break
             else:
@@ -196,23 +194,22 @@ class TracerBase:
                 c2ray_norm = center_norm2 - proj_norm ** 2  # center to ray distance ** 2
                 if c2ray_norm >= radius2: continue
                 ray_t = proj_norm
-                if center_norm2 > radius2 + 5e-4:
+                if center_norm2 > radius2 + 1e-4:
                     ray_t -= ti.sqrt(radius2 - c2ray_norm)
                 else:
                     ray_t += ti.sqrt(radius2 - c2ray_norm)
-                if ray_t > 5e-4 and ray_t < depth:
+                if ray_t > 1e-4 and ray_t < depth:
                     flag = True
             if flag == True: break
         return flag
 
     @ti.kernel
-    def render(self):
+    def render(self, t_start: int, t_end: int, s_start: int, s_end: int, max_bnc: int, max_depth: int):
         pass
 
     @ti.kernel
     def reset(self):
-        for i, j in self.pixels:
-            self.pixels[i, j].fill(0.0)
+        pass
     
 if __name__ == "__main__":
     ti.init()

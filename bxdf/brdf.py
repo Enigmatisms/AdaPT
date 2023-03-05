@@ -17,11 +17,11 @@ from la.geo_optics import *
 from la.cam_transform import *
 from sampler.general_sampling import *
 from scene.general_parser import rgb_parse
+from renderer.constants import TRANSPORT_RAD, INV_PI
 
 __all__ = ['BRDF_np', 'BRDF']
 
 EPS = 1e-7
-INV_PI = 1. / tm.pi
 
 class BRDF_np:
     """
@@ -251,28 +251,33 @@ class BRDF:
 
     @ti.func
     def eval(self, incid: vec3, out: vec3, normal: vec3) -> vec3:
-        """ Direct component reflectance """
-        ret_spec = vec3([1, 1, 1])
-        if self._type == 0:         # Blinn-Phong
-            ret_spec = self.eval_blinn_phong(incid, out, normal)
-        elif self._type == 1:       # Lambertian
-            ret_spec = self.eval_lambertian(out, normal)
-        elif self._type == 2:       # Specular
-            ret_spec = self.eval_specular(incid, out, normal)
-        elif self._type == 4:
-            ret_spec = self.eval_mod_phong(incid, out, normal)
-        elif self._type == 5:
-            R = rotation_between(vec3([0, 1, 0]), normal)
-            ret_spec = self.eval_frensel_blend(incid, out, normal, R)
-        else:
-            print(f"Warnning: unknown or unsupported BRDF type: {self._type} during evaluation.")
+        """ Direct component reflectance
+            Every evaluation function does not output cosine weighted BSDF now
+        """
+        ret_spec = vec3([0, 0, 0])
+        # For reflection, incident (in reverse direction) & outdir should be in the same hemisphere defined by the normal 
+        if tm.dot(incid, normal) * tm.dot(out, normal) < 0:
+            if self._type == 0:         # Blinn-Phong
+                ret_spec = self.eval_blinn_phong(incid, out, normal)
+            elif self._type == 1:       # Lambertian
+                ret_spec = self.eval_lambertian(out, normal)
+            elif self._type == 2:       # Specular
+                ret_spec = self.eval_specular(incid, out, normal)
+            elif self._type == 4:
+                ret_spec = self.eval_mod_phong(incid, out, normal)
+            elif self._type == 5:
+                R = rotation_between(vec3([0, 1, 0]), normal)
+                ret_spec = self.eval_frensel_blend(incid, out, normal, R)
+            else:
+                print(f"Warnning: unknown or unsupported BRDF type: {self._type} during evaluation.")
         return ret_spec
-
+    
     @ti.func
     def sample_new_rays(self, incid: vec3, normal: vec3):
         """
             All the sampling function will return: (1) new ray (direction) \\
             (2) rendering equation transfer term (BRDF * cos term) (3) PDF
+            mode for separating camera / light transport cosine term
         """
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
@@ -281,14 +286,14 @@ class BRDF:
             ret_dir, ret_spec, pdf = self.sample_blinn_phong(incid, normal)
         elif self._type == 1:       # Lambertian
             ret_dir, ret_spec, pdf = self.sample_lambertian(normal)
-        elif self._type == 2:       # Specular
+        elif self._type == 2:       # Specular - specular has no cosine attenuation
             ret_dir, ret_spec, pdf = self.sample_specular(incid, normal)
         elif self._type == 4:       # Modified-Phong
             ret_dir, ret_spec, pdf = self.sample_mod_phong(incid, normal)
         elif self._type == 5:       # Frensel-Blend
             ret_dir, ret_spec, pdf = self.sample_frensel_blend(incid, normal)
         else:
-            print(f"Warnning: unknown or unsupported BRDF type: {self._type} during evaluation.")
+            print(f"Warnning: unknown or unsupported BRDF type: {self._type} during sampling.")
         return ret_dir, ret_spec, pdf
 
     @ti.func
@@ -300,20 +305,20 @@ class BRDF:
         """
         pdf = 0.0
         dot_outdir = tm.dot(normal, outdir)
-        if self._type == 0:
-            pdf = tm.max(dot_outdir, 0.0) * INV_PI      # dot is cosine term
-        elif self._type == 1:
-            pdf = tm.max(dot_outdir, 0.0) * INV_PI
-        elif self._type == 4:
-            if dot_outdir > 0.0:
+        dot_indir  = tm.dot(normal, incid)
+        if dot_outdir * dot_indir < 0.:         # same hemisphere         
+            if self._type == 0:
+                pdf = dot_outdir * INV_PI       # dot is cosine term
+            elif self._type == 1:
+                pdf = dot_outdir * INV_PI
+            elif self._type == 4:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, normal)
                 dot_ref_out     = tm.max(0., tm.dot(reflect_view, outdir))
-                diffuse_pdf     = tm.max(dot_outdir, 0.0) * INV_PI
+                diffuse_pdf     = dot_outdir * INV_PI
                 specular_pdf    = 0.5 * (glossiness + 1.) * INV_PI * tm.pow(dot_ref_out, glossiness)
                 pdf = self.k_d.max() * diffuse_pdf + self.k_s.max() * specular_pdf
-        elif self._type == 5:
-            if dot_outdir > 0.0: 
+            elif self._type == 5:
                 half_vec = (outdir - incid).normalized()
                 dot_half = tm.dot(half_vec, normal)
                 R = rotation_between(vec3([0, 1, 0]), normal)

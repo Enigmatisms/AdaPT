@@ -23,7 +23,7 @@ class Renderer(PathTracer):
         super().__init__(emitters, objects, prop)
         
     @ti.kernel
-    def render(self):
+    def render(self, _t_start: int, _t_end: int, _s_start: int, _s_end: int, _a: int, _b: int):
         self.cnt[None] += 1
         for i, j in self.pixels:
             ray_d = self.pix2ray(i, j)
@@ -51,12 +51,12 @@ class Renderer(PathTracer):
                 direct_int  = vec3([0, 0, 0])
                 direct_spec = vec3([1, 1, 1])
                 for _j in range(self.num_shadow_ray):    # more shadow ray samples
-                    emitter, emitter_pdf, emitter_valid = self.sample_light(hit_light)
+                    emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
                     light_dir = vec3([0, 0, 0])
                     # direct / emission component evaluation
                     if emitter_valid:
-                        emit_pos, shadow_int, direct_pdf = emitter.         \
-                            sample(self.precom_vec, self.normals, self.mesh_cnt, hit_point)        # sample light
+                        emit_pos, shadow_int, direct_pdf, _n = emitter.         \
+                            sample_hit(self.precom_vec, self.normals, self.mesh_cnt, hit_point)        # sample light
                         to_emitter  = emit_pos - hit_point
                         emitter_d   = to_emitter.norm()
                         light_dir   = to_emitter / emitter_d
@@ -71,8 +71,8 @@ class Renderer(PathTracer):
                     light_pdf = emitter_pdf * direct_pdf
                     if ti.static(self.use_mis):
                         mis_w = 1.0
-                        if not emitter.is_delta:
-                            bsdf_pdf = self.get_pdf(obj_id, light_dir, normal, ray_d)
+                        if not emitter.is_delta_pos():
+                            bsdf_pdf = self.surface_pdf(obj_id, light_dir, normal, ray_d)
                             mis_w    = balance_heuristic(light_pdf, bsdf_pdf)
                         direct_int  += direct_spec * shadow_int * mis_w / emitter_pdf
                     else:

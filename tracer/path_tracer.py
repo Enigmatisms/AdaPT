@@ -21,6 +21,7 @@ from bxdf.bsdf import BSDF, BSDF_np
 from scene.opts import get_options
 from scene.obj_desc import ObjDescriptor
 from scene.xml_parser import mitsuba_parsing
+from renderer.constants import TRANSPORT_UNI, TRANSPORT_IMP
 
 from sampler.general_sampling import *
 from utils.tools import TicToc
@@ -41,14 +42,15 @@ class PathTracer(TracerBase):
         self.stratified_sample  = prop['stratified_sampling']   # whether to use stratified sampling
         self.use_mis            = prop['use_mis']               # whether to use multiple importance sampling
         self.num_shadow_ray     = prop['num_shadow_ray']        # number of shadow samples to trace
-        assert(self.num_shadow_ray >= 1)
-        self.inv_num_shadow_ray = 1. / float(self.num_shadow_ray)
+        if self.num_shadow_ray > 0:
+            self.inv_num_shadow_ray = 1. / float(self.num_shadow_ray)
+        else:
+            self.inv_num_shadow_ray = 1.
         
         self.world              = prop['world'].export()        # world (free space / ambient light / background props)
         # for object with attached light source, emitter id stores the reference id to the emitter
         self.emitter_id = ti.field(int, self.num_objects)   
                      
-        self.emit_max   = 1.0
         self.src_num    = len(emitters)
         self.color      = ti.Vector.field(3, float, (self.w, self.h))       # color without normalization
         self.src_field  = TaichiSource.field()
@@ -69,7 +71,6 @@ class PathTracer(TracerBase):
         for i, emitter in enumerate(emitters):
             self.src_field[i] = emitter.export()
             self.src_field[i].obj_ref_id = -1
-            self.emit_max = max(emitter.intensity.max(), self.emit_max)
         for i, obj in enumerate(objects):
             for j, (mesh, normal) in enumerate(zip(obj.meshes, obj.normals)):
                 self.normals[i, j] = vec3(normal) 
@@ -95,10 +96,15 @@ class PathTracer(TracerBase):
                 self.src_field[emitter_ref_id].obj_ref_id = i
 
     @ti.func
-    def sample_new_ray(self, idx: int, incid: vec3, normal: vec3, is_mi: int, in_free_space: int):
+    def sample_new_ray(self, idx: int, incid: vec3, normal: vec3, is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI):
+        """ Mode is for cosine term calculation: \\
+            For camera path, cosine term is computed against (ray_out and normal), \\
+            while for light path, cosine term is computed against ray_in and normal \\
+            This only affects surface interaction since medium interaction produce no cosine term
+        """
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
-        ret_pdf      = 1.0
+        ret_pdf  = 1.0
         if is_mi:
             if in_free_space:       # sample world medium
                 ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
@@ -108,11 +114,11 @@ class PathTracer(TracerBase):
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
                 ret_dir, ret_spec, ret_pdf = self.brdf_field[idx].sample_new_rays(incid, normal)
             else:                                       # directly sample surface
-                ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].sample_surf_rays(incid, normal, self.world.medium)
+                ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].sample_surf_rays(incid, normal, self.world.medium, mode)
         return ret_dir, ret_spec, ret_pdf
 
     @ti.func
-    def eval(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int) -> vec3:
+    def eval(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI) -> vec3:
         ret_spec = vec3([1, 1, 1])
         if is_mi:
             # FIXME: eval_phase and phase function currently return a float
@@ -124,11 +130,12 @@ class PathTracer(TracerBase):
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
                 ret_spec = self.brdf_field[idx].eval(incid, out, normal)
             else:                                       # directly evaluate surface
-                ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium)
+                ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium, mode)
         return ret_spec
     
     @ti.func
-    def get_pdf(self, idx: int, outdir: vec3, normal: vec3, incid: vec3):
+    def surface_pdf(self, idx: int, outdir: vec3, normal: vec3, incid: vec3):
+        """ Outdir: actual incident ray direction, incid: ray (from camera) """
         pdf = 0.
         if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
             pdf = self.brdf_field[idx].get_pdf(outdir, normal, incid)
@@ -137,24 +144,37 @@ class PathTracer(TracerBase):
         return pdf
     
     @ti.func
+    def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int):
+        pdf = 0.
+        if is_mi:   # evaluate phase function
+            if in_free_space:
+                pdf = self.world.medium.eval(incid, out)
+            else:
+                pdf = self.bsdf_field[idx].medium.eval(incid, out)
+        else:
+            pdf = self.surface_pdf(idx, out, normal, incid)
+        return pdf
+    
+    @ti.func
     def is_delta(self, idx: int):
         is_delta = False
-        if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-            is_delta = self.brdf_field[idx].is_delta
-        else:
-            is_delta = self.bsdf_field[idx].is_delta
+        if idx >= 0:
+            if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
+                is_delta = self.brdf_field[idx].is_delta
+            else:
+                is_delta = self.bsdf_field[idx].is_delta
         return is_delta
     
     @ti.func
     def is_scattering(self, idx: int):           # check if the object with index idx is a scattering medium
         # FIXME: if sigma_t is too small, set the scattering medium to det-refract
         is_scattering = False
-        if not ti.is_active(self.brdf_nodes, idx):
+        if idx >= 0 and not ti.is_active(self.brdf_nodes, idx):
             is_scattering = self.bsdf_field[idx].medium.is_scattering()
         return is_scattering
 
     @ti.func
-    def sample_light(self, no_sample: int):
+    def sample_light(self, no_sample: int = -1):
         """
             return selected light source, pdf and whether the current source is valid
             if can only sample <id = no_sample>, then the sampled source is invalid
@@ -170,7 +190,11 @@ class PathTracer(TracerBase):
                 idx = ti.random(int) % (self.src_num - 1)
                 if idx >= no_sample: idx += 1
                 pdf = 1. / float(self.src_num - 1)
-        return self.src_field[idx], pdf, valid_sample
+        return self.src_field[idx], pdf, valid_sample, idx
+    
+    @ti.func
+    def get_associated_obj(self, emit_id: int):
+        return self.src_field[emit_id].obj_ref_id
 
 if __name__ == "__main__":
     options = get_options()
