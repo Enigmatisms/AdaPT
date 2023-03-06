@@ -132,9 +132,9 @@
 		<rgb name="skybox" value="0.0"/>
 		<rgb name="ambient" value="0.0"/>
 		<medium type="hg">
-			<rgb name="u_a" value="0.05"/>
-			<rgb name="u_s" value="0.6"/>
-			<rgb name="par" value="0.1"/>
+			<rgb name="u_a" value="0.01"/>
+			<rgb name="u_s" value="0.2"/>
+			<rgb name="par" value="0.5"/>
 			<float name="ior" value="1.0"/>
 		</medium>
 	</world>

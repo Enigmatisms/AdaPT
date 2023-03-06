@@ -311,6 +311,10 @@ class BRDF:
                 pdf = dot_outdir * INV_PI       # dot is cosine term
             elif self._type == 1:
                 pdf = dot_outdir * INV_PI
+            elif self._type == 2:
+                reflect_view, _ = inci_reflect_dir(incid, normal)
+                if tm.dot(reflect_view, outdir) > 1 - 1e-4:
+                    pdf = 1.0
             elif self._type == 4:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, normal)
