@@ -54,7 +54,6 @@ class BDPT(VolumeRenderer):
         for i, j in self.pixels:
             cam_vnum = self.generate_eye_path(i, j, max_bnc) + 1
             lit_vnum = self.generate_light_path(i, j, max_bnc) + 1
-            # print(f"Processing {i}, {j},  = {cam_vnum}, {lit_vnum}")
             s_end_i = ti.min(lit_vnum, s_end)
             t_end_i = ti.min(cam_vnum, t_end)
             for t in range(t_start, t_end_i):
@@ -102,7 +101,6 @@ class BDPT(VolumeRenderer):
         vertex_num = 0
         if pdf_dir > 0. and ret_int.max() > 0. and vertex_pdf > 0.:      # black emitter / inpossible direction 
             beta = ret_int * ti.abs(tm.dot(ray_d, normal)) / (vertex_pdf * pdf_dir)
-            # Why we need to put beta in here?
             vertex_num = self.random_walk(i, j, max_bnc, ray_o, ray_d, pdf_dir, beta, TRANSPORT_IMP) + 1
         return vertex_num
 
@@ -136,8 +134,6 @@ class BDPT(VolumeRenderer):
             else:
                 in_free_space = tm.dot(normal, ray_d) < 0
 
-            # FIXME: It is not good to break from here directly, since in the unbounded scene we can have rays pointing towards the void
-            # FIXME: world boundary AABB (camera should be included)
             # Step 2: check for mean free path sampling
             # Calculate mfp, path_beta = transmittance / PDF
             is_mi, min_depth, path_beta = self.sample_mfp(obj_id, in_free_space, min_depth) 
@@ -217,7 +213,6 @@ class BDPT(VolumeRenderer):
                 in_free_space = vertex.is_in_free_space()
                 we, cam_pdf, raster_p = self.sample_camera(ray_d, depth)
                 tr2cam = self.track_ray(ray_d, vertex.pos, depth)        # calculate transmittance from vertex to camera
-                # Note that `get_pdf` and `eval` are direction dependent
                 # camera importance is valid / visible / radiance transferable
                 if cam_pdf > 0. and tr2cam.max() > 0:
                     fr2cam = self.eval(int(vertex.obj_id), vertex.ray_in, ray_d, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_IMP)

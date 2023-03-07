@@ -90,16 +90,23 @@ class VolumeRenderer(PathTracer):
             FIXME: unbounded scene problem only occurs when the source is point source and during vertex connection
         """
         tr = vec3([1., 1., 1.])
+        in_free_space = True
         cur_point = start_p
         cur_ray = ray.normalized()
         for _i in range(7):             # maximum tracking depth = 7 (corresponding to at most 2 clouds of smoke)
             obj_id, normal, min_depth = self.ray_intersect(cur_ray, cur_point, depth)
-            if obj_id < 0: break        # does not intersect anything - break (point source in the void with no medium)
+            if obj_id < 0:     
+                if not self.world_scattering: break     # nothing is hit, break
+                else:                                   # the world is filled with scattering medium
+                    min_depth = depth
+                    in_free_space = True
+                    obj_id = -1
+            else:
+                if self.non_null_surface(obj_id):        # non-null surface blocks the ray path, break
+                    tr.fill(0.0)
+                    break  
+                in_free_space = tm.dot(normal, cur_ray) < 0
             # invalid medium can be "BRDF" or "transparent medium". Transparent medium has non-null surface, therefore invalid
-            if self.non_null_surface(obj_id):        # non-null surface blocks the ray path, break
-                tr.fill(0.0)
-                break  
-            in_free_space = tm.dot(normal, cur_ray) < 0
             transmittance = self.get_transmittance(obj_id, in_free_space, min_depth)
             tr *= transmittance
             cur_point += cur_ray * min_depth
@@ -123,6 +130,7 @@ class VolumeRenderer(PathTracer):
             normal          = vec3([0, 1, 0])
             color           = vec3([0, 0, 0])
             throughput      = vec3([1, 1, 1])
+            in_free_space = True
             bounce = 0
             while True:
                 # for _i in range(self.max_bounce):
@@ -132,12 +140,18 @@ class VolumeRenderer(PathTracer):
                 else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
                 # Step 2: ray intersection
                 obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
-
-                if obj_id < 0: break                                # nothing is hit, break
-                in_free_space = tm.dot(normal, ray_d) < 0
+                if obj_id < 0:     
+                    if not self.world_scattering: break     # nothing is hit, break
+                    else:                                   # the world is filled with scattering medium
+                        min_depth = self.world_bound_time(ray_o, ray_d)
+                        in_free_space = True
+                        obj_id = -1
+                else:
+                    in_free_space = tm.dot(normal, ray_d) < 0
                 # Step 3: check for mean free path sampling
                 # Calculate mfp, path_beta = transmittance / PDF
                 is_mi, min_depth, path_beta = self.sample_mfp(obj_id, in_free_space, min_depth) 
+                if obj_id < 0 and not is_mi: break          # exiting world bound
                 hit_point = ray_d * min_depth + ray_o
                 throughput *= path_beta         # attenuate first
                 if not is_mi and not self.non_null_surface(obj_id):

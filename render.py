@@ -29,7 +29,10 @@ if __name__ == "__main__":
             default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path, debug = opts.debug)
     input_folder = os.path.join(opts.input_path, opts.scene)
     emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, opts.name)  # complex_cornell
-
+    output_folder = f"{folder_path(opts.output_path)}"
+    output_freq = opts.output_freq
+    if output_freq > 0:
+        output_folder = folder_path(f"{output_folder}{opts.img_name}-{opts.name[:-4]}-{opts.type}/")
     rdr: PathTracer = rdr_mapping[opts.type](emitter_configs, meshes, configs)
 
     max_iter_num = opts.iter_num if opts.iter_num > 0 else 10000
@@ -53,7 +56,7 @@ if __name__ == "__main__":
         if opts.type == "bdpt":
             print(f"[INFO] BDPT with {max_bounce} bounce(s), max depth: {max_depth}. Cam vertices [{eye_start}, {eye_end}], light vertices [{lit_start}, {lit_end}]")
         else:
-            print(f"[INFO] {name_mapping[opts.type]} with {max_bounce} bounce(s)")
+            print(f"[INFO] {name_mapping[opts.type]}Path Tracing with {max_bounce} bounce(s)")
         window   = tui.Window(f"{name_mapping[opts.type]}Path Tracing", res = (rdr.w, rdr.h))
         canvas = window.get_canvas()
         gui = window.get_gui()
@@ -66,6 +69,9 @@ if __name__ == "__main__":
             canvas.set_image(rdr.pixels)
             window.show()
             if window.running == False: break
+            if output_freq > 0 and iter_cnt % output_freq == 0:
+                image = rdr.pixels.to_numpy()
+                ti.tools.imwrite(image, f"{output_folder}img_{iter_cnt:05d}.{opts.img_ext}")
     rdr.summary()
     if opts.profile:
         ti.profiler.print_kernel_profiler_info() 

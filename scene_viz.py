@@ -24,6 +24,10 @@ from scene.xml_parser import mitsuba_parsing
 from scene.opts import get_options
 from utils.tools import folder_path
 
+"""
+    Todo: implement better viewing methods
+"""
+
 MAX_HEIGHT = 1024
 MAX_WIDTH  = 1024
 
@@ -79,6 +83,12 @@ class Visualizer(TracerBase):
     def set_rotation(self, rpy: np.ndarray):
         trans_r = Rot.from_euler("zxy", rpy, degrees = True).as_matrix()
         self.cam_r[None] = mat3(trans_r)
+
+    def local_to_global(self):
+        forward = self.cam_r[None] @ vec3([0, 0, 1])        # local z direction to global
+        lateral = self.cam_r[None] @ vec3([1, 0, 0])        # local x direction to global
+        elevate = self.cam_r[None] @ vec3([0, 1, 0])        # local y direction to global
+        return forward, lateral, elevate
 
     def initialze(self, objects: List[ObjDescriptor]):
         for i, obj in enumerate(objects):
@@ -147,8 +157,8 @@ if __name__ == "__main__":
     input_folder = os.path.join(options.input_path, options.scene)
     _, _, meshes, configs = mitsuba_parsing(input_folder, options.name)  # complex_cornell
 
-    bpt = Visualizer(meshes, configs)
-    init_R = Rot.from_matrix(bpt.cam_r[None].to_numpy()).as_euler('zxy', degrees = True)
+    viz = Visualizer(meshes, configs)
+    init_R = Rot.from_matrix(viz.cam_r[None].to_numpy()).as_euler('zxy', degrees = True)
 
     # GGUI initializations 
     window   = tui.Window('Scene Interactive Visualizer', res = (1024, 1024), pos = (150, 150))
@@ -157,23 +167,17 @@ if __name__ == "__main__":
     width    = gui.slider_int('Width', configs['film']['width'], 32, 1024)
     height   = gui.slider_int('Height', configs['film']['height'], 32, 1024)
     fov      = gui.slider_float('FoV', configs['fov'], 20., 80.)
-    trans_t  = get_translation(gui, *configs['transform'][1])
     trans_r  = get_rotation(gui, *init_R)
     reset_bt = gui.button('Reset')
 
     last_fov   = fov
     last_w     = width
     last_h     = height
-    last_t   = trans_t.copy()
     last_r   = trans_r.copy()
     while window.running:
-        for e in window.get_events(tui.PRESS):
-            if e.key == tui.ESCAPE:
-                window.running = False
-
         if gui.button('Reset'):
-            trans_t  = get_translation(gui, *configs['transform'][1])
             trans_r  = get_rotation(gui, *init_R)
+            print(trans_r)
             width    = configs['film']['width']
             height   = configs['film']['height']
             fov      = configs['fov']
@@ -181,28 +185,32 @@ if __name__ == "__main__":
         width   = gui.slider_int('Width', width, 32, 1024)
         height  = gui.slider_int('Height', height, 32, 1024)
         fov     = gui.slider_float('FoV', fov, 20., 80.)
-        trans_t = get_translation(gui, *trans_t)
         trans_r = get_rotation(gui, *trans_r)
         if abs(fov - last_fov) >= 0.1:
-            bpt.calculate_focal(fov)
+            viz.calculate_focal(fov)
             last_fov = fov
         if width != last_w:
-            bpt.set_width(width)
-            bpt.calculate_focal(fov)
+            viz.set_width(width)
+            viz.calculate_focal(fov)
             last_w    = width
         if height != last_h:
-            bpt.set_height(height)
-            bpt.calculate_focal(fov)
+            viz.set_height(height)
+            viz.calculate_focal(fov)
             last_h    = height
-        if (last_t - trans_t).any():
-            bpt.set_translation(trans_t)
-            last_t = trans_t.copy()
         if (last_r - trans_r).any():
-            bpt.set_rotation(trans_r)
+            viz.set_rotation(trans_r)
             last_r = trans_r.copy()
+        forward, lateral, elevate = viz.local_to_global()
+        if   window.is_pressed("w"):        viz.cam_t[None] += 0.2 * forward
+        elif window.is_pressed("s"):        viz.cam_t[None] -= 0.2 * forward
+        elif window.is_pressed("a"):        viz.cam_t[None] += 0.2 * lateral
+        elif window.is_pressed("d"):        viz.cam_t[None] -= 0.2 * lateral
+        elif window.is_pressed(tui.SPACE):  viz.cam_t[None] += 0.2 * elevate
+        elif window.is_pressed(tui.SHIFT):  viz.cam_t[None] -= 0.2 * elevate
+        elif window.is_pressed(tui.ESCAPE): window.running = False
         
-        bpt.render()
-        canvas.set_image(bpt.pixels)
+        viz.render()
+        canvas.set_image(viz.pixels)
         points = get_points(0.5 * width / MAX_WIDTH, 0.5 * height / MAX_HEIGHT)
         for i, pt in enumerate(points):
             vertex_field[i] = vec3(pt)
