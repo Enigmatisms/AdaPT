@@ -74,8 +74,7 @@ class BRDF_np:
             raise NotImplementedError(f"Unknown BRDF type: {self.type}")
         self.type_id = BRDF_np.__type_mapping[self.type]
         if self.type_id == 2:
-            if self.k_g.max() < 1e-4:       # glossiness (actually means roughness) in specular BRDF being too "small"
-                self.is_delta = True
+            self.is_delta = True
         elif self.type_id == 5:             # precomputed coefficient for Frensel Blend BRDF
             self.k_g[2] = np.sqrt((self.k_g[0] + 1) * (self.k_g[1] + 1)) / (8. * np.pi)
 
@@ -234,15 +233,6 @@ class BRDF:
 
     # ======================= Mirror-Specular ========================
     @ti.func
-    def eval_specular(self, ray_in: vec3, ray_out: vec3, normal: vec3):
-        """ Attention: ray_in (in backward tracing) is actually out-going direction (in forward tracing) """
-        reflect_dir, _ = inci_reflect_dir(ray_in, normal)
-        spec = vec3([0, 0, 0])
-        if tm.dot(ray_out, reflect_dir) > 1 - 1e-4:
-            spec = self.k_d
-        return spec
-
-    @ti.func
     def sample_specular(self, ray_in: vec3, normal: vec3):
         ray_out_d, _ = inci_reflect_dir(ray_in, normal)
         return ray_out_d, self.k_d, 1.0
@@ -261,15 +251,11 @@ class BRDF:
                 ret_spec = self.eval_blinn_phong(incid, out, normal)
             elif self._type == 1:       # Lambertian
                 ret_spec = self.eval_lambertian(out, normal)
-            elif self._type == 2:       # Specular
-                ret_spec = self.eval_specular(incid, out, normal)
             elif self._type == 4:
                 ret_spec = self.eval_mod_phong(incid, out, normal)
             elif self._type == 5:
                 R = rotation_between(vec3([0, 1, 0]), normal)
                 ret_spec = self.eval_frensel_blend(incid, out, normal, R)
-            else:
-                print(f"Warnning: unknown or unsupported BRDF type: {self._type} during evaluation.")
         return ret_spec
     
     @ti.func
@@ -311,10 +297,6 @@ class BRDF:
                 pdf = dot_outdir * INV_PI       # dot is cosine term
             elif self._type == 1:
                 pdf = dot_outdir * INV_PI
-            elif self._type == 2:
-                reflect_view, _ = inci_reflect_dir(incid, normal)
-                if tm.dot(reflect_view, outdir) > 1 - 1e-4:
-                    pdf = 1.0
             elif self._type == 4:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, normal)

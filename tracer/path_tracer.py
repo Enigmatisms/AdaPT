@@ -86,8 +86,10 @@ class PathTracer(TracerBase):
             self.mesh_cnt[i]    = obj.tri_num
             if type(obj.bsdf) == BSDF_np:
                 self.bsdf_field[i]  = obj.bsdf.export()
+                print(f"Object [{i}] = {obj}, bxdf = {obj.bsdf}")
             else:
                 self.brdf_field[i]  = obj.bsdf.export()
+                print(f"Object [{i}] = {obj}, bxdf = {obj.bsdf}")
             self.aabbs[i, 0]    = vec3(obj.aabb[0])        # unrolled
             self.aabbs[i, 1]    = vec3(obj.aabb[1])
             emitter_ref_id      = obj.emitter_ref_id
@@ -164,6 +166,16 @@ class PathTracer(TracerBase):
             else:
                 is_delta = self.bsdf_field[idx].is_delta
         return is_delta
+    
+    @ti.func
+    def get_bsdf_id(self, idx: int):
+        ret_id = -1
+        if idx >= 0:
+            if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
+                ret_id = self.brdf_field[idx]._type
+            else:
+                ret_id = self.bsdf_field[idx]._type + 10
+        return ret_id
     
     @ti.func
     def is_scattering(self, idx: int):           # check if the object with index idx is a scattering medium

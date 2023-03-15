@@ -20,7 +20,14 @@ from renderer.path_utils import Vertex
 from renderer.constants import *
 
 vec2i = ttype.vector(2, int)
-MAX_BOUNCE = 16
+MAX_BOUNCE = 24
+
+"""
+    Today todo: 
+    1. check non-weighted Le tonight, make sure everything is correct
+    2. The problem of t3s1 path weight being too small, might be the source of being incorrect
+    3. t4s1 path is also very small, it might be caused by incorrect weight, pdf (measure) or unreasonable path connection judgement
+"""
 
 @ti.data_oriented
 class BDPT(VolumeRenderer):
@@ -32,7 +39,7 @@ class BDPT(VolumeRenderer):
 
         self.path_nodes = ti.root.dense(ti.ij, (self.w, self.h))
         # light vertex is not included, therefore +1
-        if self.max_bounce > 16:
+        if self.max_bounce > 24:
             print("Warning: BDPT currently supports only upto 16 bounces per path (either eye or emitter).")
         self.path_nodes.bitmasked(ti.k, MAX_BOUNCE + 1).place(self.light_paths)       
         # camera vertex and extra light vertex is not included, therefore + 2
@@ -46,7 +53,7 @@ class BDPT(VolumeRenderer):
         self.free_space_cam = True
         
         # Initial time setting
-        self.init_time = 0.      
+        self.init_time = 0.     
 
     @ti.kernel
     def render(self, t_start: int, t_end: int, s_start: int, s_end: int, max_bnc: int, max_depth: int):
@@ -85,7 +92,7 @@ class BDPT(VolumeRenderer):
             bool_bits = BDPT.get_bool(p_delta = True, in_fspace = self.free_space_cam), time = self.init_time,
             normal = ZERO_V3, pos = self.cam_t, ray_in = ZERO_V3, beta = vec3([1., 1., 1.])
         )
-        return self.random_walk(i, j, max_bnc, self.cam_t, ray_d, pdf_dir, ONES_V3, TRANSPORT_RAD) + 1
+        return self.random_walk(i, j, max_bnc, self.cam_t, ray_d, pdf_dir, ONES_V3, TRANSPORT_UNI) + 1
 
     @ti.func
     def generate_light_path(self, i: int, j: int, max_bnc: int):
@@ -154,7 +161,8 @@ class BDPT(VolumeRenderer):
             pdf_fwd = BDPT.convert_density(ray_pdf, hit_point - last_v_pos, normal, is_mi)
             last_v_pos = hit_point
             is_delta = (not is_mi) and self.is_delta(obj_id)
-            bool_bits = BDPT.get_bool(d_delta = is_delta, is_area = (hit_light >= 0), in_fspace = in_free_space)
+            bool_bits = BDPT.get_bool(d_delta = is_delta, is_area = (hit_light >= 0), in_fspace = in_free_space, is_delta = is_delta)
+            
             vertex_args = {"_type": ti.select(is_mi, VERTEX_MEDIUM, VERTEX_SURFACE), "obj_id": obj_id, "emit_id": hit_light, 
                 "bool_bits": bool_bits, "pdf_fwd": pdf_fwd, "time": acc_time, "pos": hit_point,
                 "normal": ti.select(is_mi, ZERO_V3, normal), "ray_in": ray_d, "beta": throughput                
@@ -237,8 +245,10 @@ class BDPT(VolumeRenderer):
                 tr2light      = self.track_ray(to_emitter, vertex.pos, emitter_d)   # calculate transmittance from vertex to camera
                 # emitter should have non-zero emission / visible / transferable
                 if emit_int.max() > 0 and tr2light.max() > 0:
-                    fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, to_emitter, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_RAD)
+                    fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, to_emitter, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_UNI)
                     # TODO: emitter time should be set independently
+
+                    # TODO: Forward pdf should be checked
                     sampled_v   = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(int(vertex.emit_id)), 
                         emit_id = emit_id, bool_bits = emitter.bool_bits, time = 0., pdf_fwd = emitter.area_pdf() / float(self.src_num),
                         normal  = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf
@@ -256,7 +266,7 @@ class BDPT(VolumeRenderer):
                 lit_in_fspace = lit_v.is_in_free_space()
                 tr_con = self.track_ray(cam2lit_v, cam_v.pos, length)   # calculate transmittance from vertex to camera
                 if tr_con.max() > 0. and length > 0.:           # if not occluded
-                    fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_RAD)
+                    fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_UNI)
                     fr_lit = self.eval(int(lit_v.obj_id), lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP)
                     # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                     le = cam_v.beta * fr_cam * (tr_con / (length * length)) * fr_lit * lit_v.beta
@@ -265,7 +275,7 @@ class BDPT(VolumeRenderer):
             weight = 1.0
             if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
                 weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, i, j, sid, tid)
-        return weight * le, raster_p
+        return le * weight, raster_p
     
     @ti.func
     def update_endpoint(self, cam_end: ti.template(), lit_end: ti.template(), i: int, j: int, idx_t: int, idx_s: int):
@@ -286,7 +296,7 @@ class BDPT(VolumeRenderer):
                 self.pdf_light(cam_end, self.cam_paths[i, j, idx_t - 1])
 
     @ti.func
-    def bdpt_mis_weight(self, sampled_v: ti.template(), valid_sample: int, i: int, j: int, sid: int, tid: int):
+    def bdpt_mis_weight(self, sampled_v, valid_sample: int, i: int, j: int, sid: int, tid: int):
         """ Extensive logic check and debugging should be done 
             This is definitely the most complex part, logically
         """
@@ -314,29 +324,44 @@ class BDPT(VolumeRenderer):
             self.light_paths[i, j, idx_s] = sampled_v
         self.update_endpoint(self.cam_paths[i, j, idx_t], self.light_paths[i, j, ti.max(idx_s, 0)], i, j, idx_t, idx_s)
 
-        ri = ti.select(t_sampled, sampled_v.pdf_ratio(), self.cam_paths[i, j, idx_t].pdf_ratio())
+        ri = self.cam_paths[i, j, idx_t].pdf_ratio()
         # Avoid indexing one vertex of cam_paths / light_paths twice 
         not_delta = False
-        if idx_t > 0 and self.cam_paths[i, j, idx_t - 1].is_connectible():
+        debug_log = (i == 410) and (j == 201)
+        if idx_t > 0 and self.cam_paths[i, j, idx_t - 1].not_delta():
             not_delta = True
             sum_ri += ri
+        if debug_log:
+            print("Start recursive logging:")
+            tmp_ptr = idx_t
+            while tmp_ptr >= 0:
+                tmp_vertex = self.cam_paths[i, j, tmp_ptr]
+                print(f"Level: {int(tmp_ptr)}, object: {int(tmp_vertex.obj_id)}, emitter: {int(tmp_vertex.emit_id)}, bool: {int(tmp_vertex.bool_bits)}, _type: {int(tmp_vertex._type)}")
+                print(f"not_delta: {int(tmp_vertex.not_delta())}, FWD pdf: {float(tmp_vertex.pdf_fwd)}, BWD pdf: {float(tmp_vertex.pdf_bwd)}")
+                tmp_ptr -= 1
+            print("Current level:", idx_t, ", current ri:", ri, ", current sum_ri:", sum_ri, f", cam path prev:{int(self.cam_paths[i, j, idx_t - 1].bool_bits)}")
         while idx_t > 1:
             idx_t -= 1
             ri *= self.cam_paths[i, j, idx_t].pdf_ratio()
-            next_not_delta = self.cam_paths[i, j, idx_t - 1].is_connectible()
+            next_not_delta = self.cam_paths[i, j, idx_t - 1].not_delta()
             if not_delta and next_not_delta:
                 sum_ri += ri
             not_delta = next_not_delta
+            if debug_log:
+                print("Current level:", idx_t, ", current ri:", ri, ", current sum_ri:", sum_ri)
         if idx_s >= 0:                        # sid can be 0, 
-            ri = ti.select(s_sampled, sampled_v.pdf_ratio(), self.light_paths[i, j, idx_s].pdf_ratio())
+            ri = self.light_paths[i, j, idx_s].pdf_ratio()
             not_delta = False
-            if self.light_paths[i, j, ti.max(idx_s - 1, 0)].is_connectible():
+            # TODO: delta light judgement
+            if self.light_paths[i, j, ti.max(idx_s - 1, 0)].not_delta():
                 not_delta = True
                 sum_ri += ri
+            if debug_log:
+                print("Current level:", idx_s, ", current ri:", ri, ", current sum_ri:", sum_ri)
             while idx_s >= 1:
                 idx_s -= 1
                 ri *= self.light_paths[i, j, idx_s].pdf_ratio()
-                next_not_delta = self.light_paths[i, j, ti.max(idx_s - 1, 0)].is_connectible()
+                next_not_delta = self.light_paths[i, j, ti.max(idx_s - 1, 0)].not_delta()
                 if not_delta and next_not_delta:
                     sum_ri += ri
                 not_delta = next_not_delta
@@ -411,7 +436,7 @@ class BDPT(VolumeRenderer):
             Note that when calling `pdf`, self can never be VERTEX_CAMERA (you can check the logic)
         """
         pdf_sa = 0.
-        ray_out = next.pos -  cur.pos
+        ray_out = next.pos - cur.pos
         if cur._type == VERTEX_EMITTER:
             self.pdf_light(cur, next)
         elif cur._type == VERTEX_CAMERA:
@@ -454,16 +479,17 @@ class BDPT(VolumeRenderer):
         """ Convert solid angle density to unit area density
             next_nv, next_pos, next_mi: normal vector / position / is_mi for the next vertex
         """
-        inv_norm2 = 1. / diff_vec.norm_sqr()
-        pdf *= inv_norm2
-        if not next_mi:
-            pdf *= ti.abs(tm.dot(next_nv, diff_vec * ti.sqrt(inv_norm2)))
+        if pdf > 0.:
+            inv_norm2 = 1. / diff_vec.norm_sqr()
+            pdf *= inv_norm2
+            if not next_mi:
+                pdf *= ti.abs(tm.dot(next_nv, diff_vec * ti.sqrt(inv_norm2)))
         return pdf
     
     @staticmethod
     @ti.func
-    def get_bool(p_delta = False, d_delta = False, is_area = False, is_inf = False, in_fspace = True):
-        return p_delta | (d_delta << 1) | (is_area << 2) | (is_inf << 3) | (in_fspace << 4)
+    def get_bool(p_delta = False, d_delta = False, is_area = False, is_inf = False, in_fspace = True, is_delta = False):
+        return p_delta + (d_delta << 1) + (is_area << 2) + (is_inf << 3) + (in_fspace << 4) + (is_delta << 5)
     
     def summary(self):
         print(f"[INFO] BDPT Finished rendering. SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s")
