@@ -7,10 +7,10 @@
 This renderer is implemented based on **MY OWN** understanding of path tracing and other CG knowledge, therefore I **DO NOT** guarantee usability (also, I have done no verification experiments). The output results just... look decent:
 
 |         "The cornell spheres"          |         "The cornell boxes"         | "Fresnel Blend" |
-| :------------------------------------: | :---------------------------------: | -------------------------------------- |
-| ![](./assets/adapt-cornell-sphere.png) | ![](./assets/adapt-cornell-box.png) |  |
+| :------------------------------------: | :---------------------------------: | :------------------------------------: |
+| ![](./assets/adapt-cornell-sphere.png) | ![](./assets/adapt-cornell-box.png) | ![pbr-big-bdpt](https://user-images.githubusercontent.com/126778364/225679926-f75aab9f-0f47-4f45-ab4a-3ea7eaf34055.png)|
 |         "The cornell volume box"       |         "BDPT cbox 64 spp"         | "Giant mirror ball" |
-| ![adapt-volume-box](https://user-images.githubusercontent.com/46109954/223172315-18888c22-3699-42ba-801d-bbd054e9246b.png) | ![cbox-64-bdpt](https://user-images.githubusercontent.com/46109954/223172423-bec7ac02-8533-432e-9bef-4f02bb4ddbb9.png) |  |
+| ![pbr-cbox-bdpt](https://user-images.githubusercontent.com/126778364/225680094-8084c378-1533-4b74-871e-4524fff88f28.png)| ![cbox-64-bdpt](https://user-images.githubusercontent.com/46109954/223172423-bec7ac02-8533-432e-9bef-4f02bb4ddbb9.png) | ![pbr-single-ball-bdpt-single-ball](https://user-images.githubusercontent.com/126778364/225680022-ffeb3380-eeab-4beb-9bff-d3c631c36204.png)|
 
 
 
