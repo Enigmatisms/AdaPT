@@ -75,5 +75,5 @@ if __name__ == "__main__":
     rdr.summary()
     if opts.profile:
         ti.profiler.print_kernel_profiler_info() 
-    image = apply_watermark(rdr.pixels, True)
+    image = apply_watermark(rdr.pixels, opts.normalize, True)
     ti.tools.imwrite(image, f"{folder_path(opts.output_path)}{opts.img_name}-{opts.name[:-4]}-{opts.type}.{opts.img_ext}")

@@ -38,6 +38,8 @@ class BSDF_np(BRDF_np):
         self.medium = Medium_np(elem.find("medium"))
         self.is_delta = False
         self.setup()
+        if self.type_id == 0:
+            self.is_delta = True
         
         # for BSDF, there will be medium defined in it
 
@@ -87,22 +89,19 @@ class BSDF:
         ret_dir = vec3([0, 1, 0])
         ret_int = self.k_d
         if is_total_reflection(dot_normal, ni, nr):
-            # Only sample BSDF reflection
-            ret_dir = (incid - 2 * normal * dot_normal).normalized()
+            # ret_dir = (incid - 2 * normal * dot_normal).normalized()      # we can account for total reflection... or not
+            ret_int.fill(0.)
         else:
-            refra_vec, valid_ref = snell_refraction(incid, normal, dot_normal, ni, nr)
-            if valid_ref:
-                reflect_ratio = frensel_equation(ni, nr, ti.abs(dot_normal), ti.abs(tm.dot(refra_vec, normal)))
-                if ti.random(float) > reflect_ratio:        # refraction
-                    ret_pdf = 1. - reflect_ratio
-                    ret_dir = refra_vec
-                    if mode == TRANSPORT_RAD:       # non-symmetry effect
-                        ret_int *= (ni * ni) / (nr * nr)
-                else:                                       # reflection
-                    ret_dir = (incid - 2 * normal * dot_normal).normalized()
-                    ret_pdf = reflect_ratio
-            else:
+            refra_vec, _v = snell_refraction(incid, normal, dot_normal, ni, nr)
+            reflect_ratio = frensel_equation(ni, nr, ti.abs(dot_normal), ti.abs(tm.dot(refra_vec, normal)))
+            if ti.random(float) > reflect_ratio:        # refraction
+                ret_pdf = 1. - reflect_ratio
+                ret_dir = refra_vec
+                if mode == TRANSPORT_RAD:       # non-symmetry effect
+                    ret_int *= (ni * ni) / (nr * nr)
+            else:                                       # reflection
                 ret_dir = (incid - 2 * normal * dot_normal).normalized()
+                ret_pdf = reflect_ratio
         return ret_dir, ret_int * ret_pdf, ret_pdf
     
     @ti.func
@@ -115,7 +114,7 @@ class BSDF:
         ret_int = vec3([0, 0, 0])
         if is_total_reflection(dot_out, ni, nr):
             ref_dir = (ray_out - 2 * normal * dot_out).normalized()
-            if tm.dot(ref_dir, ray_in) > 1 - 1e-4:
+            if tm.dot(ref_dir, ray_in) > 1 - 5e-5:
                 ret_int = self.k_d
         else:
             # in sampling: ray_in points to the intersection, here ray_out points away from the intersection
@@ -123,24 +122,23 @@ class BSDF:
             refra_vec, valid_ref = snell_refraction(ray_out, normal, dot_out, ni, nr)
             if valid_ref:
                 reflect_ratio = frensel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, normal)))
-                if tm.dot(refra_vec, ray_in) > 1 - 1e-4:            # ray_in close to refracted dir
+                if tm.dot(refra_vec, ray_in) > 1 - 5e-5:            # ray_in close to refracted dir
                     ret_int = self.k_d * (1. - reflect_ratio)
                     if mode == TRANSPORT_RAD:    # consider non-symmetric effect due to different transport mode
                         ret_int *= (ni * ni) / (nr * nr)
-                elif tm.dot(ref_dir, ray_in) > 1 - 1e-4:            # ray_in close to reflected dir
+                elif tm.dot(ref_dir, ray_in) > 1 - 5e-5:            # ray_in close to reflected dir
                     ret_int = self.k_d * reflect_ratio
             else:
-                if tm.dot(ref_dir, ray_in) > 1 - 1e-4:            # ray_in close to reflected dir
+                if tm.dot(ref_dir, ray_in) > 1 - 5e-5:            # ray_in close to reflected dir
                     ret_int = self.k_d
         return ret_int
     # ========================= General operations =========================
 
     @ti.func
     def get_pdf(self, outdir: vec3, normal: vec3, incid: vec3, medium):
-        """ TODO: currently, deterministic refraction / Null transmission yields PDF = 0.0 """
         pdf = 0.
         if self._type == -1:
-            pdf = ti.select(tm.dot(incid, outdir) > 1 - 1e-4, 1., 0.)
+            pdf = ti.select(tm.dot(incid, outdir) > 1 - 5e-5, 1., 0.)
         elif self._type == 0:
             dot_out = tm.dot(outdir, normal)
             entering_this = dot_out < 0
@@ -151,12 +149,12 @@ class BSDF:
             refra_vec, valid_refra = snell_refraction(outdir, normal, dot_out, ni, nr)
             if valid_refra:             # not total reflection, so there is not only one possible choice
                 reflect_ratio = frensel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, normal)))
-                if tm.dot(refra_vec, incid) > 1 - 1e-4:            # ray_in close to refracted dir
+                if tm.dot(refra_vec, incid) > 1 - 5e-5:            # ray_in close to refracted dir
                     pdf = 1. - reflect_ratio
-                elif tm.dot(ref_dir, incid) > 1 - 1e-4:            # ray_in close to reflected dir
+                elif tm.dot(ref_dir, incid) > 1 - 5e-5:            # ray_in close to reflected dir
                     pdf = reflect_ratio
             else:
-                if tm.dot(ref_dir, incid) > 1 - 1e-4:
+                if tm.dot(ref_dir, incid) > 1 - 5e-5:
                     pdf = 1.
         return pdf
     

@@ -17,7 +17,7 @@ from la.geo_optics import *
 from la.cam_transform import *
 from sampler.general_sampling import *
 from scene.general_parser import rgb_parse
-from renderer.constants import TRANSPORT_RAD, INV_PI
+from renderer.constants import INV_PI, ZERO_V3
 
 __all__ = ['BRDF_np', 'BRDF']
 
@@ -74,8 +74,7 @@ class BRDF_np:
             raise NotImplementedError(f"Unknown BRDF type: {self.type}")
         self.type_id = BRDF_np.__type_mapping[self.type]
         if self.type_id == 2:
-            if self.k_g.max() < 1e-4:       # glossiness (actually means roughness) in specular BRDF being too "small"
-                self.is_delta = True
+            self.is_delta = True
         elif self.type_id == 5:             # precomputed coefficient for Frensel Blend BRDF
             self.k_g[2] = np.sqrt((self.k_g[0] + 1) * (self.k_g[1] + 1)) / (8. * np.pi)
 
@@ -176,6 +175,7 @@ class BRDF:
         reflected, dot_incid = inci_reflect_dir(incid, half)
         half_pdf = self.k_g[2] * tm.pow(tm.dot(half, normal), power_coeff)
         pdf = half_pdf / ti.max(ti.abs(dot_incid), EPS)
+
         valid_sample = tm.dot(normal, reflected) > 0.
         return reflected, pdf, valid_sample
     
@@ -214,9 +214,10 @@ class BRDF:
         local_new_dir, power_coeff = frensel_hemisphere(self.k_g[0], self.k_g[1])
         ray_half, R = delocalize_rotate(normal, local_new_dir)
         ray_out_d, pdf, is_valid = self.frensel_blend_dir(incid, ray_half, normal, power_coeff)
-        spec = vec3([0, 0, 0])
-        if is_valid:
-            spec = self.eval_frensel_blend(incid, ray_out_d, normal, R)
+        if ti.random(float) > 0.5:
+            ray_out_d, _s, _p = self.sample_lambertian(normal)
+        pdf = 0.5 * (pdf + ti.abs(tm.dot(ray_out_d, normal)) * INV_PI)
+        spec = ti.select(is_valid, self.eval_frensel_blend(incid, ray_out_d, normal, R), ZERO_V3)
         return ray_out_d, spec, pdf
     
     # ======================= Lambertian ========================
@@ -233,15 +234,6 @@ class BRDF:
         return ray_out_d, spec, pdf
 
     # ======================= Mirror-Specular ========================
-    @ti.func
-    def eval_specular(self, ray_in: vec3, ray_out: vec3, normal: vec3):
-        """ Attention: ray_in (in backward tracing) is actually out-going direction (in forward tracing) """
-        reflect_dir, _ = inci_reflect_dir(ray_in, normal)
-        spec = vec3([0, 0, 0])
-        if tm.dot(ray_out, reflect_dir) > 1 - 1e-4:
-            spec = self.k_d
-        return spec
-
     @ti.func
     def sample_specular(self, ray_in: vec3, normal: vec3):
         ray_out_d, _ = inci_reflect_dir(ray_in, normal)
@@ -261,15 +253,11 @@ class BRDF:
                 ret_spec = self.eval_blinn_phong(incid, out, normal)
             elif self._type == 1:       # Lambertian
                 ret_spec = self.eval_lambertian(out, normal)
-            elif self._type == 2:       # Specular
-                ret_spec = self.eval_specular(incid, out, normal)
             elif self._type == 4:
                 ret_spec = self.eval_mod_phong(incid, out, normal)
             elif self._type == 5:
                 R = rotation_between(vec3([0, 1, 0]), normal)
                 ret_spec = self.eval_frensel_blend(incid, out, normal, R)
-            else:
-                print(f"Warnning: unknown or unsupported BRDF type: {self._type} during evaluation.")
         return ret_spec
     
     @ti.func
@@ -311,10 +299,6 @@ class BRDF:
                 pdf = dot_outdir * INV_PI       # dot is cosine term
             elif self._type == 1:
                 pdf = dot_outdir * INV_PI
-            elif self._type == 2:
-                reflect_view, _ = inci_reflect_dir(incid, normal)
-                if tm.dot(reflect_view, outdir) > 1 - 1e-4:
-                    pdf = 1.0
             elif self._type == 4:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, normal)
@@ -327,5 +311,6 @@ class BRDF:
                 dot_half = tm.dot(half_vec, normal)
                 R = rotation_between(vec3([0, 1, 0]), normal)
                 cos_phi2, sin_phi2 = self.frensel_cos2_sin2(half_vec, normal, R, dot_half)
-                pdf = self.k_g[2] * tm.pow(dot_half, self.k_g[0] * cos_phi2 + self.k_g[1] * sin_phi2) * 4.
+                pdf = self.k_g[2] * tm.pow(dot_half, self.k_g[0] * cos_phi2 + self.k_g[1] * sin_phi2) / ti.abs(tm.dot(incid, half_vec))
+                pdf = 0.5 * (pdf + dot_outdir * INV_PI)
         return pdf

@@ -11,12 +11,12 @@
         <integer name="sample_count" value="128"/>
         <integer name="num_shadow_ray" value="1"/>       
 
-        <integer name="max_bounce" value="1"/>
-        <integer name="max_depth" value="1"/>       
-        <integer name="start_t" value="-1"/>       
-        <integer name="end_t" value="-1"/>       
-        <integer name="start_s" value="-1"/>       
-        <integer name="end_s" value="-1"/>       
+        <integer name="max_bounce" value="12"/>
+        <integer name="max_depth" value="12"/>       
+        <integer name="start_t" value="1"/>       
+        <integer name="end_t" value="100"/>       
+        <integer name="start_s" value="0"/>       
+        <integer name="end_s" value="100"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
@@ -64,18 +64,9 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<bsdf type="null" id="scattering">
-		<medium type="hg">
-			<rgb name="u_a" value="0.02"/>
-			<rgb name="u_s" value="1.0"/>
-			<rgb name="par" value="0.5"/>
-			<float name="ior" value="1.0"/>
-		</medium>
-	</bsdf>
-
 	<emitter type="rect_area" id="rect_area">
 		<rgb name="emission" value="50.0, 50.0, 50.0"/>
-		<rgb name="scaler" value="1.0"/>
+		<rgb name="scaler" value="1.5"/>
 	</emitter>
 
 	<shape type="obj">
@@ -130,7 +121,7 @@
 			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
 			<translate x="0" y="0.002" z="0"/>
 		</transform>
-		<ref type="material" id="scattering"/>
+		<ref type="material" id="box"/>
 		
 	</shape>
 
