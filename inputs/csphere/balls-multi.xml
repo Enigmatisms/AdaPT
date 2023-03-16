@@ -28,7 +28,7 @@
 		</film>
 	</sensor>
 
-	<brdf type="frensel-blend" id="frensel">
+	<brdf type="fresnel-blend" id="fresnel">
 		<rgb name="k_d" value="#CACACA"/>
 		<!-- <rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/> -->
@@ -151,7 +151,7 @@
 	<shape type="sphere">
 		<point name="center" x="4.2" y="0.5" z="4.1"/>
 		<float name="radius" value="0.5"/>
-		<ref type="material" id="frensel"/>
+		<ref type="material" id="fresnel"/>
 	</shape>
 
 	<shape type="sphere">

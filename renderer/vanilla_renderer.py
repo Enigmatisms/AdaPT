@@ -87,7 +87,9 @@ class Renderer(PathTracer):
                 # indirect component requires sampling 
                 ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, False, False)
                 ray_o = hit_point
-                color += (direct_int + emit_int * emission_weight) * contribution
+                color += emit_int * emission_weight * contribution
+                if _i + 1 >= self.max_bounce:
+                    color += direct_int * contribution
                 # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)
                 contribution *= indirect_spec / ray_pdf
                 obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)

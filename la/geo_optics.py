@@ -8,8 +8,8 @@ import taichi as ti
 import taichi.math as tm
 from taichi.math import vec3
 
-__all__ = ['inci_reflect_dir', 'exit_reflect_dir', 'schlick_frensel', 
-           'frensel_equation', 'snell_refraction', 'is_total_reflection']
+__all__ = ['inci_reflect_dir', 'exit_reflect_dir', 'schlick_fresnel', 
+           'fresnel_equation', 'snell_refraction', 'is_total_reflection']
 
 @ti.func
 def inci_reflect_dir(ray: vec3, normal: vec3):
@@ -22,14 +22,14 @@ def exit_reflect_dir(ray: vec3, normal: vec3):
     return (2 * normal * dot - ray).normalized(), dot
 
 @ti.func
-def schlick_frensel(r_s: vec3, dot_val: float):
-    """ Schlick's Frensel Fraction Approximation [1993] """
+def schlick_fresnel(r_s: vec3, dot_val: float):
+    """ Schlick's Fresnel Fraction Approximation [1993] """
     return r_s + (1 - r_s) * tm.pow(1. - dot_val, 5)
 
 @ti.func
-def frensel_equation(n_in: float, n_out: float, cos_inc: float, cos_ref: float):
+def fresnel_equation(n_in: float, n_out: float, cos_inc: float, cos_ref: float):
     """ 
-        Frensel Equation for calculating specular ratio
+        Fresnel Equation for calculating specular ratio
         Since Schlick's Approximation is not clear about n1->n2, n2->n1 (different) effects
     """
     n1cos_i = n_in * cos_inc

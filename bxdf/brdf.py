@@ -1,6 +1,6 @@
 """
     All the BRDFs are here, note that only three kinds of simple BRDF are supported
-    Blinn-Phong / Lambertian / Mirror specular / Modified Phong / Frensel Blend
+    Blinn-Phong / Lambertian / Mirror specular / Modified Phong / Fresnel Blend
     @author: Qianyue He
     @date: 2023-1-23
 """
@@ -17,7 +17,7 @@ from la.geo_optics import *
 from la.cam_transform import *
 from sampler.general_sampling import *
 from scene.general_parser import rgb_parse
-from renderer.constants import TRANSPORT_RAD, INV_PI
+from renderer.constants import INV_PI, ZERO_V3
 
 __all__ = ['BRDF_np', 'BRDF']
 
@@ -34,7 +34,7 @@ class BRDF_np:
     __all_specular_name     = {"specular", "k_s"}
     __all_absorption_name   = {"absorptions", "k_a"}
     # Attention: microfacet support will not be added recently
-    __type_mapping          = {"blinn-phong": 0, "lambertian": 1, "specular": 2, "microfacet": 3, "mod-phong": 4, "frensel-blend": 5}
+    __type_mapping          = {"blinn-phong": 0, "lambertian": 1, "specular": 2, "microfacet": 3, "mod-phong": 4, "fresnel-blend": 5}
     
     def __init__(self, elem: xet.Element, no_setup = False):
         self.type: str = elem.get("type")
@@ -74,9 +74,8 @@ class BRDF_np:
             raise NotImplementedError(f"Unknown BRDF type: {self.type}")
         self.type_id = BRDF_np.__type_mapping[self.type]
         if self.type_id == 2:
-            if self.k_g.max() < 1e-4:       # glossiness (actually means roughness) in specular BRDF being too "small"
-                self.is_delta = True
-        elif self.type_id == 5:             # precomputed coefficient for Frensel Blend BRDF
+            self.is_delta = True
+        elif self.type_id == 5:             # precomputed coefficient for Fresnel Blend BRDF
             self.k_g[2] = np.sqrt((self.k_g[0] + 1) * (self.k_g[1] + 1)) / (8. * np.pi)
 
     def export(self):
@@ -165,28 +164,29 @@ class BRDF:
         # Sample around reflected view dir (while blinn-phong samples around normal)
         return ray_out_d, spec, pdf
     
-    # ======================= Frensel-Blend =======================
+    # ======================= Fresnel-Blend =======================
     """
-        For Frensel Blend (by Ashikhmin and Shirley 2002), n_u and n_v will be stored in k_g
+        For Fresnel Blend (by Ashikhmin and Shirley 2002), n_u and n_v will be stored in k_g
         since k_g will not be used, k_d and k_s preserve their original meaning
     """
 
     @ti.func
-    def frensel_blend_dir(self, incid: vec3, half: vec3, normal: vec3, power_coeff: float):
+    def fresnel_blend_dir(self, incid: vec3, half: vec3, normal: vec3, power_coeff: float):
         reflected, dot_incid = inci_reflect_dir(incid, half)
         half_pdf = self.k_g[2] * tm.pow(tm.dot(half, normal), power_coeff)
         pdf = half_pdf / ti.max(ti.abs(dot_incid), EPS)
+
         valid_sample = tm.dot(normal, reflected) > 0.
         return reflected, pdf, valid_sample
     
     @ti.func
-    def frensel_cos2_sin2(self, half_vec: vec3, normal: vec3, R: mat3, dot_half: float):
+    def fresnel_cos2_sin2(self, half_vec: vec3, normal: vec3, R: mat3, dot_half: float):
         transed_x = (R @ vec3([1, 0, 0])).normalized()
         cos_phi2  = tm.dot(transed_x, (half_vec - dot_half * normal).normalized()) ** 2       # azimuth angle of half vector 
         return cos_phi2, 1. - cos_phi2
 
     @ti.func
-    def eval_frensel_blend(self, ray_in: vec3, ray_out: vec3, normal: vec3, R: mat3):
+    def eval_fresnel_blend(self, ray_in: vec3, ray_out: vec3, normal: vec3, R: mat3):
         # specular part, note that ray out is actually incident light in forward tracing
         half_vec = (ray_out - ray_in)
         dot_out  = tm.dot(normal, ray_out)
@@ -196,11 +196,11 @@ class BRDF:
             dot_in   = -tm.dot(normal, ray_in)              # incident dot should always be positive (otherwise it won't hit this point)
             dot_half = ti.abs(tm.dot(normal, half_vec))
             dot_hk   = ti.abs(tm.dot(half_vec, ray_out))
-            frensel  = schlick_frensel(self.k_s, dot_hk)
-            cos_phi2, sin_phi2 = self.frensel_cos2_sin2(half_vec, normal, R, dot_half)
+            fresnel  = schlick_fresnel(self.k_s, dot_hk)
+            cos_phi2, sin_phi2 = self.fresnel_cos2_sin2(half_vec, normal, R, dot_half)
             # k_g[2] should store sqrt((n_u + 1)(n_v + 1)) / 8pi
             denom = dot_hk * tm.max(dot_in, dot_out)
-            specular = self.k_g[2] * tm.pow(dot_half, self.k_g[0] * cos_phi2 + self.k_g[1] * sin_phi2) * frensel / denom
+            specular = self.k_g[2] * tm.pow(dot_half, self.k_g[0] * cos_phi2 + self.k_g[1] * sin_phi2) * fresnel / denom
             # diffusive part
             diffuse  = 28. / (23. * tm.pi) * self.k_d * (1. - self.k_s)
             pow5_in  = tm.pow(1. - dot_in / 2., 5)
@@ -210,13 +210,14 @@ class BRDF:
         return spec
 
     @ti.func
-    def sample_frensel_blend(self, incid: vec3, normal: vec3):
-        local_new_dir, power_coeff = frensel_hemisphere(self.k_g[0], self.k_g[1])
+    def sample_fresnel_blend(self, incid: vec3, normal: vec3):
+        local_new_dir, power_coeff = fresnel_hemisphere(self.k_g[0], self.k_g[1])
         ray_half, R = delocalize_rotate(normal, local_new_dir)
-        ray_out_d, pdf, is_valid = self.frensel_blend_dir(incid, ray_half, normal, power_coeff)
-        spec = vec3([0, 0, 0])
-        if is_valid:
-            spec = self.eval_frensel_blend(incid, ray_out_d, normal, R)
+        ray_out_d, pdf, is_valid = self.fresnel_blend_dir(incid, ray_half, normal, power_coeff)
+        if ti.random(float) > 0.5:
+            ray_out_d, _s, _p = self.sample_lambertian(normal)
+        pdf = 0.5 * (pdf + ti.abs(tm.dot(ray_out_d, normal)) * INV_PI)
+        spec = ti.select(is_valid, self.eval_fresnel_blend(incid, ray_out_d, normal, R), ZERO_V3)
         return ray_out_d, spec, pdf
     
     # ======================= Lambertian ========================
@@ -233,15 +234,6 @@ class BRDF:
         return ray_out_d, spec, pdf
 
     # ======================= Mirror-Specular ========================
-    @ti.func
-    def eval_specular(self, ray_in: vec3, ray_out: vec3, normal: vec3):
-        """ Attention: ray_in (in backward tracing) is actually out-going direction (in forward tracing) """
-        reflect_dir, _ = inci_reflect_dir(ray_in, normal)
-        spec = vec3([0, 0, 0])
-        if tm.dot(ray_out, reflect_dir) > 1 - 1e-4:
-            spec = self.k_d
-        return spec
-
     @ti.func
     def sample_specular(self, ray_in: vec3, normal: vec3):
         ray_out_d, _ = inci_reflect_dir(ray_in, normal)
@@ -261,15 +253,11 @@ class BRDF:
                 ret_spec = self.eval_blinn_phong(incid, out, normal)
             elif self._type == 1:       # Lambertian
                 ret_spec = self.eval_lambertian(out, normal)
-            elif self._type == 2:       # Specular
-                ret_spec = self.eval_specular(incid, out, normal)
             elif self._type == 4:
                 ret_spec = self.eval_mod_phong(incid, out, normal)
             elif self._type == 5:
                 R = rotation_between(vec3([0, 1, 0]), normal)
-                ret_spec = self.eval_frensel_blend(incid, out, normal, R)
-            else:
-                print(f"Warnning: unknown or unsupported BRDF type: {self._type} during evaluation.")
+                ret_spec = self.eval_fresnel_blend(incid, out, normal, R)
         return ret_spec
     
     @ti.func
@@ -290,8 +278,8 @@ class BRDF:
             ret_dir, ret_spec, pdf = self.sample_specular(incid, normal)
         elif self._type == 4:       # Modified-Phong
             ret_dir, ret_spec, pdf = self.sample_mod_phong(incid, normal)
-        elif self._type == 5:       # Frensel-Blend
-            ret_dir, ret_spec, pdf = self.sample_frensel_blend(incid, normal)
+        elif self._type == 5:       # Fresnel-Blend
+            ret_dir, ret_spec, pdf = self.sample_fresnel_blend(incid, normal)
         else:
             print(f"Warnning: unknown or unsupported BRDF type: {self._type} during sampling.")
         return ret_dir, ret_spec, pdf
@@ -311,10 +299,6 @@ class BRDF:
                 pdf = dot_outdir * INV_PI       # dot is cosine term
             elif self._type == 1:
                 pdf = dot_outdir * INV_PI
-            elif self._type == 2:
-                reflect_view, _ = inci_reflect_dir(incid, normal)
-                if tm.dot(reflect_view, outdir) > 1 - 1e-4:
-                    pdf = 1.0
             elif self._type == 4:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, normal)
@@ -326,6 +310,7 @@ class BRDF:
                 half_vec = (outdir - incid).normalized()
                 dot_half = tm.dot(half_vec, normal)
                 R = rotation_between(vec3([0, 1, 0]), normal)
-                cos_phi2, sin_phi2 = self.frensel_cos2_sin2(half_vec, normal, R, dot_half)
-                pdf = self.k_g[2] * tm.pow(dot_half, self.k_g[0] * cos_phi2 + self.k_g[1] * sin_phi2) * 4.
+                cos_phi2, sin_phi2 = self.fresnel_cos2_sin2(half_vec, normal, R, dot_half)
+                pdf = self.k_g[2] * tm.pow(dot_half, self.k_g[0] * cos_phi2 + self.k_g[1] * sin_phi2) / ti.abs(tm.dot(incid, half_vec))
+                pdf = 0.5 * (pdf + dot_outdir * INV_PI)
         return pdf

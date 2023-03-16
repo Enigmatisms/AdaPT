@@ -6,11 +6,11 @@
 
 This renderer is implemented based on **MY OWN** understanding of path tracing and other CG knowledge, therefore I **DO NOT** guarantee usability (also, I have done no verification experiments). The output results just... look decent:
 
-|         "The cornell spheres"          |         "The cornell boxes"         |
-| :------------------------------------: | :---------------------------------: |
-| ![](./assets/adapt-cornell-sphere.png) | ![](./assets/adapt-cornell-box.png) |
-|         "The cornell volume box"       |         "BDPT cbox 64 spp"         |
-| ![adapt-volume-box](https://user-images.githubusercontent.com/46109954/223172315-18888c22-3699-42ba-801d-bbd054e9246b.png) | ![cbox-64-bdpt](https://user-images.githubusercontent.com/46109954/223172423-bec7ac02-8533-432e-9bef-4f02bb4ddbb9.png) |
+|         "The cornell spheres"          |         "The cornell boxes"         | "Fresnel Blend" |
+| :------------------------------------: | :---------------------------------: | :------------------------------------: |
+| ![](./assets/adapt-cornell-sphere.png) | ![](./assets/adapt-cornell-box.png) | ![pbr-big-bdpt](https://user-images.githubusercontent.com/126778364/225679926-f75aab9f-0f47-4f45-ab4a-3ea7eaf34055.png)|
+|         "The cornell volume box"       |         "BDPT cbox 64 spp"         | "Giant mirror ball" |
+| ![pbr-cbox-bdpt](https://user-images.githubusercontent.com/126778364/225680094-8084c378-1533-4b74-871e-4524fff88f28.png)| ![cbox-64-bdpt](https://user-images.githubusercontent.com/46109954/223172423-bec7ac02-8533-432e-9bef-4f02bb4ddbb9.png) | ![pbr-single-ball-bdpt-single-ball](https://user-images.githubusercontent.com/126778364/225680022-ffeb3380-eeab-4beb-9bff-d3c631c36204.png)|
 
 
 
@@ -20,7 +20,7 @@ Here are the features I currently implemented and supports:
 - A unidirectional / bidirectional Monte-Carlo MIS path tracer: supports as many bounce times as you wish, and the rendering process is based on Taichi Lang, therefore it can be very fast (not on the first run, the first run of a scene might take a long time due to taichi function inlining, especially for BDPT). The figures displayed above can be rendered within 15-20s (with cuda-backend, GPU supported). The rendering result is displayed incrementally, or maximum iteration number can be pre-set.
 - Volumetric path tracer that supports uni/bidirectional path tracing in both bounded and unbounded condition
 - Global / indirect illumination & Ability to handle simple caustics
-- BRDFs: `Lambertian`, `Modified Phong` (Lafortune and Willems 1994), `Frensel Blend` (Ashikhmin and Shirley 2002), `Blinn-Phong`, `Mirror-specular`.
+- BRDFs: `Lambertian`, `Modified Phong` (Lafortune and Willems 1994), `Fresnel Blend` (Ashikhmin and Shirley 2002), `Blinn-Phong`, `Mirror-specular`.
 - BSDFs (with medium): deterministic refractive (glass-like)
 - mitusba-like XML scene file definition, supports mesh (from wavefront `.obj` file) and analytical sphere.
 - scene visualizer: which visualizes the scene you are going to render, helping to set some parameters like the relative position and camera pose
