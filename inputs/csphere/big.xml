@@ -58,7 +58,7 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="frensel-blend" id="glossy">
+	<brdf type="fresnel-blend" id="glossy">
 		<rgb name="k_d" value="#CACACA"/>
 		<!-- <rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/> -->

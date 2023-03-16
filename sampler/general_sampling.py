@@ -11,7 +11,7 @@ from taichi.math import vec3
 from renderer.constants import INV_PI, INV_2PI, PI2
 
 __all__ = ['cosine_hemisphere', 'uniform_hemisphere', 'sample_triangle', 
-            'balance_heuristic', 'mod_phong_hemisphere', 'frensel_hemisphere', 'random_rgb']
+            'balance_heuristic', 'mod_phong_hemisphere', 'fresnel_hemisphere', 'random_rgb']
 
 @ti.func
 def random_rgb(vector):
@@ -70,7 +70,7 @@ def uniform_sphere():
     return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), INV_2PI * 0.5
 
 @ti.func
-def frensel_hemisphere(nu: float, nv: float):
+def fresnel_hemisphere(nu: float, nv: float):
     eps1 = ti.random(float) * 4.
     inner_angle = eps1 - tm.floor(eps1)
     tan_phi = ti.sqrt((nu + 1) / (nv + 1)) * ti.tan(tm.pi / 2 * inner_angle)

@@ -93,7 +93,7 @@ class BSDF:
             ret_int.fill(0.)
         else:
             refra_vec, _v = snell_refraction(incid, normal, dot_normal, ni, nr)
-            reflect_ratio = frensel_equation(ni, nr, ti.abs(dot_normal), ti.abs(tm.dot(refra_vec, normal)))
+            reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_normal), ti.abs(tm.dot(refra_vec, normal)))
             if ti.random(float) > reflect_ratio:        # refraction
                 ret_pdf = 1. - reflect_ratio
                 ret_dir = refra_vec
@@ -121,7 +121,7 @@ class BSDF:
             ref_dir = (ray_out - 2 * normal * dot_out).normalized()
             refra_vec, valid_ref = snell_refraction(ray_out, normal, dot_out, ni, nr)
             if valid_ref:
-                reflect_ratio = frensel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, normal)))
+                reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, normal)))
                 if tm.dot(refra_vec, ray_in) > 1 - 5e-5:            # ray_in close to refracted dir
                     ret_int = self.k_d * (1. - reflect_ratio)
                     if mode == TRANSPORT_RAD:    # consider non-symmetric effect due to different transport mode
@@ -148,7 +148,7 @@ class BSDF:
             ref_dir = (outdir - 2 * normal * dot_out).normalized()
             refra_vec, valid_refra = snell_refraction(outdir, normal, dot_out, ni, nr)
             if valid_refra:             # not total reflection, so there is not only one possible choice
-                reflect_ratio = frensel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, normal)))
+                reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, normal)))
                 if tm.dot(refra_vec, incid) > 1 - 5e-5:            # ray_in close to refracted dir
                     pdf = 1. - reflect_ratio
                 elif tm.dot(ref_dir, incid) > 1 - 5e-5:            # ray_in close to reflected dir
