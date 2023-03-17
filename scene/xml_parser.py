@@ -121,14 +121,14 @@ def parse_bxdf(bxdf_list: List[xet.Element]):
         else:
             bxdf = BSDF_np(bxdf_node)
         if bxdf_id in results:
-            print(f"Warning: BXDF {bxdf_id} re-defined in XML file. Overwriting the existing BXDF.")
+            print(f"[Warning] BXDF {bxdf_id} re-defined in XML file. Overwriting the existing BXDF.")
         results[bxdf_id] = bxdf
     return results
 
 def parse_world(world_elem: xet.Element):
     world = World_np(world_elem)
     if world_elem is None:
-        print("Warning: world element not found in xml file. Using default world settings:")
+        print("[Warning] world element not found in xml file. Using default world settings:")
         print(world)
     return world
 

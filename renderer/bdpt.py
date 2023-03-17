@@ -21,6 +21,7 @@ from renderer.constants import *
 
 vec2i = ttype.vector(2, int)
 MAX_BOUNCE = 24
+MAX_SAMPLE_CNT = 512
 
 """
     Today todo: 
@@ -33,19 +34,52 @@ MAX_BOUNCE = 24
 class BDPT(VolumeRenderer):
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
         super().__init__(emitters, objects, prop)
+        decomp_mode = {'transient_cam': TRANSIENT_CAM, 'transient_lit': TRANSIENT_LIT}
+        decomp_state = decomp_mode.get(prop['decomposition'], STEADY_STATE)
+        sample_cnt       = prop.get('sample_count', 1) if decomp_state else 1
         
         self.light_paths = Vertex.field()
         self.cam_paths   = Vertex.field()
+        self.time_bins   = ti.Vector.field(3, float)
+        self.time_cnts   = ti.field(ti.i32)
 
         self.path_nodes = ti.root.dense(ti.ij, (self.w, self.h))
+        self.path_nodes.bitmasked(ti.k, sample_cnt).place(self.time_bins, self.time_cnts)
+
         # light vertex is not included, therefore +1
         if self.max_bounce > 24:
-            print("Warning: BDPT currently supports only upto 16 bounces per path (either eye or emitter).")
-        self.path_nodes.bitmasked(ti.k, MAX_BOUNCE + 1).place(self.light_paths)       
+            print("[Warning] BDPT currently supports only upto 16 bounces per path (either eye or emitter).")
+        self.cam_bitmask = self.path_nodes.bitmasked(ti.k, MAX_BOUNCE + 1)
+        self.lit_bitmask = self.path_nodes.bitmasked(ti.k, MAX_BOUNCE + 1)
+        
+        self.cam_bitmask.place(self.cam_paths)       
+        self.lit_bitmask.place(self.light_paths)       
         # camera vertex and extra light vertex is not included, therefore + 2
-        self.path_nodes.bitmasked(ti.k, MAX_BOUNCE + 1).place(self.cam_paths)        
         self.inv_cam_r = self.cam_r.inverse()
         self.cam_normal = (self.cam_r @ vec3([0, 0, 1])).normalized()
+
+        # For transient rendering: if decomp is none, then it is steady state rendering, otherwise if "transient", then it is transient state
+        self.decomp     = ti.field(int, shape = ())
+        self.min_time   = ti.field(float, shape = ())
+        self.max_time   = ti.field(float, shape = ())
+        self.interval   = ti.field(float, shape = ())
+
+        if decomp_state > STEADY_STATE and "interval" not in prop:
+            print("[Warning] some transient attributes not in propeties, fall back to default settings.")
+        self.decomp[None]     = decomp_state
+        self.min_time[None]   = prop.get('min_time', 0.)                                            # lower bounce for time of recording
+        self.interval[None]   = prop.get('interval', 0.1)
+        self.max_time[None]   = self.min_time[None] + self.interval[None] * sample_cnt  # precomputed max bound
+
+        if self.decomp[None] >= TRANSIENT_CAM:
+            print(f"[Info] Transient state BDPT rendering, start at: {self.min_time[None]:.4f}, step size: {self.interval[None]:.4f}, bin num: {sample_cnt}")
+            print(f"[Info] Transient {'actual camera recording - TRANSIENT_CAM' if self.decomp[None] == TRANSIENT_CAM else 'emitter only - TRANSIENT_LIT'}")
+            if prop['sample_count'] > MAX_SAMPLE_CNT:
+                print(f"[Warning] sample cnt = {prop['sample_count']} which is larger than {MAX_SAMPLE_CNT}. Bitmasked node might introduce too much memory consumption.")
+            if self.interval[None] <= 0:
+                raise ValueError("Transient interval must be positive. Otherwise, meaningful or futile.")
+        else:
+            print("[Info] Steady state BDPT rendering")
 
         # self.A is the area of the imaging space on z = 1 plane
         self.A = float(self.w * self.h) * (self.inv_focal * self.inv_focal)
@@ -53,11 +87,22 @@ class BDPT(VolumeRenderer):
         self.free_space_cam = True
         
         # Initial time setting
-        self.init_time = 0.     
+        self.init_time = 0.   
+
+    @ti.kernel
+    def copy_average(self, time_idx: int):
+        for i, j in self.pixels:
+            cnt = self.time_cnts[i, j, time_idx]
+            self.pixels[i, j] = ti.select(cnt > 0, self.time_bins[i, j, time_idx] / float(cnt), ZERO_V3)
 
     @ti.kernel
     def render(self, t_start: int, t_end: int, s_start: int, s_end: int, max_bnc: int, max_depth: int):
         self.cnt[None] += 1
+        decomp = self.decomp[None]
+        min_time = self.min_time[None]
+        max_time = self.max_time[None]
+        interval = self.interval[None]
+
         for i, j in self.pixels:
             cam_vnum = self.generate_eye_path(i, j, max_bnc) + 1
             lit_vnum = self.generate_light_path(i, j, max_bnc) + 1
@@ -70,17 +115,25 @@ class BDPT(VolumeRenderer):
                         continue
                     multi_light_con = (t > 1) and (s > 0) and (self.cam_paths[i, j, t - 1]._type == VERTEX_EMITTER)
                     if not multi_light_con:
-                        radiance, raster_p = self.connect_path(i, j, s, t)
+                        # TODO: pass decomp value into connect path to avoid excessive reading of decomp[None] 
+                        radiance, raster_p, path_time = self.connect_path(i, j, s, t)
+                        color = ti.select(ti.math.isnan(radiance) | ti.math.isinf(radiance), 0., radiance)
+                        id_i = i
+                        id_j = j
                         if t == 1 and raster_p.min() >= 0:      # non-local contribution
-                            ri, rj = raster_p
-                            self.color[ri, rj] += ti.select(ti.math.isnan(radiance) | ti.math.isinf(radiance), 0., radiance)      # this op should be atomic
-                        else:                                   # local contribution
-                            self.color[i, j] += ti.select(ti.math.isnan(radiance) | ti.math.isinf(radiance), 0., radiance)
+                            id_i, id_j = raster_p
+                        if decomp >= TRANSIENT_CAM and path_time < max_time and path_time > min_time:
+                            time_idx = int((path_time - min_time) / interval)
+                            self.time_bins[id_i, id_j, time_idx] += color
+                            self.time_cnts[id_i, id_j, time_idx] += 1
+                        self.color[id_i, id_j] += color
             self.pixels[i, j] = self.color[i, j] / self.cnt[None]
     
     def reset(self):
         """ Resetting path vertex container """
-        self.path_nodes.deactivate_all()
+        # self.cam_bitmask.deactivate_all()
+        # self.lit_bitmask.deactivate_all()
+        pass
 
     @ti.func
     def generate_eye_path(self, i: int, j: int, max_bnc: int):
@@ -102,17 +155,18 @@ class BDPT(VolumeRenderer):
         ret_int = emitter.intensity
         vertex_pdf = pdf_pos * emitter_pdf
         self.light_paths[i, j, 0] = Vertex(_type = VERTEX_EMITTER, obj_id = emitter.obj_ref_id, 
-            emit_id = emit_id, bool_bits = emitter.bool_bits, time = 0., pdf_fwd = vertex_pdf, 
+            emit_id = emit_id, bool_bits = emitter.bool_bits, time = emitter.emit_time, pdf_fwd = vertex_pdf, 
             normal = normal, pos = ray_o, ray_in = ZERO_V3, beta = ret_int
         )
         vertex_num = 0
         if pdf_dir > 0. and ret_int.max() > 0. and vertex_pdf > 0.:      # black emitter / inpossible direction 
             beta = ret_int * ti.abs(tm.dot(ray_d, normal)) / (vertex_pdf * pdf_dir)
-            vertex_num = self.random_walk(i, j, max_bnc, ray_o, ray_d, pdf_dir, beta, TRANSPORT_IMP) + 1
+            # The start time of the current emission should be accounted for
+            vertex_num = self.random_walk(i, j, max_bnc, ray_o, ray_d, pdf_dir, beta, TRANSPORT_IMP, emitter.emit_time) + 1
         return vertex_num
 
     @ti.func
-    def random_walk(self, i: int, j: int, max_bnc: int, init_ray_o, init_ray_d, pdf: float, beta, transport_mode: int):
+    def random_walk(self, i: int, j: int, max_bnc: int, init_ray_o, init_ray_d, pdf: float, beta, transport_mode: int, acc_time = 0.0):
         """ Random walk to generate path 
             pdf: initial pdf for this path
             transport mode: whether it is radiance or importance, 0 is camera radiance, 1 is light importance
@@ -124,8 +178,7 @@ class BDPT(VolumeRenderer):
         ray_d      = init_ray_d
         throughput = beta
         vertex_num = 0
-        acc_time   = 0.         # accumulated time
-        ray_pdf    = pdf        # PDF is of solid angle measure, therefore should be converted
+        ray_pdf    = pdf                # PDF is of solid angle measure, therefore should be converted
         in_free_space = True
 
         while True:
@@ -150,7 +203,7 @@ class BDPT(VolumeRenderer):
                 
             hit_point = ray_d * min_depth + ray_o
             hit_light = -1 if is_mi else self.emitter_id[obj_id]
-            acc_time += min_depth
+            acc_time += min_depth * self.get_ior(obj_id, in_free_space)
 
             # Do not place vertex on null surface (no correct answer about whether it's surface or medium)
             if not is_mi and not self.non_null_surface(obj_id):    # surface interaction for null surface should be skipped   
@@ -205,6 +258,7 @@ class BDPT(VolumeRenderer):
     def connect_path(self, i: int, j: int, sid: int, tid: int):
         """ Rigorous logic check, review and debug should be done """
         le = ZERO_V3
+        ret_time = 0.
         sampled_v = Vertex(_type = VERTEX_NULL)         # a default vertex
         vertex_sampled = False                          # whether any new vertex is sampled
         raster_p = vec2i([-1, -1])                      # reprojection for light path - camera direct connection
@@ -216,6 +270,8 @@ class BDPT(VolumeRenderer):
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_light():                       # is the current vertex an emitter vertex?
                 le = self.src_field[int(vertex.emit_id)].eval_le(vertex.ray_in, vertex.normal) * vertex.beta
+                # TODO: transient cam and lit are different
+                ret_time = vertex.time + self.src_field[int(vertex.emit_id)].emit_time      # for emission, we should acount for their emission time
         elif tid == 1:                                  # re-rasterize point onto the film, atomic add is allowed
             vertex = self.light_paths[i, j, sid - 1]
             if vertex.is_connectible():
@@ -236,6 +292,8 @@ class BDPT(VolumeRenderer):
                     vertex_sampled = True
                     calc_transmittance = fr2cam.max() > 0
                     le = vertex.beta * fr2cam * sampled_v.beta
+                    # TODO: transient cam and lit are different
+                    ret_time = vertex.time + depth
         elif sid == 1:          # only one light vertex is used, resample
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_connectible():
@@ -252,15 +310,14 @@ class BDPT(VolumeRenderer):
                 if emit_int.max() > 0:
                     fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_UNI)
                     # TODO: emitter time should be set independently
-
-                    # TODO: Forward pdf should be checked
                     sampled_v   = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(int(vertex.emit_id)), 
-                        emit_id = emit_id, bool_bits = emitter.bool_bits, time = 0., pdf_fwd = emitter.area_pdf() / float(self.src_num),
+                        emit_id = emit_id, bool_bits = emitter.bool_bits, time = emitter.emit_time, pdf_fwd = emitter.area_pdf() / float(self.src_num),
                         normal  = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf
                     )
                     vertex_sampled = True
                     calc_transmittance = fr2light.max() > 0
                     le = vertex.beta * fr2light * sampled_v.beta
+                    ret_time = vertex.time + emitter.emit_time + depth
         else:                   # general cases
             cam_v = self.cam_paths[i, j, tid - 1]
             lit_v = self.light_paths[i, j, sid - 1]
@@ -277,7 +334,7 @@ class BDPT(VolumeRenderer):
                     # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                     calc_transmittance = fr_cam.max() > 0 and fr_lit.max() > 0
                     le = cam_v.beta * fr_cam * fr_lit * lit_v.beta / (depth * depth)
-            
+                    ret_time = cam_v.time + lit_v.time + depth
         weight = 0.
         if le.max() > 0 and calc_transmittance == True:
             le *= self.track_ray(connect_dir, track_pos, depth)
@@ -285,7 +342,7 @@ class BDPT(VolumeRenderer):
             weight = 1.0
             if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
                 weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, i, j, sid, tid)
-        return le * weight, raster_p
+        return le * weight, raster_p, ret_time
     
     @ti.func
     def update_endpoint(self, cam_end: ti.template(), lit_end: ti.template(), i: int, j: int, idx_t: int, idx_s: int):
@@ -367,9 +424,9 @@ class BDPT(VolumeRenderer):
             if tid - 1 - idx >= 0: self.cam_paths[i, j, tid - 1 - idx].pdf_bwd = backup[idx]
             if sid - 1 - idx >= 0: self.light_paths[i, j, sid - 1 - idx].pdf_bwd = backup[idx + 2]
         if t_sampled:
-            self.cam_paths[i, j, idx_t] = backup_v
+            self.cam_paths[i, j, 0] = backup_v
         elif s_sampled:
-            self.light_paths[i, j, idx_s] = backup_v 
+            self.light_paths[i, j, 0] = backup_v 
         return 1. / (1. + sum_ri)
 
     @ti.func

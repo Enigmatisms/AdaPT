@@ -156,6 +156,14 @@ class PathTracer(TracerBase):
         return pdf
     
     @ti.func
+    def get_ior(self, idx: int, in_free_space: int):
+        ior = 1.
+        if in_free_space: ior = self.world.medium.ior
+        else: 
+            if idx >= 0: ior = self.bsdf_field[idx].medium.ior
+        return ior
+    
+    @ti.func
     def is_delta(self, idx: int):
         is_delta = False
         if idx >= 0:
