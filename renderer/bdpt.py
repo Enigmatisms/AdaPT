@@ -208,6 +208,10 @@ class BDPT(VolumeRenderer):
         sampled_v = Vertex(_type = VERTEX_NULL)         # a default vertex
         vertex_sampled = False                          # whether any new vertex is sampled
         raster_p = vec2i([-1, -1])                      # reprojection for light path - camera direct connection
+        calc_transmittance = False                      # whether to calculate transmittance
+        depth = -1.
+        track_pos = ZERO_V3
+        connect_dir = ZERO_V3
         if sid == 0:                                    # light path is not used  
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_light():                       # is the current vertex an emitter vertex?
@@ -215,22 +219,23 @@ class BDPT(VolumeRenderer):
         elif tid == 1:                                  # re-rasterize point onto the film, atomic add is allowed
             vertex = self.light_paths[i, j, sid - 1]
             if vertex.is_connectible():
-                ray_d = self.cam_t - vertex.pos
-                depth = ray_d.norm()
-                ray_d /= depth
+                connect_dir = self.cam_t - vertex.pos
+                depth       = connect_dir.norm()
+                connect_dir /= depth
                 in_free_space = vertex.is_in_free_space()
-                we, cam_pdf, raster_p = self.sample_camera(ray_d, depth)
-                tr2cam = self.track_ray(ray_d, vertex.pos, depth)        # calculate transmittance from vertex to camera
+                we, cam_pdf, raster_p = self.sample_camera(connect_dir, depth)
+                track_pos      = vertex.pos
                 # camera importance is valid / visible / radiance transferable
-                if cam_pdf > 0. and tr2cam.max() > 0:
-                    fr2cam = self.eval(int(vertex.obj_id), vertex.ray_in, ray_d, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_IMP)
+                if cam_pdf > 0:
+                    fr2cam = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_IMP)
                     bool_bits = BDPT.get_bool(True, in_fspace = self.free_space_cam)
                     sampled_v = Vertex(_type = VERTEX_CAMERA, obj_id = -1, emit_id = -1, 
                         bool_bits = bool_bits, time = vertex.time + depth, 
                         normal = self.cam_normal, pos = self.cam_t, ray_in = ZERO_V3, beta = we / cam_pdf
                     )
                     vertex_sampled = True
-                    le = vertex.beta * tr2cam * fr2cam * sampled_v.beta
+                    calc_transmittance = fr2cam.max() > 0
+                    le = vertex.beta * fr2cam * sampled_v.beta
         elif sid == 1:          # only one light vertex is used, resample
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_connectible():
@@ -238,14 +243,14 @@ class BDPT(VolumeRenderer):
                 emitter, emitter_pdf, _ev, emit_id = self.sample_light()
                 emit_pos, emit_int, _, normal = emitter.         \
                     sample_hit(self.precom_vec, self.normals, self.mesh_cnt, vertex.pos)        # sample light
-                to_emitter    = emit_pos - vertex.pos
-                emitter_d     = to_emitter.norm()
-                to_emitter    = to_emitter / emitter_d
+                connect_dir    = emit_pos - vertex.pos
+                depth          = connect_dir.norm()
+                connect_dir    = connect_dir / depth
+                track_pos      = vertex.pos
                 in_free_space = vertex.is_in_free_space()
-                tr2light      = self.track_ray(to_emitter, vertex.pos, emitter_d)   # calculate transmittance from vertex to camera
                 # emitter should have non-zero emission / visible / transferable
-                if emit_int.max() > 0 and tr2light.max() > 0:
-                    fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, to_emitter, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_UNI)
+                if emit_int.max() > 0:
+                    fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_UNI)
                     # TODO: emitter time should be set independently
 
                     # TODO: Forward pdf should be checked
@@ -254,24 +259,29 @@ class BDPT(VolumeRenderer):
                         normal  = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf
                     )
                     vertex_sampled = True
-                    le = vertex.beta * fr2light * tr2light * sampled_v.beta
+                    calc_transmittance = fr2light.max() > 0
+                    le = vertex.beta * fr2light * sampled_v.beta
         else:                   # general cases
             cam_v = self.cam_paths[i, j, tid - 1]
             lit_v = self.light_paths[i, j, sid - 1]
             if cam_v.is_connectible() and lit_v.is_connectible():
-                cam2lit_v  = lit_v.pos - cam_v.pos
-                length     = cam2lit_v.norm()
-                cam2lit_v /= length
+                connect_dir  = lit_v.pos - cam_v.pos
+                depth        = connect_dir.norm()
+                connect_dir /= depth
+                track_pos    = cam_v.pos
                 cam_in_fspace = cam_v.is_in_free_space()
                 lit_in_fspace = lit_v.is_in_free_space()
-                tr_con = self.track_ray(cam2lit_v, cam_v.pos, length)   # calculate transmittance from vertex to camera
-                if tr_con.max() > 0. and length > 0.:           # if not occluded
-                    fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, cam2lit_v, cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_UNI)
-                    fr_lit = self.eval(int(lit_v.obj_id), lit_v.ray_in, -cam2lit_v, lit_v.normal, lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP)
+                if depth > 0.:           # if not occluded
+                    fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, connect_dir, cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_UNI)
+                    fr_lit = self.eval(int(lit_v.obj_id), lit_v.ray_in, -connect_dir, lit_v.normal, lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP)
                     # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
-                    le = cam_v.beta * fr_cam * (tr_con / (length * length)) * fr_lit * lit_v.beta
+                    calc_transmittance = fr_cam.max() > 0 and fr_lit.max() > 0
+                    le = cam_v.beta * fr_cam * fr_lit * lit_v.beta / (depth * depth)
+            
         weight = 0.
-        if le.max() > 0.:             # zero-contribution will not have MIS weight
+        if le.max() > 0 and calc_transmittance == True:
+            le *= self.track_ray(connect_dir, track_pos, depth)
+        if le.max() > 0:     # zero-contribution will not have MIS weight, it could be possible that after applying the transmittance, le is 0
             weight = 1.0
             if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
                 weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, i, j, sid, tid)
@@ -436,7 +446,7 @@ class BDPT(VolumeRenderer):
             ray_out_norm = ray_out.norm()
             if ray_out_norm > 0.:
                 normed_ray_out = ray_out / ray_out_norm
-                # FIXME: emitter can be inside the Medium, therefore `is_mi` can not only be `cur._type == VERTEX_MEDIUM`
+                # FIXME: emitter can be inside the Medium (not in the free space), therefore `is_mi` can not only be `cur._type == VERTEX_MEDIUM`
                 pdf_sa = self.get_pdf(int(cur.obj_id), ray_in, normed_ray_out, cur.normal, cur._type == VERTEX_MEDIUM, is_in_fspace)
         if cur._type != VERTEX_EMITTER:
             # convert to area measure for the next node
