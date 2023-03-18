@@ -117,12 +117,13 @@ class BDPT(VolumeRenderer):
                     if not multi_light_con:
                         # TODO: pass decomp value into connect path to avoid excessive reading of decomp[None] 
                         radiance, raster_p, path_time = self.connect_path(i, j, s, t)
+                        has_nan = (ti.math.isnan(radiance) | ti.math.isinf(radiance)).any()
                         color = ti.select(ti.math.isnan(radiance) | ti.math.isinf(radiance), 0., radiance)
                         id_i = i
                         id_j = j
                         if t == 1 and raster_p.min() >= 0:      # non-local contribution
                             id_i, id_j = raster_p
-                        if decomp >= TRANSIENT_CAM and path_time < max_time and path_time > min_time:
+                        if decomp >= TRANSIENT_CAM and not has_nan and path_time < max_time and path_time > min_time:
                             time_idx = int((path_time - min_time) / interval)
                             self.time_bins[id_i, id_j, time_idx] += color
                             self.time_cnts[id_i, id_j, time_idx] += 1
@@ -131,8 +132,8 @@ class BDPT(VolumeRenderer):
     
     def reset(self):
         """ Resetting path vertex container """
-        # self.cam_bitmask.deactivate_all()
-        # self.lit_bitmask.deactivate_all()
+        self.cam_bitmask.deactivate_all()
+        self.lit_bitmask.deactivate_all()
         pass
 
     @ti.func
@@ -342,6 +343,7 @@ class BDPT(VolumeRenderer):
             weight = 1.0
             if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
                 weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, i, j, sid, tid)
+        if weight < 1e-7: ret_time = 0.
         return le * weight, raster_p, ret_time
     
     @ti.func
