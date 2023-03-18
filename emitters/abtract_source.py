@@ -34,7 +34,8 @@ class TaichiSource:
     bool_bits:  int      # indicate whether the source is a delta source / inside free space
     intensity:  vec3
     pos:        vec3
-    inv_area:   float      # inverse area (for non-point emitters, like rect-area or mesh attached emitters)
+    inv_area:   float   # inverse area (for non-point emitters, like rect-area or mesh attached emitters)
+    emit_time:  float   # used in transient rendering: when does this emitter start to emit
 
     @ti.func
     def is_delta_pos(self):             # 0-th bits
@@ -191,12 +192,13 @@ class LightSource:
                 elif name == "scaler":
                     self.intensity *= rgb_parse(rgb_elem)
         else:
-            print("Warning: default intializer should only be used in testing.")
+            print("[Warning] default intializer should only be used in testing.")
         self.type: str = base_elem.get("type")
         self.id:   str = base_elem.get("id")
         self.inv_area  = 1.0        # inverse area (for non-point emitters, like rect-area or mesh attached emitters)
         self.attached  = False      # Indicated whether the light source is attached to an object (if True, new sampling strategy should be used)
         self.in_free_space = True   # Whether the light source itself is in free space
+        self.emit_time = 0.0
         bool_elem = base_elem.find("boolean")
         if bool_elem is not None and bool_elem.get("value").lower() == "false":
             # TODO: note that, if world has scattering medium, all the source are in the scattering medium, unless specified

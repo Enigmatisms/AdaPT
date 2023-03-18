@@ -31,7 +31,6 @@ class TracerBase:
     def __init__(self, objects: List[ObjDescriptor], prop: dict):
         self.w          = prop['film']['width']                              # image is a standard square
         self.h          = prop['film']['height']
-        self.sample_cnt = prop['sample_count']
         self.max_bounce = prop['max_bounce']
         self.use_rr     = prop['use_rr']
 
@@ -71,7 +70,7 @@ class TracerBase:
         """
             For debug purpose
         """
-        return f"tracer_base: number of object {self.num_objects}, w, h: ({self.w}, {self.h}), sample count: {self.sample_cnt}. Focal: {self.focal}"
+        return f"tracer_base: number of object {self.num_objects}, w, h: ({self.w}, {self.h}). Focal: {self.focal}"
 
     def initialze(self, _objects: List[ObjDescriptor]):
         pass
