@@ -19,6 +19,10 @@ VERTEX_NULL    = -1     # dummpy uninitialized vertex
 
 ON_SURFACE = 1          # whether on surface
 
+STEADY_STATE    = 0
+TRANSIENT_CAM   = 1
+TRANSIENT_LIT   = 2
+
 # =============== Math constants ================
 INV_PI = 1. / pi
 INV_2PI = INV_PI * 0.5

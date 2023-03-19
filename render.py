@@ -22,10 +22,19 @@ from scene.opts import get_options, mapped_arch
 rdr_mapping = {"pt": Renderer, "vpt": VolumeRenderer, "bdpt": BDPT}
 name_mapping = {"pt": "", "vpt": "Volumetric ", "bdpt": "Bidirectional "}
 
+def export_transient_profile(rdr: BDPT, sample_cnt: int, out_path: str, out_name: str, out_ext: str, normalize: float = 0.):
+    output_folder = folder_path(os.path.join(out_path, out_name))
+    print(f"[INFO] Exporting transient profile to folder '{output_folder}'")
+    for i in tqdm(range(sample_cnt)):
+        rdr.copy_average(i)
+        # TODO normalization not global, this might introduce inconsistency problem
+        transient_img = apply_watermark(rdr.pixels, normalize, False)
+        ti.tools.imwrite(transient_img, f"{output_folder}/img_{i + 1:03d}.{out_ext}")
+
 if __name__ == "__main__":
     opts = get_options()
     cache_path = folder_path(f"./cached/{opts.scene}", f"Cache path for scene {opts.scene} not found. JIT compilation might take some time (~30s)...")
-    ti.init(arch = mapped_arch(opts.arch), kernel_profiler = opts.profile, \
+    ti.init(arch = mapped_arch(opts.arch), kernel_profiler = opts.profile, device_memory_fraction = 0.8, \
             default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path, debug = opts.debug)
     input_folder = os.path.join(opts.input_path, opts.scene)
     emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, opts.name)  # complex_cornell
@@ -34,6 +43,8 @@ if __name__ == "__main__":
     if output_freq > 0:
         output_folder = folder_path(f"{output_folder}{opts.img_name}-{opts.name[:-4]}-{opts.type}/")
     rdr: PathTracer = rdr_mapping[opts.type](emitter_configs, meshes, configs)
+    if type(rdr) != BDPT and configs.get('decomposition', 0) > 0:
+        print("[Warning] Transient rendering is only supported in BDPT renderer.")
 
     max_iter_num = opts.iter_num if opts.iter_num > 0 else 10000
     iter_cnt = 0
@@ -77,3 +88,5 @@ if __name__ == "__main__":
         ti.profiler.print_kernel_profiler_info() 
     image = apply_watermark(rdr.pixels, opts.normalize, True)
     ti.tools.imwrite(image, f"{folder_path(opts.output_path)}{opts.img_name}-{opts.name[:-4]}-{opts.type}.{opts.img_ext}")
+    if type(rdr) == BDPT and rdr.decomp[None] > 0:
+        export_transient_profile(rdr, configs['sample_count'], opts.output_path, opts.name[:-4], opts.img_ext, opts.normalize)

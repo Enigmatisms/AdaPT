@@ -24,5 +24,5 @@ class AreaSource(LightSource):
 
     def export(self) -> TaichiSource:
         bool_bits = (self.in_free_space << 4) | 0x04
-        return TaichiSource(_type = AREA_SOURCE, bool_bits = bool_bits, intensity = vec3(self.intensity), inv_area = self.inv_area)
+        return TaichiSource(_type = AREA_SOURCE, bool_bits = bool_bits, intensity = vec3(self.intensity), inv_area = self.inv_area, emit_time = self.emit_time)
         
