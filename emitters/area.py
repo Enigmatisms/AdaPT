@@ -7,12 +7,10 @@
 import sys
 sys.path.append("..")
 
-import numpy as np
 from taichi.math import vec3
 import xml.etree.ElementTree as xet
 
-from emitters.abtract_source import LightSource, TaichiSource
-from scene.general_parser import vec3d_parse
+from emitters.abtract_source import LightSource, TaichiSource, AREA_SOURCE
 
 class AreaSource(LightSource):
     def __init__(self, elem: xet.Element):
@@ -26,5 +24,5 @@ class AreaSource(LightSource):
 
     def export(self) -> TaichiSource:
         bool_bits = (self.in_free_space << 4) | 0x04
-        return TaichiSource(_type = 1, bool_bits = bool_bits, intensity = vec3(self.intensity), inv_area = self.inv_area)
+        return TaichiSource(_type = AREA_SOURCE, bool_bits = bool_bits, intensity = vec3(self.intensity), inv_area = self.inv_area)
         

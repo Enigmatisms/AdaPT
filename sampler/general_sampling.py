@@ -8,7 +8,7 @@
 import taichi as ti
 import taichi.math as tm
 from taichi.math import vec3
-from renderer.constants import INV_PI, INV_2PI, PI2
+from renderer.constants import INV_PI, INV_2PI, PI2, ZERO_V3, PI_DIV4, PI_DIV2
 
 __all__ = ['cosine_hemisphere', 'uniform_hemisphere', 'sample_triangle', 
             'balance_heuristic', 'mod_phong_hemisphere', 'fresnel_hemisphere', 'random_rgb']
@@ -68,6 +68,20 @@ def uniform_sphere():
     sin_theta =  ti.sqrt(1 - cos_theta * cos_theta)
     phi = PI2 * ti.random(float)
     return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), INV_2PI * 0.5
+
+@ti.func
+def concentric_disk_sample():
+    off_x = ti.random(float) * 2. - 1.
+    off_y = ti.random(float) * 2. - 1.
+    result = ZERO_V3
+    if off_x != 0 and off_y != 0:
+        if ti.abs(off_x) > ti.abs(off_y):
+            theta = PI_DIV4 * (off_y / off_x)
+            result = vec3([off_x * ti.cos(theta), 0., off_x * ti.sin(theta)])
+        else:
+            theta = PI_DIV2 - PI_DIV4 * (off_x / off_y)
+            result = vec3([off_y * ti.cos(theta), 0., off_y * ti.sin(theta)])
+    return result
 
 @ti.func
 def fresnel_hemisphere(nu: float, nv: float):

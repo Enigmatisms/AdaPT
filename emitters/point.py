@@ -12,7 +12,7 @@ import numpy as np
 from taichi.math import vec3
 import xml.etree.ElementTree as xet
 
-from emitters.abtract_source import LightSource, TaichiSource
+from emitters.abtract_source import LightSource, TaichiSource, POINT_SOURCE
 from scene.general_parser import vec3d_parse
 
 
@@ -25,4 +25,4 @@ class PointSource(LightSource):
 
     def export(self) -> TaichiSource:
         bool_bits = 0x21 + (self.in_free_space << 4)        # position delta (0x01), delta vertex (0x20)
-        return TaichiSource(_type = 0, intensity = vec3(self.intensity), pos = vec3(self.pos), bool_bits = bool_bits)
+        return TaichiSource(_type = POINT_SOURCE, intensity = vec3(self.intensity), pos = vec3(self.pos), bool_bits = bool_bits)

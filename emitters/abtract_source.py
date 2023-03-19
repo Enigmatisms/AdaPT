@@ -10,13 +10,23 @@ sys.path.append("..")
 
 import numpy as np
 import taichi as ti
+import taichi.math as tm
 import xml.etree.ElementTree as xet
 from taichi.math import vec3
 
 from scene.general_parser import rgb_parse
 from la.cam_transform import delocalize_rotate
 from renderer.constants import INV_PI, ZERO_V3, AXIS_Y
-from sampler.general_sampling import sample_triangle, cosine_hemisphere, uniform_sphere
+from sampler.general_sampling import sample_triangle, cosine_hemisphere, uniform_sphere, concentric_disk_sample
+
+# point-0: PointSource, area-1: AreaSource, directional-2: DirectionalSource, spot-3: None, collimated-4: CollimatedSource
+
+# =============== Emitter Type =================
+POINT_SOURCE        = 0
+AREA_SOURCE         = 1
+DIRECTIONAL_SOURCE  = 2  # infinite light
+SPOT_SOURCE         = 3
+COLLIMATED_SOURCE   = 4
 
 @ti.dataclass
 class TaichiSource:
@@ -27,14 +37,16 @@ class TaichiSource:
         node.place(pos); node.place(dirv); node.place(base_1); node.place(base_2); \\
         The following implementation is much simpler, and light source will not consume too much memory
     """
-    _type:      int      # 0 Point, 1 Area, 2 Spot, 3 Directional
-    obj_ref_id: int      # Referring to the attaching object
+    _type:      int         # 0 Point, 1 Area, 2 Spot, 3 Directional, 4 collimated
+    obj_ref_id: int         # Referring to the attaching object
 
-    # Bool bits: [0 pos delta, 1 dir delta, 2 is area, 3 is inifite, 4 is in free space, others reserved]
-    bool_bits:  int      # indicate whether the source is a delta source / inside free space
+    # Bool bits: [0 pos delta, 1 dir delta, 2 is area, 3 is inifite, 4 is in free space, 5 is delta, others reserved]
+    bool_bits:  int         # indicate whether the source is a delta source / inside free space
     intensity:  vec3
+    dir:        vec3        # direction for directional / collimated source
     pos:        vec3
-    inv_area:   float      # inverse area (for non-point emitters, like rect-area or mesh attached emitters)
+    inv_area:   float       # inverse area (for non-point emitters, like rect-area or mesh attached emitters)
+    r:          float       # only useful for collimated source - beam radius
 
     @ti.func
     def is_delta_pos(self):             # 0-th bits
@@ -76,14 +88,13 @@ class TaichiSource:
         ret_pos = self.pos
         ret_pdf = 1.0
         normal = ZERO_V3
-        if self._type == 0:     # point source
+        if self._type == POINT_SOURCE:     # point source
             ret_int *= self.distance_attenuate(hit_pos - ret_pos)
-        elif self._type == 1:   # area source
+        elif self._type == AREA_SOURCE:   # area source
             ret_pdf     = self.inv_area
             dot_light   = 1.0
             diff        = ZERO_V3
             mesh_num = mesh_cnt[self.obj_ref_id]
-            normal   = AXIS_Y
             if mesh_num:
                 tri_id    = ti.random(int) % mesh_num       # ASSUME that triangles are similar in terms of area
                 normal    = normals[self.obj_ref_id, tri_id]
@@ -100,7 +111,7 @@ class TaichiSource:
                 # We only choose the hemisphere, therefore we have a 0.5. Also, this is both sa & area measure
                 ret_pdf   = 0.5 * pdf
             diff      = hit_pos - ret_pos
-            dot_light = ti.math.dot(diff.normalized(), normal)
+            dot_light = tm.dot(diff.normalized(), normal)
             if dot_light <= 0.0:
                 ret_int = ZERO_V3
                 ret_pdf = 1.0
@@ -108,6 +119,17 @@ class TaichiSource:
                 diff_norm2 = diff.norm_sqr()
                 ret_pdf *= ti.select(dot_light > 0.0, diff_norm2 / dot_light, 0.0)
                 ret_int = ti.select(ret_pdf > 0.0, ret_int / ret_pdf, 0.)
+        elif self._type == COLLIMATED_SOURCE:
+            if self.r > 0.:
+                to_hit = (hit_pos - self.pos)
+                proj_d = tm.dot(to_hit, self.dir)
+                dist = ti.sqrt(to_hit.norm_sqr() - proj_d * proj_d)
+                if dist < self.r:
+                    ret_pdf = self.inv_area
+                    ret_pos = self.pos + to_hit - proj_d * self.dir
+                    normal = self.dir
+            else:
+                ret_int = ZERO_V3
         return ret_pos, ret_int, ret_pdf, normal
     
     @ti.func
@@ -118,12 +140,12 @@ class TaichiSource:
         normal  = AXIS_Y
         pdf_dir = 0.
         pdf_pos = 1.
-        if self._type == 0:
+        if self._type == POINT_SOURCE:
             # Uniform sampling the sphere, since its uniform, we don't have to set its frame
             ray_d, pdf_dir = uniform_sphere()
             ray_o = self.pos
             normal = ray_d
-        elif self._type == 1:       # sampling cosine hemisphere for a given point
+        elif self._type == AREA_SOURCE:       # sampling cosine hemisphere for a given point
             mesh_num = mesh_cnt[self.obj_ref_id]
             if mesh_num:
                 tri_id = ti.random(int) % mesh_num       # ASSUME that triangles are similar in terms of area
@@ -139,14 +161,26 @@ class TaichiSource:
             local_d, pdf_dir = cosine_hemisphere()
             ray_d, _R = delocalize_rotate(normal, local_d)
             pdf_pos = self.inv_area
+        elif self._type == COLLIMATED_SOURCE:
+            # pdf of direction should be delta?
+            ray_o = self.pos
+            ray_d = self.dir
+            normal = ray_d
+            pdf_pos = self.inv_area
+            pdf_dir = 1.
+            if self.r > 0.:
+                # sample a point in the disk
+                local_offset = concentric_disk_sample()
+                offset, _ = delocalize_rotate(self.dir, local_offset)
+                ray_o += offset
         return ray_o, ray_d, pdf_pos, pdf_dir, normal
 
     @ti.func
     def eval_le(self, inci_dir: vec3, normal: vec3):
         """ Emission evaluation, incid_dir is not normalized """
         ret_int = ZERO_V3
-        if self._type == 1:
-            dot_light = -ti.math.dot(inci_dir.normalized(), normal)
+        if self._type == AREA_SOURCE:
+            dot_light = -tm.dot(inci_dir.normalized(), normal)
             if dot_light > 0:
                 ret_int = self.intensity    # radiance will remain unchanged
         return ret_int
@@ -154,14 +188,16 @@ class TaichiSource:
     @ti.func
     def solid_angle_pdf(self, incid_dir: vec3, normal: vec3, depth: float):
         """ Area PDF converting to solid angle PDF (for hitting a area light) """
-        dot_res = ti.abs(ti.math.dot(incid_dir, normal))
+        dot_res = ti.abs(tm.dot(incid_dir, normal))
         return ti.select(dot_res > 0.0, self.area_pdf() * ti.pow(depth, 2) / dot_res, 0.0)
 
     @ti.func
     def area_pdf(self):
         """ Area PDF for hitting a area light, this is the non-converted version of solid_angle_pdf """
         pdf = 0.0
-        if self._type == 1:
+        if self._type == AREA_SOURCE:
+            pdf = self.inv_area
+        elif self._type == COLLIMATED_SOURCE and self.r > 0:
             pdf = self.inv_area
         return pdf
     
@@ -169,10 +205,10 @@ class TaichiSource:
     def direction_pdf(self, exit_dir, light_n):
         """ Compute solid angle PDF for emitting in certain direction """
         pdf = 0.0
-        if self._type == 0:         # uniform sphere PDF
+        if self._type == POINT_SOURCE:         # uniform sphere PDF
             pdf = INV_PI * 0.25
-        elif self._type == 1:       # cosine weighted PDF
-            pdf = ti.max(ti.math.dot(exit_dir, light_n), 0.0) * INV_PI
+        elif self._type == AREA_SOURCE:       # cosine weighted PDF
+            pdf = ti.max(tm.dot(exit_dir, light_n), 0.0) * INV_PI
         return pdf
 
 class LightSource:

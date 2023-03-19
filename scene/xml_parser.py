@@ -26,11 +26,13 @@ from scene.general_parser import get, transform_parse, parse_sphere_element
 from emitters.point import PointSource
 from emitters.area import AreaSource
 from emitters.directional import DirectionalSource
+from emitters.collimated import CollimatedSource
 
 from utils.tools import timing
 
 __VERSION__   = "1.1"
 __MAPPING__   = {"integer": int, "float": float, "string": str, "boolean": lambda x: True if x.lower() == "true" else False}
+__SOURCE_MAP__ = {"point": PointSource, "area": AreaSource, "directional": DirectionalSource, "spot": None, "collimated": CollimatedSource}
 
 """
     Actually I think in Taichi, we can leverage SSDS:
@@ -57,18 +59,14 @@ def parse_emitters(em_elem: list):
     source_id_dict = dict()
     for elem in em_elem:
         emitter_type = elem.get("type")
-        source = None
-        if emitter_type == "point":
-            source = PointSource(elem)
-        elif emitter_type == "rect_area":
-            source = AreaSource(elem)
-        elif emitter_type == "directional":
-            source = DirectionalSource(elem)
+        source = __SOURCE_MAP__.get(emitter_type, None)
         if source is not None:
             if source.id in source_id_dict:
                 raise ValueError(f"Two sources with same id {source.id} will result in conflicts")
             source_id_dict[source.id] = len(sources)
             sources.append(source)
+        else:
+            raise ValueError(f"Source [{emitter_type}] is not implemented.")
     return sources, source_id_dict
 
 def parse_wavefront(directory: str, obj_list: List[xet.Element], bsdf_dict: dict, emitter_dict: dict) -> List[Arr]:
