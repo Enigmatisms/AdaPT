@@ -43,7 +43,7 @@ if __name__ == "__main__":
     if output_freq > 0:
         output_folder = folder_path(f"{output_folder}{opts.img_name}-{opts.name[:-4]}-{opts.type}/")
     rdr: PathTracer = rdr_mapping[opts.type](emitter_configs, meshes, configs)
-    if type(rdr) != BDPT and configs.get('decomposition', 0) > 0:
+    if type(rdr) != BDPT and configs.get('decomposition', 0).startswith('transient'):
         print("[Warning] Transient rendering is only supported in BDPT renderer.")
 
     max_iter_num = opts.iter_num if opts.iter_num > 0 else 10000

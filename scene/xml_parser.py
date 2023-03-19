@@ -59,7 +59,7 @@ def parse_emitters(em_elem: list):
     source_id_dict = dict()
     for elem in em_elem:
         emitter_type = elem.get("type")
-        source = __SOURCE_MAP__.get(emitter_type, None)
+        source = __SOURCE_MAP__.get(emitter_type, None)(elem)
         if source is not None:
             if source.id in source_id_dict:
                 raise ValueError(f"Two sources with same id {source.id} will result in conflicts")

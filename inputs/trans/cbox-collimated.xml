@@ -1,0 +1,124 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- A test file for mitsuba-like scene xml file parser -->
+<!-- Author: Qianyue He / Original credit goes to Wenzel Jakob -->
+<!-- Only Steady state rendering are supported -->
+<!-- Only RGB or rgb spectrums are supported -->
+<scene version="1.1">
+	<sensor type="perspective">
+		<float name="near_clip" value="0.001"/>
+		<float name="far_clip" value="2000"/>
+		<float name="fov" value="39.3077"/>
+        <integer name="max_bounce" value="12"/>
+        <integer name="num_shadow_ray" value="1"/>       
+
+        <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
+        <boolean name="anti_alias" value="true"/>       	
+        <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
+        <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
+
+		<!-- Transient rendering configuration -->
+        <string name="decomposition" value="transient_cam"/>	<!-- Decomposition mode -->				
+        <integer name="sample_count" value="200"/>			<!-- Number of bins -->
+        <float name="min_time" value="0.0"/>					<!-- Starting time for camera -->				
+        <float name="interval" value="0.2"/>				<!-- Width of a time bin -->			
+		<!-- End of Transient rendering configuration -->
+		
+		<transform name="toWorld">
+			<lookat target="2.78, 2.73, -7.99" origin="2.78, 2.73, -8.00" up="0, 1, 0"/>
+		</transform>
+
+		<film type="film">
+			<integer name="width" value="512"/>
+			<integer name="height" value="512"/>
+			<integer name="sub_samples" value="8"/>
+		</film>
+	</sensor>
+
+	<brdf type="lambertian" id="box">
+		<rgb name="k_d" value="#BCBCBC"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="white">
+		<rgb name="k_d" value="#BDBDBD"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="left_wall">
+		<rgb name="k_d" value="#DD2525"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="right_wall">
+		<rgb name="k_d" value="#25DD25"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<emitter type="collimated" id="collimated">
+		<rgb name="emission" value="5.0, 5., 5.0"/>
+		<rgb name="scaler" value="3.0"/>
+		<point name="pos" x="2.78" y="2.73" z="-7.99"/>
+		<point name="dir" x="0.0" y="0.0" z="1.0"/>
+		<float name="radius" value="0.2"/>
+	</emitter>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
+		<ref type="material" id="white"/>
+		<transform name="toWorld">
+			<translate x="0" y="0.0" z="0"/>
+		</transform>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_ceiling.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_back.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_greenwall.obj"/>
+		<ref type="material" id="right_wall"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_redwall.obj"/>
+
+		<ref type="material" id="left_wall"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_smallbox.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="0"/>
+		</transform>
+		<ref type="material" id="box"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_largebox.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
+		</transform>
+		<ref type="material" id="box"/>
+	</shape>
+
+	<world name="yes!">
+		<rgb name="skybox" value="0.0"/>
+		<rgb name="ambient" value="0.0"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.0"/>
+		</medium>
+	</world>
+</scene>

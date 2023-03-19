@@ -24,7 +24,7 @@ from sampler.general_sampling import sample_triangle, cosine_hemisphere, uniform
 # =============== Emitter Type =================
 POINT_SOURCE        = 0
 AREA_SOURCE         = 1
-DIRECTIONAL_SOURCE  = 2  # infinite light
+DIRECTIONAL_SOURCE  = 2     # infinite light
 SPOT_SOURCE         = 3
 COLLIMATED_SOURCE   = 4
 
@@ -124,11 +124,13 @@ class TaichiSource:
             if self.r > 0.:
                 to_hit = (hit_pos - self.pos)
                 proj_d = tm.dot(to_hit, self.dir)
-                dist = ti.sqrt(to_hit.norm_sqr() - proj_d * proj_d)
-                if dist < self.r:
-                    ret_pdf = self.inv_area
-                    ret_pos = self.pos + to_hit - proj_d * self.dir
-                    normal = self.dir
+                if proj_d > 0.0:
+                    dist = ti.sqrt(to_hit.norm_sqr() - proj_d * proj_d)
+                    if dist < self.r:
+                        ret_pdf = 1.0
+                        ret_pos = hit_pos - proj_d * self.dir       # this would require further intersection test
+                        normal = self.dir
+
             else:
                 ret_int = ZERO_V3
         return ret_pos, ret_int, ret_pdf, normal
