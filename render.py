@@ -4,6 +4,7 @@
     @date: 2023.2.7
 """
 import os
+import numpy as np
 import taichi as ti
 import taichi.ui as tui
 from tqdm import tqdm
@@ -16,20 +17,31 @@ from la.cam_transform import *
 
 from utils.tools import folder_path
 from utils.watermark import apply_watermark
+from utils.tdom_analyze import time_domain_curve
 from scene.xml_parser import mitsuba_parsing
 from scene.opts import get_options, mapped_arch
 
 rdr_mapping = {"pt": Renderer, "vpt": VolumeRenderer, "bdpt": BDPT}
 name_mapping = {"pt": "", "vpt": "Volumetric ", "bdpt": "Bidirectional "}
 
-def export_transient_profile(rdr: BDPT, sample_cnt: int, out_path: str, out_name: str, out_ext: str, normalize: float = 0.):
+def export_transient_profile(rdr: BDPT, sample_cnt: int, out_path: str, out_name: str, out_ext: str, normalize: float = 0., analyze: bool = False):
     output_folder = folder_path(os.path.join(out_path, out_name))
-    print(f"[INFO] Exporting transient profile to folder '{output_folder}'")
+    all_files = []
+    print(f"[INFO] Transient profile post processing... ")
     for i in tqdm(range(sample_cnt)):
         rdr.copy_average(i)
-        # TODO normalization not global, this might introduce inconsistency problem
-        transient_img = apply_watermark(rdr.pixels, normalize, False)
-        ti.tools.imwrite(transient_img, f"{output_folder}/img_{i + 1:03d}.{out_ext}")
+        transient_img = apply_watermark(rdr, 0.0, False)
+        all_files.append(transient_img)
+    all_files = np.stack(all_files, axis = 0)
+    print(f"[INFO] Exporting transient profile to folder '{output_folder}'")
+    if normalize > 0.9:
+        qnt = np.quantile(all_files, normalize)
+        all_files[i, ...] /= qnt
+    for i in tqdm(range(sample_cnt)):
+        ti.tools.imwrite(all_files[i, ...], f"{output_folder}/img_{i + 1:03d}.{out_ext}")
+    if analyze:
+        print(f"[INFO] Analyzing time domain information...")
+        time_domain_curve(all_files)
 
 if __name__ == "__main__":
     opts = get_options()
@@ -43,7 +55,7 @@ if __name__ == "__main__":
     if output_freq > 0:
         output_folder = folder_path(f"{output_folder}{opts.img_name}-{opts.name[:-4]}-{opts.type}/")
     rdr: PathTracer = rdr_mapping[opts.type](emitter_configs, meshes, configs)
-    if type(rdr) != BDPT and configs.get('decomposition', 0).startswith('transient'):
+    if type(rdr) != BDPT and configs.get('decomposition', 'none').startswith('transient'):
         print("[Warning] Transient rendering is only supported in BDPT renderer.")
 
     max_iter_num = opts.iter_num if opts.iter_num > 0 else 10000
@@ -86,7 +98,7 @@ if __name__ == "__main__":
     rdr.summary()
     if opts.profile:
         ti.profiler.print_kernel_profiler_info() 
-    image = apply_watermark(rdr.pixels, opts.normalize, True)
+    image = apply_watermark(rdr, opts.normalize, True)
     ti.tools.imwrite(image, f"{folder_path(opts.output_path)}{opts.img_name}-{opts.name[:-4]}-{opts.type}.{opts.img_ext}")
     if type(rdr) == BDPT and rdr.decomp[None] > 0:
-        export_transient_profile(rdr, configs['sample_count'], opts.output_path, opts.name[:-4], opts.img_ext, opts.normalize)
+        export_transient_profile(rdr, configs['sample_count'], opts.output_path, opts.name[:-4], opts.img_ext, opts.normalize, opts.analyze)

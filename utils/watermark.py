@@ -16,14 +16,17 @@ water_mark = np.float32([
 [1., 0., 0., 1., 0., 1., 0., 0., 0., 0., 1., 1., 0., 0., 1., 0., 1., 0., 0., 1., 0., 1., 0., 0., 0., 0., 1., 0., 0., 1., 0., 1., 0., 0., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 1., 0., 1., 0., 1., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 1., 0., 0., 0., 1., 0., 0.],
 [1., 1., 1., 0., 0., 1., 1., 1., 1., 0., 1., 1., 0., 0., 1., 0., 1., 1., 1., 0., 0., 1., 1., 1., 1., 0., 1., 1., 1., 0., 0., 1., 1., 1., 1., 0., 1., 1., 1., 0., 0., 0., 0., 0., 1., 0., 1., 0., 1., 0., 1., 0., 1., 1., 1., 1., 1., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 1., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 1., 1., 1., 0., 0., 1., 1., 1., 1., 1.]])
 
-def apply_watermark(raw, normalize = 0., verbose = False):
-    img = raw.to_numpy()
+def apply_watermark(rdr, normalize = 0., verbose = False):
+    img = rdr.pixels.to_numpy()
+    if rdr.do_crop == True:         # Do not apply watermark when cropping
+        img = img[rdr.start_y:rdr.end_y, rdr.start_x:rdr.end_x, :]
     if verbose:
         print(f"[INFO] pixel max value = {img.max():.3f}")
-    h, w = water_mark.shape
     if normalize > 0.9:
         img /= np.quantile(img, normalize)
-    img[-w-1:-1, :h, :] += water_mark.T[..., None]
+    if not rdr.do_crop:
+        h, w = water_mark.shape
+        img[-w-1:-1, :h, :] += water_mark.T[..., None]
     return img
 
 if __name__ == "__main__":

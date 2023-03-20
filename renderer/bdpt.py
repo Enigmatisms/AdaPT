@@ -104,31 +104,33 @@ class BDPT(VolumeRenderer):
         interval = self.interval[None]
 
         for i, j in self.pixels:
-            cam_vnum = self.generate_eye_path(i, j, max_bnc) + 1
-            lit_vnum = self.generate_light_path(i, j, max_bnc) + 1
-            s_end_i = ti.min(lit_vnum, s_end)
-            t_end_i = ti.min(cam_vnum, t_end)
-            for t in range(t_start, t_end_i):
-                for s in range(s_start, s_end_i):
-                    depth = s + t - 2
-                    if (s == 1 and t == 1) or depth < 0 or depth > max_depth:
-                        continue
-                    multi_light_con = (t > 1) and (s > 0) and (self.cam_paths[i, j, t - 1]._type == VERTEX_EMITTER)
-                    if not multi_light_con:
-                        # TODO: pass decomp value into connect path to avoid excessive reading of decomp[None] 
-                        radiance, raster_p, path_time = self.connect_path(i, j, s, t)
-                        has_nan = (ti.math.isnan(radiance) | ti.math.isinf(radiance)).any()
-                        color = ti.select(ti.math.isnan(radiance) | ti.math.isinf(radiance), 0., radiance)
-                        id_i = i
-                        id_j = j
-                        if t == 1 and raster_p.min() >= 0:      # non-local contribution
-                            id_i, id_j = raster_p
-                        if decomp >= TRANSIENT_CAM and not has_nan and path_time < max_time and path_time > min_time:
-                            time_idx = int((path_time - min_time) / interval)
-                            self.time_bins[id_i, id_j, time_idx] += color
-                            self.time_cnts[id_i, id_j, time_idx] += 1
-                        self.color[id_i, id_j] += color
-            self.pixels[i, j] = self.color[i, j] / self.cnt[None]
+            in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
+            if not self.do_crop or in_crop_range:
+                cam_vnum = self.generate_eye_path(i, j, max_bnc) + 1
+                lit_vnum = self.generate_light_path(i, j, max_bnc) + 1
+                s_end_i = ti.min(lit_vnum, s_end)
+                t_end_i = ti.min(cam_vnum, t_end)
+                for t in range(t_start, t_end_i):
+                    for s in range(s_start, s_end_i):
+                        depth = s + t - 2
+                        if (s == 1 and t == 1) or depth < 0 or depth > max_depth:
+                            continue
+                        multi_light_con = (t > 1) and (s > 0) and (self.cam_paths[i, j, t - 1]._type == VERTEX_EMITTER)
+                        if not multi_light_con:
+                            # TODO: pass decomp value into connect path to avoid excessive reading of decomp[None] 
+                            radiance, raster_p, path_time = self.connect_path(i, j, s, t)
+                            has_nan = (ti.math.isnan(radiance) | ti.math.isinf(radiance)).any()
+                            color = ti.select(ti.math.isnan(radiance) | ti.math.isinf(radiance), 0., radiance)
+                            id_i = i
+                            id_j = j
+                            if t == 1 and raster_p.min() >= 0:      # non-local contribution
+                                id_i, id_j = raster_p
+                            if decomp >= TRANSIENT_CAM and not has_nan and path_time < max_time and path_time > min_time:
+                                time_idx = int((path_time - min_time) / interval)
+                                self.time_bins[id_i, id_j, time_idx] += color
+                                self.time_cnts[id_i, id_j, time_idx] += 1
+                            self.color[id_i, id_j] += color
+                self.pixels[i, j] = self.color[i, j] / self.cnt[None]
     
     def reset(self):
         """ Resetting path vertex container """

@@ -24,7 +24,10 @@
 		<film type="film">
 			<integer name="width" value="512"/>
 			<integer name="height" value="512"/>
-			<integer name="sub_samples" value="8"/>
+			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
+			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
+			<integer name="crop_rx" value="0"/>		<!-- Crop half radius for x-axis -->
+			<integer name="crop_ry" value="0"/>		<!-- Crop half radius for y-axis -->
 		</film>
 	</sensor>
 
@@ -58,7 +61,7 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<emitter type="rect_area" id="rect_area">
+	<emitter type="area" id="area">
 		<rgb name="emission" value="50.0, 45.6, 42.3"/>
 		<rgb name="scaler" value="1.0"/>
 	</emitter>
@@ -69,7 +72,7 @@
 			<translate x="0" y="-0.001" z="0"/>
 		</transform>
 		<ref type="material" id="light"/>
-		<ref type="emitter" id="rect_area"/>
+		<ref type="emitter" id="area"/>
 	</shape>
 
 	<shape type="obj">

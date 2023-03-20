@@ -64,7 +64,7 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<emitter type="rect_area" id="rect_area">
+	<emitter type="area" id="area">
 		<rgb name="emission" value="50.0, 50.0, 50.0"/>
 		<rgb name="scaler" value="1.5"/>
 	</emitter>
@@ -75,7 +75,7 @@
 			<translate x="0" y="-0.001" z="0"/>
 		</transform>
 		<ref type="material" id="light"/>
-		<ref type="emitter" id="rect_area"/>
+		<ref type="emitter" id="area"/>
 	</shape>
 
 	<shape type="obj">

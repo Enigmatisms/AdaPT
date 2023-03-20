@@ -86,8 +86,7 @@ class VolumeRenderer(PathTracer):
             For medium interaction, check if the path to one point is not blocked (by non-null surface object)
             And also we need to calculate the attenuation along the path, e.g.: if the ray passes through
             two clouds of smoke and between the two clouds there is a transparent medium
-            FIXME: the seed of this method should be boosted
-            FIXME: unbounded scene problem only occurs when the source is point source and during vertex connection
+            FIXME: the speed of this method should be boosted
         """
         tr = vec3([1., 1., 1.])
         in_free_space = True
@@ -124,83 +123,85 @@ class VolumeRenderer(PathTracer):
     def render(self, _t_start: int, _t_end: int, _s_start: int, _s_end: int, _a: int, _b: int):
         self.cnt[None] += 1
         for i, j in self.pixels:
-            # TODO: MIS in VPT is not considered yet (too complex)
-            ray_d = self.pix2ray(i, j)
-            ray_o = self.cam_t
-            normal          = vec3([0, 1, 0])
-            color           = vec3([0, 0, 0])
-            throughput      = vec3([1, 1, 1])
-            in_free_space = True
-            bounce = 0
-            while True:
-                # for _i in range(self.max_bounce):
-                # Step 1: ray termination test - Only RR termination is allowed
-                max_value = throughput.max()
-                if ti.random(float) > max_value: break
-                else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
-                # Step 2: ray intersection
-                obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
-                if obj_id < 0:     
-                    if not self.world_scattering: break     # nothing is hit, break
-                    else:                                   # the world is filled with scattering medium
-                        min_depth = self.world_bound_time(ray_o, ray_d)
-                        in_free_space = True
-                        obj_id = -1
-                else:
-                    in_free_space = tm.dot(normal, ray_d) < 0
-                # Step 3: check for mean free path sampling
-                # Calculate mfp, path_beta = transmittance / PDF
-                is_mi, min_depth, path_beta = self.sample_mfp(obj_id, in_free_space, min_depth) 
-                if obj_id < 0 and not is_mi: break          # exiting world bound
-                hit_point = ray_d * min_depth + ray_o
-                throughput *= path_beta         # attenuate first
-                if not is_mi and not self.non_null_surface(obj_id):
-                    ray_o = hit_point
-                    continue
-                hit_light = -1 if is_mi else self.emitter_id[obj_id]
-                # Step 4: direct component estimation
-                emitter_pdf = 1.0
-                break_flag  = False
-                shadow_int  = vec3([0, 0, 0])
-                direct_int  = vec3([0, 0, 0])
-                direct_spec = vec3([1, 1, 1])
-                for _j in range(self.num_shadow_ray):    # more shadow ray samples
-                    emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
-                    light_dir = vec3([0, 0, 0])
-                    # direct / emission component evaluation
-                    if emitter_valid:
-                        emit_pos, shadow_int, _d, _n = emitter.         \
-                            sample_hit(self.precom_vec, self.normals, self.mesh_cnt, hit_point)        # sample light
-                        to_emitter  = emit_pos - hit_point
-                        emitter_d   = to_emitter.norm()
-                        light_dir   = to_emitter / emitter_d
-                        tr = self.track_ray(light_dir, hit_point, emitter_d)
-                        shadow_int *= tr
-                        direct_spec = self.eval(obj_id, ray_d, light_dir, normal, is_mi, in_free_space)
-                    else:       # the only situation for being invalid, is when there is only one source and the ray hit the source
-                        break_flag = True
-                        break
-                    direct_int += direct_spec * shadow_int / emitter_pdf
-                if not break_flag:
-                    direct_int *= self.inv_num_shadow_ray
-                # Step 5: emission evaluation - ray hitting an area light source
-                emit_int    = vec3([0, 0, 0])
-                if hit_light >= 0:
-                    emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, normal)
-                
-                # Step 6: sample new ray. This should distinguish between surface and medium interactions
-                ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, is_mi, in_free_space)
-                ray_o = hit_point
-                color += (direct_int + emit_int) * throughput
-                if not is_mi:
-                    if indirect_spec.max() == 0. or ray_pdf == 0.: break
-                    throughput *= (indirect_spec / ray_pdf)
-                bounce += 1
-                if bounce >= self.max_bounce:
-                    break
+            in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
+            if not self.do_crop or in_crop_range:
+                # TODO: MIS in VPT is not considered yet (too complex)
+                ray_d = self.pix2ray(i, j)
+                ray_o = self.cam_t
+                normal          = vec3([0, 1, 0])
+                color           = vec3([0, 0, 0])
+                throughput      = vec3([1, 1, 1])
+                in_free_space = True
+                bounce = 0
+                while True:
+                    # for _i in range(self.max_bounce):
+                    # Step 1: ray termination test - Only RR termination is allowed
+                    max_value = throughput.max()
+                    if ti.random(float) > max_value: break
+                    else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
+                    # Step 2: ray intersection
+                    obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
+                    if obj_id < 0:     
+                        if not self.world_scattering: break     # nothing is hit, break
+                        else:                                   # the world is filled with scattering medium
+                            min_depth = self.world_bound_time(ray_o, ray_d)
+                            in_free_space = True
+                            obj_id = -1
+                    else:
+                        in_free_space = tm.dot(normal, ray_d) < 0
+                    # Step 3: check for mean free path sampling
+                    # Calculate mfp, path_beta = transmittance / PDF
+                    is_mi, min_depth, path_beta = self.sample_mfp(obj_id, in_free_space, min_depth) 
+                    if obj_id < 0 and not is_mi: break          # exiting world bound
+                    hit_point = ray_d * min_depth + ray_o
+                    throughput *= path_beta         # attenuate first
+                    if not is_mi and not self.non_null_surface(obj_id):
+                        ray_o = hit_point
+                        continue
+                    hit_light = -1 if is_mi else self.emitter_id[obj_id]
+                    # Step 4: direct component estimation
+                    emitter_pdf = 1.0
+                    break_flag  = False
+                    shadow_int  = vec3([0, 0, 0])
+                    direct_int  = vec3([0, 0, 0])
+                    direct_spec = vec3([1, 1, 1])
+                    for _j in range(self.num_shadow_ray):    # more shadow ray samples
+                        emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
+                        light_dir = vec3([0, 0, 0])
+                        # direct / emission component evaluation
+                        if emitter_valid:
+                            emit_pos, shadow_int, _d, _n = emitter.         \
+                                sample_hit(self.precom_vec, self.normals, self.mesh_cnt, hit_point)        # sample light
+                            to_emitter  = emit_pos - hit_point
+                            emitter_d   = to_emitter.norm()
+                            light_dir   = to_emitter / emitter_d
+                            tr = self.track_ray(light_dir, hit_point, emitter_d)
+                            shadow_int *= tr
+                            direct_spec = self.eval(obj_id, ray_d, light_dir, normal, is_mi, in_free_space)
+                        else:       # the only situation for being invalid, is when there is only one source and the ray hit the source
+                            break_flag = True
+                            break
+                        direct_int += direct_spec * shadow_int / emitter_pdf
+                    if not break_flag:
+                        direct_int *= self.inv_num_shadow_ray
+                    # Step 5: emission evaluation - ray hitting an area light source
+                    emit_int    = vec3([0, 0, 0])
+                    if hit_light >= 0:
+                        emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, normal)
 
-            self.color[i, j] += ti.select(ti.math.isnan(color), 0., color)
-            self.pixels[i, j] = self.color[i, j] / self.cnt[None]
+                    # Step 6: sample new ray. This should distinguish between surface and medium interactions
+                    ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, is_mi, in_free_space)
+                    ray_o = hit_point
+                    color += (direct_int + emit_int) * throughput
+                    if not is_mi:
+                        if indirect_spec.max() == 0. or ray_pdf == 0.: break
+                        throughput *= (indirect_spec / ray_pdf)
+                    bounce += 1
+                    if bounce >= self.max_bounce:
+                        break
+
+                self.color[i, j] += ti.select(ti.math.isnan(color), 0., color)
+                self.pixels[i, j] = self.color[i, j] / self.cnt[None]
             
     def summary(self):
         print(f"[INFO] VPT Finished rendering. SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s")

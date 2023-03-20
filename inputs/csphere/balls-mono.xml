@@ -88,7 +88,7 @@
 		</medium>
 	</bsdf>
 
-	<emitter type="rect_area" id="rect_area">
+	<emitter type="area" id="area">
 		<rgb name="emission" value="70.0, 63.2, 60.3"/>
 		<rgb name="scaler" value="0.6"/>
 	</emitter>
@@ -99,7 +99,7 @@
 			<translate x="0" y="-0.001" z="0"/>
 		</transform>
 		<ref type="material" id="light"/>
-		<ref type="emitter" id="rect_area"/>
+		<ref type="emitter" id="area"/>
 	</shape>
 
 	<shape type="obj">

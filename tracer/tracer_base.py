@@ -31,6 +31,18 @@ class TracerBase:
     def __init__(self, objects: List[ObjDescriptor], prop: dict):
         self.w          = prop['film']['width']                              # image is a standard square
         self.h          = prop['film']['height']
+        # center crop (for a small patch of )
+        self.crop_x     = prop['film'].get('crop_x', 0)
+        self.crop_y     = prop['film'].get('crop_y', 0)
+        self.crop_rx    = prop['film'].get('crop_rx', 0)
+        self.crop_ry    = prop['film'].get('crop_ry', 0)
+        self.do_crop    = (self.crop_rx > 0) and (self.crop_ry > 0)
+
+        self.start_x    = self.crop_x - self.crop_rx
+        self.end_x      = self.crop_x + self.crop_rx
+        self.start_y    = self.crop_y - self.crop_ry
+        self.end_y      = self.crop_y + self.crop_ry
+
         self.max_bounce = prop['max_bounce']
         self.use_rr     = prop['use_rr']
 

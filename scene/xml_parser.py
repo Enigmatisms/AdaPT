@@ -46,7 +46,7 @@ def update_emitter_config(emitter_config: List, area_lut: dict):
             emitter.inv_area = 1. / area_lut[i]
             emitter.attached = True
         else:
-            if emitter.type == "rect_area":
+            if emitter.type == "area":
                 emitter.inv_area = 1. / (emitter.l1 * emitter.l2)
     return emitter_config
 
@@ -143,7 +143,7 @@ def parse_global_sensor(sensor_elem: xet.Element):
 
     sensor_config["transform"]  = transform_parse(sensor_elem.find("transform"))
     film_elems                  = sensor_elem.find("film").findall("integer")
-    assert(len(film_elems) >= 2)        # at least width, height and sample count (meaningless for direct component tracer)
+    assert(len(film_elems) >= 2)        # at least width, height (meaningless for direct component tracer)
     sensor_config["film"]       = {}
     for elem in film_elems:
         if elem.tag in __MAPPING__:
