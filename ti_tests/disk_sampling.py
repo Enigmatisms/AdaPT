@@ -1,30 +1,43 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import taichi as ti
+from taichi.math import vec3
+import taichi.ui as tui
 
-pi_4 = np.pi / 4
-pi_2 = np.pi / 2
+PI_DIV2 = np.pi / 2.
+PI_DIV4 = np.pi / 4.
+ZERO_V3 = vec3([0, 0, 0])
 
-def concentric_disk_sample():
-    offset = 2 * np.random.rand(2) - 1.
-    if (offset == 0).any():
-        return np.zeros(2)
-    if abs(offset[0]) > abs(offset[1]):
-        r = offset[0]
-        theta = pi_4 * (offset[1] / offset[0])
-    else:
-        r = offset[1]
-        theta = pi_2 - pi_4 * (offset[0] / offset[1])
-    return r * np.float32([np.cos(theta), np.sin(theta)])
+@ti.func
+def concentric_sample():
+    off_x = ti.random(float) * 2. - 1.
+    off_y = ti.random(float) * 2. - 1.
+    result = ZERO_V3
+    if off_x != 0 and off_y != 0:
+        if ti.abs(off_x) > ti.abs(off_y):
+            theta = PI_DIV4 * (off_y / off_x)
+            result = vec3([off_x * ti.cos(theta), 0., off_x * ti.sin(theta)])
+        else:
+            theta = PI_DIV2 - PI_DIV4 * (off_x / off_y)
+            result = vec3([off_y * ti.cos(theta), 0., off_y * ti.sin(theta)])
+    return result
+
+@ti.kernel
+def get_samples(field: ti.template()):
+    for i in field:
+        sample = concentric_sample()
+        field[i] = vec3([sample[0],sample[2], -1]) * 0.5 + 0.5
+        print(field[i])
+    print("Samples are obtained.")
 
 if __name__ == '__main__':
-    samples = []
-    for i in range(1000):
-        sample = concentric_disk_sample()
-        samples.append(sample)
-    samples = np.stack(samples, axis = 0)
-    circle = np.linspace(0, 2. * np.pi, 3600)
-    circle_line = np.stack((np.cos(circle), np.sin(circle)), axis = 1)
-    plt.plot(circle_line[:, 0], circle_line[:, 1], c = 'b')
-    plt.scatter(samples[:, 0], samples[:, 1], s = 5, c = 'r')
-    plt.grid(axis = 'both')
-    plt.show()
+    ti.init()
+    vec_field = ti.Vector.field(3, float, 10000)
+    get_samples(vec_field)
+    window   = tui.Window('Scene Interactive Visualizer', res = (1024, 1024), pos = (150, 150))
+    canvas   = window.get_canvas()
+    while window.running:
+        canvas.circles(vec_field, 0.001, color = (0., 0.4, 1.0))
+        for e in window.get_events(tui.PRESS):
+            if e.key == tui.ESCAPE:
+                window.running = False
+        window.show()

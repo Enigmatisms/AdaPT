@@ -61,6 +61,7 @@ class Renderer(PathTracer):
                         emitter_d   = to_emitter.norm()
                         light_dir   = to_emitter / emitter_d
                         # Note that, null surface in vanilla renderer will produce erroneous results
+                        # TODO: for collimated light, this is more complicated --- intersection test and the direction of ray should be modified
                         if self.does_intersect(light_dir, hit_point, emitter_d):        # shadow ray 
                             shadow_int.fill(0.0)
                         else:
@@ -87,9 +88,7 @@ class Renderer(PathTracer):
                 # indirect component requires sampling 
                 ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, False, False)
                 ray_o = hit_point
-                color += emit_int * emission_weight * contribution
-                if _i + 1 >= self.max_bounce:
-                    color += direct_int * contribution
+                color += (direct_int + emit_int * emission_weight) * contribution
                 # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)
                 contribution *= indirect_spec / ray_pdf
                 obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)

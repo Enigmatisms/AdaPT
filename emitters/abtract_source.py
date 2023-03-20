@@ -15,8 +15,8 @@ import xml.etree.ElementTree as xet
 from taichi.math import vec3
 
 from scene.general_parser import rgb_parse
-from la.cam_transform import delocalize_rotate
 from renderer.constants import INV_PI, ZERO_V3, AXIS_Y
+from la.cam_transform import delocalize_rotate, world_frame
 from sampler.general_sampling import sample_triangle, cosine_hemisphere, uniform_sphere, concentric_disk_sample
 
 # point-0: PointSource, area-1: AreaSource, directional-2: DirectionalSource, spot-3: None, collimated-4: CollimatedSource
@@ -121,16 +121,19 @@ class TaichiSource:
                 ret_pdf *= ti.select(dot_light > 0.0, diff_norm2 / dot_light, 0.0)
                 ret_int = ti.select(ret_pdf > 0.0, ret_int / ret_pdf, 0.)
         elif self._type == COLLIMATED_SOURCE:
+            # It is possible that we are not able to `sample` (actually, not sample, deterministic calculation) the collimated source
+            ret_pdf = 0.
             if self.r > 0.:
                 to_hit = (hit_pos - self.pos)
                 proj_d = tm.dot(to_hit, self.dir)
                 if proj_d > 0.0:
                     dist = ti.sqrt(to_hit.norm_sqr() - proj_d * proj_d)
                     if dist < self.r:
-                        ret_pdf = 1.0
+                        # This should not be sampling, since the point on the emitter and the hit point are bijectional
                         ret_pos = hit_pos - proj_d * self.dir       # this would require further intersection test
                         normal = self.dir
-
+                    else:
+                        ret_int.fill(0.0)
             else:
                 ret_int = ZERO_V3
         return ret_pos, ret_int, ret_pdf, normal
@@ -173,9 +176,8 @@ class TaichiSource:
             pdf_dir = 1.
             if self.r > 0.:
                 # sample a point in the disk
-                local_offset = concentric_disk_sample()
-                offset, _ = delocalize_rotate(self.dir, local_offset)
-                ray_o += offset
+                local_offset = concentric_disk_sample() * self.r
+                ray_o += world_frame(AXIS_Y, self.dir, local_offset)
         return ray_o, ray_d, pdf_pos, pdf_dir, normal
 
     @ti.func
@@ -199,8 +201,6 @@ class TaichiSource:
         """ Area PDF for hitting a area light, this is the non-converted version of solid_angle_pdf """
         pdf = 0.0
         if self._type == AREA_SOURCE:
-            pdf = self.inv_area
-        elif self._type == COLLIMATED_SOURCE and self.r > 0:
             pdf = self.inv_area
         return pdf
     

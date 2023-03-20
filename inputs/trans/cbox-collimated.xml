@@ -59,11 +59,12 @@
 	</brdf>
 
 	<emitter type="collimated" id="collimated">
-		<rgb name="emission" value="5.0, 5., 5.0"/>
-		<rgb name="scaler" value="3.0"/>
+		<rgb name="emission" value="5.0, 5.0, 5.0"/>
+		<!-- This should be very huge: 5.0 * 12000000.0, for laser beam with 1mm diameter -->
+		<rgb name="scaler" value="8000.0"/>
 		<point name="pos" x="2.78" y="2.73" z="-7.99"/>
 		<point name="dir" x="0.0" y="0.0" z="1.0"/>
-		<float name="radius" value="0.2"/>
+		<float name="radius" value="0.05"/>
 	</emitter>
 
 	<shape type="obj">
