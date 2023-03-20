@@ -117,15 +117,13 @@ class BDPT(VolumeRenderer):
                             continue
                         multi_light_con = (t > 1) and (s > 0) and (self.cam_paths[i, j, t - 1]._type == VERTEX_EMITTER)
                         if not multi_light_con:
-                            # TODO: pass decomp value into connect path to avoid excessive reading of decomp[None] 
-                            radiance, raster_p, path_time = self.connect_path(i, j, s, t)
-                            has_nan = (ti.math.isnan(radiance) | ti.math.isinf(radiance)).any()
+                            radiance, raster_p, path_time = self.connect_path(i, j, s, t, decomp)
                             color = ti.select(ti.math.isnan(radiance) | ti.math.isinf(radiance), 0., radiance)
                             id_i = i
                             id_j = j
                             if t == 1 and raster_p.min() >= 0:      # non-local contribution
                                 id_i, id_j = raster_p
-                            if decomp >= TRANSIENT_CAM and not has_nan and path_time < max_time and path_time > min_time:
+                            if decomp >= TRANSIENT_CAM and path_time < max_time and path_time > min_time:
                                 time_idx = int((path_time - min_time) / interval)
                                 self.time_bins[id_i, id_j, time_idx] += color
                                 self.time_cnts[id_i, id_j, time_idx] += 1
@@ -258,7 +256,7 @@ class BDPT(VolumeRenderer):
         return vertex_num
     
     @ti.func
-    def connect_path(self, i: int, j: int, sid: int, tid: int):
+    def connect_path(self, i: int, j: int, sid: int, tid: int, decomp: int):
         """ Rigorous logic check, review and debug should be done """
         le = ZERO_V3
         ret_time = 0.
@@ -274,7 +272,9 @@ class BDPT(VolumeRenderer):
             if vertex.is_light():                       # is the current vertex an emitter vertex?
                 le = self.src_field[int(vertex.emit_id)].eval_le(vertex.ray_in, vertex.normal) * vertex.beta
                 # TODO: transient cam and lit are different
-                ret_time = vertex.time + self.src_field[int(vertex.emit_id)].emit_time      # for emission, we should acount for their emission time
+                ret_time = self.src_field[int(vertex.emit_id)].emit_time      # for emission, we should acount for their emission time
+                if decomp == TRANSIENT_CAM:             # for emission, we should acount for their emission time
+                    ret_time += vertex.time      
         elif tid == 1:                                  # re-rasterize point onto the film, atomic add is allowed
             vertex = self.light_paths[i, j, sid - 1]
             if vertex.is_connectible():
@@ -296,7 +296,9 @@ class BDPT(VolumeRenderer):
                     calc_transmittance = fr2cam.max() > 0
                     le = vertex.beta * fr2cam * sampled_v.beta
                     # TODO: transient cam and lit are different
-                    ret_time = vertex.time + depth
+                    ret_time = vertex.time
+                    if decomp == TRANSIENT_CAM:
+                        ret_time += depth
         elif sid == 1:          # only one light vertex is used, resample
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_connectible():
@@ -320,7 +322,9 @@ class BDPT(VolumeRenderer):
                     vertex_sampled = True
                     calc_transmittance = fr2light.max() > 0
                     le = vertex.beta * fr2light * sampled_v.beta
-                    ret_time = vertex.time + emitter.emit_time + depth
+                    ret_time = emitter.emit_time
+                    if decomp == TRANSIENT_CAM:
+                        ret_time += vertex.time + depth
         else:                   # general cases
             cam_v = self.cam_paths[i, j, tid - 1]
             lit_v = self.light_paths[i, j, sid - 1]
@@ -337,7 +341,9 @@ class BDPT(VolumeRenderer):
                     # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                     calc_transmittance = fr_cam.max() > 0 and fr_lit.max() > 0
                     le = cam_v.beta * fr_cam * fr_lit * lit_v.beta / (depth * depth)
-                    ret_time = cam_v.time + lit_v.time + depth
+                    ret_time = lit_v.time
+                    if decomp == TRANSIENT_CAM:
+                        ret_time += cam_v.time + depth
         weight = 0.
         if le.max() > 0 and calc_transmittance == True:
             le *= self.track_ray(connect_dir, track_pos, depth)

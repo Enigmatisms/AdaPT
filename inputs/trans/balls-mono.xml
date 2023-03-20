@@ -8,12 +8,13 @@
 		<float name="near_clip" value="0.001"/>
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
-        <integer name="max_bounce" value="12"/>
-        <integer name="num_shadow_ray" value="1"/>       
+        <integer name="sample_count" value="128"/>
+        <integer name="max_bounce" value="16"/>
+        <integer name="num_shadow_ray" value="4"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
-        <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
+        <boolean name="stratified_sampling" value="true"/>
         <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
 
 		<!-- Transient rendering configuration -->
@@ -34,39 +35,75 @@
 		</film>
 	</sensor>
 
-	<brdf type="lambertian" id="box">
+	<brdf type="fresnel-blend" id="fresnel">
+		<rgb name="k_d" value="#CACACA"/>
+		<!-- <rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/> -->
+		<rgb name="k_s" value="#333333"/>
+		<rgb name="k_g" r="10" g="1000"/>
+	</brdf>
+
+	<brdf type="mod-phong" id="glossy">
 		<rgb name="k_d" value="#BCBCBC"/>
+		<rgb name="k_g" value="10.0"/>
+		<rgb name="k_s" value="#424242"/>
+	</brdf>
+
+	<brdf type="blinn-phong" id="diffuse">
+		<rgb name="k_d" value="#D2D2D2"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
 	<brdf type="lambertian" id="white">
-		<rgb name="k_d" value="#BDBDBD"/>
+		<rgb name="k_d" value="#FFFFFF"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="lambertian" id="left_wall">
+	<brdf type="blinn-phong" id="left_wall">
 		<rgb name="k_d" value="#DD2525"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="lambertian" id="right_wall">
+	<brdf type="specular" id="mirror">
+		<rgb name="k_d" value="#DEDEDE"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="blinn-phong" id="right_wall">
 		<rgb name="k_d" value="#25DD25"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
+	<brdf type="blinn-phong" id="light">
+		<rgb name="k_d" value="#CCCCCC"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<bsdf type="det-refraction" id="glass">
+		<rgb name="k_d" value="#FAFAFA"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.5"/>
+		</medium>
+	</bsdf>
+
 	<emitter type="point" id="point">
-		<rgb name="emission" value="60.0, 60., 60.0"/>
-		<rgb name="scaler" value="2.0"/>
-		<point name="center" x="2.78" y="2.73" z="1.4"/>
+		<rgb name="emission" value="70.0, 63.2, 60.3"/>
+		<rgb name="scaler" value="0.6"/>
+		<point name="center" x="2.78" y="2.73" z="-1.4"/>
 	</emitter>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
-		<ref type="material" id="white"/>
+		<ref type="material" id="diffuse"/>
 		<transform name="toWorld">
 			<translate x="0" y="0.0" z="0"/>
 		</transform>
@@ -74,12 +111,12 @@
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_ceiling.obj"/>
-		<ref type="material" id="white"/>
+		<ref type="material" id="diffuse"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_back.obj"/>
-		<ref type="material" id="white"/>
+		<ref type="material" id="diffuse"/>
 	</shape>
 
 	<shape type="obj">
@@ -93,20 +130,40 @@
 		<ref type="material" id="left_wall"/>
 	</shape>
 
-	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/cbox_smallbox.obj"/>
-		<transform name="toWorld">
-			<rotate type="euler" r="0.0" p="0.0" y="0"/>
-		</transform>
-		<ref type="material" id="box"/>
+	<shape type="sphere">
+		<point name="center" x="4.5" y="0.6" z="1.1"/>
+		<float name="radius" value="0.6"/>
+		<ref type="material" id="mirror"/>
 	</shape>
 
-	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/cbox_largebox.obj"/>
-		<transform name="toWorld">
-			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
-		</transform>
-		<ref type="material" id="box"/>
+	<shape type="sphere">
+		<point name="center" x="4.2" y="0.5" z="4.1"/>
+		<float name="radius" value="0.5"/>
+		<ref type="material" id="fresnel"/>
+	</shape>
+
+	<shape type="sphere">
+		<point name="center" x="3.2" y="0.4" z="0.8"/>
+		<float name="radius" value="0.4"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="sphere">
+		<point name="center" x="2.7" y="0.4" z="3.8"/>
+		<float name="radius" value="0.4"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="sphere">
+		<point name="center" x="0.9" y="0.5" z="0.6"/>
+		<float name="radius" value="0.5"/>
+		<ref type="material" id="glossy"/>
+	</shape>
+
+	<shape type="sphere">
+		<point name="center" x="1.7" y="1.2" z="1.9"/>
+		<float name="radius" value="1.2"/>
+		<ref type="material" id="glass"/>
 	</shape>
 
 	<world name="yes!">

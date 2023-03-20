@@ -25,7 +25,7 @@
 		<!-- End of Transient rendering configuration -->
 		
 		<transform name="toWorld">
-			<lookat target="0, 0, 1.0" origin="0, 0, -0.01511" up="0, 1, 0"/>
+			<lookat target="0, 0, 1.0" origin="0, 0, -0.03511" up="0, 1, 0"/>
 		</transform>
 
 		<film type="film">
@@ -49,35 +49,19 @@
 		</medium>
 	</bsdf>
 
-	<!-- <brdf type="lambertian" id="absorb">
-		<rgb name="k_d" value="#000000"/>
-		<rgb name="k_g" value="1.0"/>
-		<rgb name="k_s" value="0.0"/>
-	</brdf> -->
-
 	<emitter type="collimated">
 		<rgb name="emission" value="5.0, 5.0, 5.0"/>
 		<!-- This should be very huge: 5.0 * 12000000.0, for laser beam with 1mm diameter -->
 		<rgb name="scaler" value="10000.0"/>
-		<point name="pos" x="0" y="0" z="0.01511"/>
+		<point name="pos" x="0" y="0" z="0.03511"/>
 		<point name="dir" x="0.0" y="0.0" z="-1.0"/>
-		<float name="radius" value="0.0005"/>
+		<float name="radius" value="0"/>
 	</emitter>
 
 	<shape type="obj">
-		<string name="filename" value="../meshes/foam/foam3.obj"/>
+		<string name="filename" value="../meshes/foam/foam7.obj"/>
 		<ref type="material" id="scattering"/>
 	</shape>
-
-	<!-- <shape type="obj">
-		<string name="filename" value="../meshes/foam/absorber_cam.obj"/>
-		<ref type="material" id="absorb"/>
-	</shape>
-
-	<shape type="obj">
-		<string name="filename" value="../meshes/foam/absorber_laser.obj"/>
-		<ref type="material" id="absorb"/>
-	</shape> -->
 
 	<world name="yes!">
 		<rgb name="skybox" value="0.0"/>
