@@ -1,5 +1,6 @@
 *.png
 *.ini
+*.data
 
 cached/
 ti_tests/**

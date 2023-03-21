@@ -347,11 +347,14 @@ class BDPT(VolumeRenderer):
         weight = 0.
         if le.max() > 0 and calc_transmittance == True:
             le *= self.track_ray(connect_dir, track_pos, depth)
-        if le.max() > 0:     # zero-contribution will not have MIS weight, it could be possible that after applying the transmittance, le is 0
+        if ti.static(self.use_mis):
+            if le.max() > 0:     # zero-contribution will not have MIS weight, it could be possible that after applying the transmittance, le is 0
+                weight = 1.0
+                if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
+                    weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, i, j, sid, tid)
+            if weight < 1e-7: ret_time = 0.
+        else:
             weight = 1.0
-            if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
-                weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, i, j, sid, tid)
-        if weight < 1e-7: ret_time = 0.
         return le * weight, raster_p, ret_time
     
     @ti.func
