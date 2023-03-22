@@ -34,8 +34,8 @@ MAX_SAMPLE_CNT = 512
 class BDPT(VolumeRenderer):
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
         super().__init__(emitters, objects, prop)
-        decomp_mode = {'transient_cam': TRANSIENT_CAM, 'transient_lit': TRANSIENT_LIT}
-        decomp_state = decomp_mode.get(prop['decomposition'], STEADY_STATE)
+        decomp_mode = {'transient_cam': TRANSIENT_CAM, 'transient_lit': TRANSIENT_LIT, 'none': STEADY_STATE}
+        decomp_state = decomp_mode[prop.get('decomposition', 'none')]
         sample_cnt       = prop.get('sample_count', 1) if decomp_state else 1
         
         self.light_paths = Vertex.field()

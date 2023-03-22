@@ -110,7 +110,7 @@ class VolumeRenderer(PathTracer):
             tr *= transmittance
             cur_point += cur_ray * min_depth
             depth -= min_depth
-            if depth <= 1e-4: break     # reach the target point: break
+            if depth <= 5e-5: break     # reach the target point: break
         return tr
     
     @ti.func

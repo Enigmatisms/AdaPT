@@ -53,7 +53,6 @@ class Medium_np:
     
     def export(self):
         phase_func = PhaseFunction(_type = self.type_id, par = vec3(self.par), pdf = vec3(self.pdf))
-        print(self.__repr__())
         return Medium(_type = self.type_id, ior = self.ior, u_a = vec3(self.u_a), 
             u_s = vec3(self.u_s), u_e = vec3(self.u_e), ph = phase_func
         )
