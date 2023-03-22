@@ -57,6 +57,5 @@ class CollimatedSource(LightSource):
 
     def export(self) -> TaichiSource:
         bool_bits = (self.radius == 0) + 0x22 + (self.in_free_space << 4)       # not necessarily positional-delta but directional delta
-        print(self.__repr__(), f", {bool_bits:b}")
         return TaichiSource(_type = COLLIMATED_SOURCE, intensity = vec3(self.intensity), inv_area = self.inv_area,
                     pos = vec3(self.pos), dir = vec3(self.dir), r = self.radius, bool_bits = bool_bits, emit_time = self.emit_time)

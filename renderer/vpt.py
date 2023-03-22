@@ -92,26 +92,29 @@ class VolumeRenderer(PathTracer):
         in_free_space = True
         cur_point = start_p
         cur_ray = ray.normalized()
+        acc_depth = 0.0
         for _i in range(7):             # maximum tracking depth = 7 (corresponding to at most 2 clouds of smoke)
             obj_id, normal, min_depth = self.ray_intersect(cur_ray, cur_point, depth)
             if obj_id < 0:     
-                if not self.world_scattering: break     # nothing is hit, break
-                else:                                   # the world is filled with scattering medium
+                acc_depth += depth * self.world.medium.ior      # definitely not in an object
+                if not self.world_scattering: break             # nothing is hit, break
+                else:                                           # the world is filled with scattering medium
                     min_depth = depth
                     in_free_space = True
                     obj_id = -1
             else:
-                if self.non_null_surface(obj_id):        # non-null surface blocks the ray path, break
-                    tr.fill(0.0)
+                if self.non_null_surface(obj_id):               # non-null surface blocks the ray path, break
+                    tr.fill(0.0)                                # travelling time need not to be calculated here since we will abandon this path
                     break  
                 in_free_space = tm.dot(normal, cur_ray) < 0
+                acc_depth += min_depth * self.get_ior(obj_id, in_free_space)
             # invalid medium can be "BRDF" or "transparent medium". Transparent medium has non-null surface, therefore invalid
             transmittance = self.get_transmittance(obj_id, in_free_space, min_depth)
             tr *= transmittance
             cur_point += cur_ray * min_depth
             depth -= min_depth
             if depth <= 5e-5: break     # reach the target point: break
-        return tr
+        return tr, acc_depth
     
     @ti.func
     def world_bound_time(self, ray_o, ray_d):
@@ -175,7 +178,7 @@ class VolumeRenderer(PathTracer):
                             to_emitter  = emit_pos - hit_point
                             emitter_d   = to_emitter.norm()
                             light_dir   = to_emitter / emitter_d
-                            tr = self.track_ray(light_dir, hit_point, emitter_d)
+                            tr, _ = self.track_ray(light_dir, hit_point, emitter_d)
                             shadow_int *= tr
                             direct_spec = self.eval(obj_id, ray_d, light_dir, normal, is_mi, in_free_space)
                         else:       # the only situation for being invalid, is when there is only one source and the ray hit the source

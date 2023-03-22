@@ -23,13 +23,6 @@ vec2i = ttype.vector(2, int)
 MAX_BOUNCE = 24
 MAX_SAMPLE_CNT = 512
 
-"""
-    Today todo: 
-    1. check non-weighted Le tonight, make sure everything is correct
-    2. The problem of t3s1 path weight being too small, might be the source of being incorrect
-    3. t4s1 path is also very small, it might be caused by incorrect weight, pdf (measure) or unreasonable path connection judgement
-"""
-
 @ti.data_oriented
 class BDPT(VolumeRenderer):
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
@@ -72,14 +65,14 @@ class BDPT(VolumeRenderer):
         self.max_time[None]   = self.min_time[None] + self.interval[None] * sample_cnt  # precomputed max bound
 
         if self.decomp[None] >= TRANSIENT_CAM:
-            print(f"[Info] Transient state BDPT rendering, start at: {self.min_time[None]:.4f}, step size: {self.interval[None]:.4f}, bin num: {sample_cnt}")
-            print(f"[Info] Transient {'actual camera recording - TRANSIENT_CAM' if self.decomp[None] == TRANSIENT_CAM else 'emitter only - TRANSIENT_LIT'}")
+            print(f"[INFO] Transient state BDPT rendering, start at: {self.min_time[None]:.4f}, step size: {self.interval[None]:.4f}, bin num: {sample_cnt}")
+            print(f"[INFO] Transient {'actual camera recording - TRANSIENT_CAM' if self.decomp[None] == TRANSIENT_CAM else 'emitter only - TRANSIENT_LIT'}")
             if prop['sample_count'] > MAX_SAMPLE_CNT:
                 print(f"[Warning] sample cnt = {prop['sample_count']} which is larger than {MAX_SAMPLE_CNT}. Bitmasked node might introduce too much memory consumption.")
             if self.interval[None] <= 0:
                 raise ValueError("Transient interval must be positive. Otherwise, meaningful or futile.")
         else:
-            print("[Info] Steady state BDPT rendering")
+            print("[INFO] Steady state BDPT rendering")
 
         # self.A is the area of the imaging space on z = 1 plane
         self.A = float(self.w * self.h) * (self.inv_focal * self.inv_focal)
@@ -150,7 +143,6 @@ class BDPT(VolumeRenderer):
 
     @ti.func
     def generate_light_path(self, i: int, j: int, max_bnc: int):
-        # TODO: emitter emitting time is not set
         emitter, emitter_pdf, _ , emit_id = self.sample_light()
         ray_o, ray_d, pdf_pos, pdf_dir, normal = emitter.sample_le(self.precom_vec, self.normals, self.mesh_cnt)
         ret_int = emitter.intensity
@@ -231,6 +223,7 @@ class BDPT(VolumeRenderer):
             if vertex_num >= max_bnc:
                 break
             # TODO: Different strategy for ray termination
+            # For transient imaging, simple RR or other termination strategies are not very good
             prev_vid = vertex_num - 1
 
             # Step 5: sample new ray. This should distinguish between surface and medium interactions
@@ -271,7 +264,6 @@ class BDPT(VolumeRenderer):
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_light():                       # is the current vertex an emitter vertex?
                 le = self.src_field[int(vertex.emit_id)].eval_le(vertex.ray_in, vertex.normal) * vertex.beta
-                # TODO: transient cam and lit are different
                 ret_time = self.src_field[int(vertex.emit_id)].emit_time      # for emission, we should acount for their emission time
                 if decomp == TRANSIENT_CAM:             # for emission, we should acount for their emission time
                     ret_time += vertex.time      
@@ -295,10 +287,7 @@ class BDPT(VolumeRenderer):
                     vertex_sampled = True
                     calc_transmittance = fr2cam.max() > 0
                     le = vertex.beta * fr2cam * sampled_v.beta
-                    # TODO: transient cam and lit are different
                     ret_time = vertex.time
-                    if decomp == TRANSIENT_CAM:
-                        ret_time += depth
         elif sid == 1:          # only one light vertex is used, resample
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_connectible():
@@ -314,7 +303,6 @@ class BDPT(VolumeRenderer):
                 # emitter should have non-zero emission / visible / transferable
                 if emit_int.max() > 0:
                     fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_UNI)
-                    # TODO: emitter time should be set independently
                     sampled_v   = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(int(vertex.emit_id)), 
                         emit_id = emit_id, bool_bits = emitter.bool_bits, time = emitter.emit_time, pdf_fwd = emitter.area_pdf() / float(self.src_num),
                         normal  = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf
@@ -324,7 +312,7 @@ class BDPT(VolumeRenderer):
                     le = vertex.beta * fr2light * sampled_v.beta
                     ret_time = emitter.emit_time
                     if decomp == TRANSIENT_CAM:
-                        ret_time += vertex.time + depth
+                        ret_time += vertex.time
         else:                   # general cases
             cam_v = self.cam_paths[i, j, tid - 1]
             lit_v = self.light_paths[i, j, sid - 1]
@@ -343,18 +331,22 @@ class BDPT(VolumeRenderer):
                     le = cam_v.beta * fr_cam * fr_lit * lit_v.beta / (depth * depth)
                     ret_time = lit_v.time
                     if decomp == TRANSIENT_CAM:
-                        ret_time += cam_v.time + depth
+                        ret_time += cam_v.time
         weight = 0.
         if le.max() > 0 and calc_transmittance == True:
-            le *= self.track_ray(connect_dir, track_pos, depth)
+            tr, track_depth = self.track_ray(connect_dir, track_pos, depth)
+            le *= tr
+            if decomp == TRANSIENT_CAM:
+                ret_time += track_depth
         if ti.static(self.use_mis):
             if le.max() > 0:     # zero-contribution will not have MIS weight, it could be possible that after applying the transmittance, le is 0
                 weight = 1.0
                 if sid + tid != 2:      # for path with only two vertices, forward and backward is the same
                     weight = self.bdpt_mis_weight(sampled_v, vertex_sampled, i, j, sid, tid)
-            if weight < 1e-7: ret_time = 0.
         else:
             weight = 1.0
+        result = le * weight
+        if result.max() == 0.: ret_time = 0.
         return le * weight, raster_p, ret_time
     
     @ti.func
@@ -420,7 +412,6 @@ class BDPT(VolumeRenderer):
         if idx_s >= 0:                        # sid can be 0, 
             ri = self.light_paths[i, j, idx_s].pdf_ratio()
             not_delta = False
-            # TODO: delta light judgement
             if self.light_paths[i, j, ti.max(idx_s - 1, 0)].not_delta():
                 not_delta = True
                 sum_ri += ri

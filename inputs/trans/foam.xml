@@ -21,11 +21,11 @@
         <string name="decomposition" value="transient_cam"/>	<!-- Decomposition mode -->				
         <integer name="sample_count" value="500"/>			<!-- Number of bins -->
         <float name="min_time" value="0.0"/>					<!-- Starting time for camera -->				
-        <float name="interval" value="0.001"/>				<!-- Width of a time bin -->			
+        <float name="interval" value="0.0005"/>				<!-- Width of a time bin -->			
 		<!-- End of Transient rendering configuration -->
 		
 		<transform name="toWorld">
-			<lookat target="0, 0, 1.0" origin="0, 0, -0.035051" up="0, 1, 0"/>
+			<lookat target="0, 0, 1.0" origin="0, 0, -0.015051" up="0, 1, 0"/>
 		</transform>
 
 		<film type="film">
@@ -42,8 +42,9 @@
 	<bsdf type="null" id="scattering">
 		<!-- Thin slab simulation -->
 		<medium type="hg">
-			<rgb name="u_a" value="0.00"/>
-			<rgb name="u_s" value="300.0"/>
+			<rgb name="u_a" value="0.02"/>
+			<!-- <rgb name="u_s" value="313.6645"/> -->
+			<rgb name="u_s" value="300.00"/>
 			<rgb name="par" value="0.0"/>
 			<float name="ior" value="1.23"/>
 		</medium>
@@ -53,13 +54,13 @@
 		<rgb name="emission" value="5.0, 5.0, 5.0"/>
 		<!-- This should be very huge: 5.0 * 12000000.0, for laser beam with 1mm diameter -->
 		<rgb name="scaler" value="100.0"/>
-		<point name="pos" x="0" y="0" z="0.035051"/>
+		<point name="pos" x="0" y="0" z="0.015051"/>
 		<point name="dir" x="0.0" y="0.0" z="-1.0"/>
 		<float name="radius" value="0.0001"/>
 	</emitter>
 
 	<shape type="obj">
-		<string name="filename" value="../meshes/foam/foam7.obj"/>
+		<string name="filename" value="../meshes/foam/foam3.obj"/>
 		<ref type="material" id="scattering"/>
 	</shape>
 

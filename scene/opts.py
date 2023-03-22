@@ -7,7 +7,7 @@
 import configargparse
 from taichi import vulkan, cpu, cuda, gpu
 
-__all__ = ['get_options', 'mapped_arch']
+__all__ = ['get_options', 'mapped_arch', 'get_tdom_options']
 
 __MAPPING__ = {"vulkan": vulkan, "cpu": cpu, "cuda": cuda, "gpu": gpu}
 mapped_arch = lambda x: __MAPPING__[x]
@@ -32,6 +32,26 @@ def get_options(delayed_parse = False):
     parser.add_argument("--no_gui",        default = False, action = "store_true", help = "Whether to display GUI")
     parser.add_argument("-d", "--debug",   default = False, action = "store_true", help = "Whether to debug taichi kernel")
     parser.add_argument("-a", "--analyze", default = False, action = "store_true", help = "Whether to analyze transient rendering time domain")
+
+    if delayed_parse:
+        return parser
+    return parser.parse_args()
+
+def get_tdom_options(delayed_parse = False):
+    parser = configargparse.ArgumentParser()
+    parser.add_argument('--config', is_config_file = True, help='Config file path')
+    parser.add_argument("--sim_path",      default = "./analysis/", help = "Input simulation data folder", type = str)
+    parser.add_argument("--theory_path",   default = "./other_data/", help = "Input theoretical data folder", type = str)
+    parser.add_argument("--real_path",     default = "./other_data/", help = "Input realistic data folder", type = str)
+    parser.add_argument("--sim_name",      default = "foam3-200-diag_tri.data", help = "Input simulation data name", type = str)
+    parser.add_argument("--theory_name",   default = "diffuse_3cm.mat", help = "Input theoretical data name", type = str)
+    parser.add_argument("--real_name",     default = "transient_3cm.mat", help = "Input SPAD transient data name", type = str)
+
+    parser.add_argument("--mode",          default = "sim", choices=['sim', 'mat', 'comp'], help = "Evaluation mode", type = str)
+    parser.add_argument("--window_mode",   default = "whole", choices=['diag_tri', 'whole'], help = "Window cropping mode", type = str)
+    parser.add_argument("--sim_interval",  default = 0.001, help = "Time interval of simulated samples", type = float)
+    parser.add_argument("--sim_samples",   default = 400, help = "Number of simulated samples", type = float)
+    parser.add_argument("--sim_sol",       default = 1.0, help = "Speed of light for simulation", type = float)
 
     if delayed_parse:
         return parser

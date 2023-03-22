@@ -154,7 +154,7 @@ def parse_global_sensor(sensor_elem: xet.Element):
 @timing()
 def mitsuba_parsing(directory: str, file: str):
     xml_file = os.path.join(directory, file)
-    print(f"Parsing XML file from '{xml_file}'")
+    print(f"[INFO] Parsing XML file from '{xml_file}'")
     node_tree = xet.parse(xml_file)
     root_node = node_tree.getroot()
     version_tag = root_node.attrib["version"]
