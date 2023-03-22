@@ -347,7 +347,7 @@ class BDPT(VolumeRenderer):
             weight = 1.0
         result = le * weight
         if result.max() == 0.: ret_time = 0.
-        return le * weight, raster_p, ret_time
+        return result, raster_p, ret_time
     
     @ti.func
     def update_endpoint(self, cam_end: ti.template(), lit_end: ti.template(), i: int, j: int, idx_t: int, idx_s: int):
