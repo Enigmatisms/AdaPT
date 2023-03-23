@@ -98,7 +98,7 @@ if __name__ == "__main__":
     rdr.summary()
     if opts.profile:
         ti.profiler.print_kernel_profiler_info() 
-    image = apply_watermark(rdr, opts.normalize, True)
+    image = apply_watermark(rdr, opts.normalize, True, not opts.no_watermark)
     ti.tools.imwrite(image, f"{folder_path(opts.output_path)}{opts.img_name}-{opts.name[:-4]}-{opts.type}.{opts.img_ext}")
     if type(rdr) == BDPT and rdr.decomp[None] > 0:
         export_transient_profile(rdr, configs['sample_count'], opts.output_path, opts.name[:-4], opts.img_ext, opts.normalize, opts.analyze)

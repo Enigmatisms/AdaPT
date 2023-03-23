@@ -9,7 +9,7 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="12"/>
+        <integer name="max_bounce" value="20"/>
         <integer name="num_shadow_ray" value="4"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
@@ -62,7 +62,7 @@
 	</brdf>
 
 	<emitter type="area" id="area">
-		<rgb name="emission" value="50.0, 45.6, 42.3"/>
+		<rgb name="emission" value="50.0, 50.0, 50.0"/>
 		<rgb name="scaler" value="1.0"/>
 	</emitter>
 

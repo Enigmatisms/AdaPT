@@ -139,7 +139,7 @@ class BDPT(VolumeRenderer):
             bool_bits = BDPT.get_bool(p_delta = True, in_fspace = self.free_space_cam), time = self.init_time,
             normal = ZERO_V3, pos = self.cam_t, ray_in = ZERO_V3, beta = vec3([1., 1., 1.])
         )
-        return self.random_walk(i, j, max_bnc, self.cam_t, ray_d, pdf_dir, ONES_V3, TRANSPORT_UNI) + 1
+        return self.random_walk(i, j, max_bnc, self.cam_t, ray_d, pdf_dir, ONES_V3, TRANSPORT_RAD) + 1
 
     @ti.func
     def generate_light_path(self, i: int, j: int, max_bnc: int):
@@ -302,7 +302,7 @@ class BDPT(VolumeRenderer):
                 in_free_space = vertex.is_in_free_space()
                 # emitter should have non-zero emission / visible / transferable
                 if emit_int.max() > 0:
-                    fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_UNI)
+                    fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_RAD)
                     sampled_v   = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(int(vertex.emit_id)), 
                         emit_id = emit_id, bool_bits = emitter.bool_bits, time = emitter.emit_time, pdf_fwd = emitter.area_pdf() / float(self.src_num),
                         normal  = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf
@@ -324,7 +324,7 @@ class BDPT(VolumeRenderer):
                 cam_in_fspace = cam_v.is_in_free_space()
                 lit_in_fspace = lit_v.is_in_free_space()
                 if depth > 0.:           # if not occluded
-                    fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, connect_dir, cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_UNI)
+                    fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, connect_dir, cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_RAD)
                     fr_lit = self.eval(int(lit_v.obj_id), lit_v.ray_in, -connect_dir, lit_v.normal, lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP)
                     # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                     calc_transmittance = fr_cam.max() > 0 and fr_lit.max() > 0

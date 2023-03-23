@@ -11,8 +11,8 @@
         <integer name="sample_count" value="128"/>
         <integer name="num_shadow_ray" value="1"/>       
 
-        <integer name="max_bounce" value="12"/>
-        <integer name="max_depth" value="12"/>       
+        <integer name="max_bounce" value="16"/>
+        <integer name="max_depth" value="16"/>       
         <!-- <integer name="start_t" value="-1"/>       
         <integer name="end_t" value="-1"/>       
         <integer name="start_s" value="-1"/>       
@@ -66,8 +66,8 @@
 
 	<bsdf type="null" id="scattering">
 		<medium type="hg">
-			<rgb name="u_a" value="0.02"/>
-			<rgb name="u_s" value="1.0"/>
+			<rgb name="u_a" value="0.00"/>
+			<rgb name="u_s" value="2.0"/>
 			<rgb name="par" value="0.5"/>
 			<float name="ior" value="1.0"/>
 		</medium>
@@ -75,7 +75,7 @@
 
 	<emitter type="area" id="area">
 		<rgb name="emission" value="50.0, 50.0, 50.0"/>
-		<rgb name="scaler" value="1.0"/>
+		<rgb name="scaler" value="0.6"/>
 	</emitter>
 
 	<shape type="obj">
@@ -119,19 +119,20 @@
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_smallbox.obj"/>
 		<transform name="toWorld">
-			<rotate type="euler" r="0.0" p="0.0" y="0"/>
+			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
+			<translate x="0" y="0.0001" z="0"/>
 		</transform>
-		<ref type="material" id="box"/>
+		<ref type="material" id="scattering"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_largebox.obj"/>
-		<transform name="toWorld">
+		<!-- <transform name="toWorld">
 			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
-			<translate x="0" y="0.002" z="0"/>
-		</transform>
-		<ref type="material" id="scattering"/>
-		
+			<translate x="0" y="0.0001" z="0"/>
+		</transform> -->
+		<!-- <ref type="material" id="scattering"/> -->
+		<ref type="material" id="box"/>
 	</shape>
 
 	<world name="yes!">

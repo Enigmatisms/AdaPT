@@ -1,6 +1,5 @@
 """
     Light source abstraction
-    FIXME: sampling is not yet implemented currently (2023.1.20 version)
     @date: 2023.1.20
     @author: Qianyue He
 """
@@ -209,7 +208,7 @@ class TaichiSource:
         """ Compute solid angle PDF for emitting in certain direction """
         pdf = 0.0
         if self._type == POINT_SOURCE:         # uniform sphere PDF
-            pdf = INV_PI * 0.25
+            pdf = INV_PI * 0.25 
         elif self._type == AREA_SOURCE:       # cosine weighted PDF
             pdf = ti.max(tm.dot(exit_dir, light_n), 0.0) * INV_PI
         return pdf
