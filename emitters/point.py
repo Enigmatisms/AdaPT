@@ -24,5 +24,5 @@ class PointSource(LightSource):
         self.pos: np.ndarray = vec3d_parse(pos_elem)
 
     def export(self) -> TaichiSource:
-        bool_bits = 0x21 + (self.in_free_space << 4)        # position delta (0x01), delta vertex (0x20)
+        bool_bits = 0x01 + (self.in_free_space << 4)        # position delta (0x01)
         return TaichiSource(_type = POINT_SOURCE, intensity = vec3(self.intensity), obj_ref_id = -1, pos = vec3(self.pos), bool_bits = bool_bits, emit_time = self.emit_time)

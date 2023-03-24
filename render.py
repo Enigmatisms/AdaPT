@@ -41,7 +41,7 @@ def export_transient_profile(rdr: BDPT, sample_cnt: int, out_path: str, out_name
         ti.tools.imwrite(all_files[i, ...], f"{output_folder}/img_{i + 1:03d}.{out_ext}")
     if analyze:
         print(f"[INFO] Analyzing time domain information...")
-        time_domain_curve(all_files, name = out_name)
+        time_domain_curve(all_files, name = out_name, viz = False)
 
 if __name__ == "__main__":
     opts = get_options()

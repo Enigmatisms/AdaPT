@@ -303,8 +303,8 @@ class BDPT(VolumeRenderer):
                 # emitter should have non-zero emission / visible / transferable
                 if emit_int.max() > 0:
                     fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_RAD)
-                    sampled_v   = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(int(vertex.emit_id)), 
-                        emit_id = emit_id, bool_bits = emitter.bool_bits, time = emitter.emit_time, pdf_fwd = emitter.area_pdf() / float(self.src_num),
+                    sampled_v   = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(emit_id), emit_id = emit_id, 
+                        bool_bits = emitter.bool_bits, time = emitter.emit_time, pdf_fwd = emitter.area_pdf() / float(self.src_num),
                         normal  = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf
                     )
                     vertex_sampled = True
@@ -412,13 +412,14 @@ class BDPT(VolumeRenderer):
         if idx_s >= 0:                        # sid can be 0, 
             ri = self.light_paths[i, j, idx_s].pdf_ratio()
             not_delta = False
-            if self.light_paths[i, j, ti.max(idx_s - 1, 0)].not_delta():
+            current_not_delta = self.light_paths[i, j, idx_s - 1].not_delta() if idx_s >= 1 else self.light_paths[i, j, 0].not_delta_source()
+            if current_not_delta:
                 not_delta = True
                 sum_ri += ri
             while idx_s >= 1:
                 idx_s -= 1
                 ri *= self.light_paths[i, j, idx_s].pdf_ratio()
-                next_not_delta = self.light_paths[i, j, ti.max(idx_s - 1, 0)].not_delta()
+                next_not_delta = self.light_paths[i, j, idx_s - 1].not_delta() if idx_s >= 1 else self.light_paths[i, j, 0].not_delta_source()
                 if not_delta and next_not_delta:
                     sum_ri += ri
                 not_delta = next_not_delta

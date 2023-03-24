@@ -76,6 +76,10 @@ class Vertex:
     
     @ti.func
     def not_delta(self):
-        # for emitters, if pos delta or dir delta, then the emitter vertex will be delta
         return (self.bool_bits & 0x20) == 0
+    
+    @ti.func
+    def not_delta_source(self):
+        # if an emitter is positional delta or directional delta
+        return (self.bool_bits & 0x03) == 0
     
