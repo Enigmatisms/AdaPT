@@ -49,7 +49,7 @@ def get_tdom_options(delayed_parse = False):
     parser.add_argument("--real_name",     default = "transient_3cm.mat", help = "Input SPAD transient data name", type = str)
 
     parser.add_argument("--mode",          default = "sim", choices=['sim', 'mat', 'comp'], help = "Evaluation mode", type = str)
-    parser.add_argument("--window_mode",   default = "whole", choices=['diag_tri', 'whole'], help = "Window cropping mode", type = str)
+    parser.add_argument("--window_mode",   default = "whole", choices=['diag_tri', 'diag_side_mean', 'whole'], help = "Window cropping mode", type = str)
     parser.add_argument("--sim_interval",  default = 0.001, help = "Time interval of simulated samples", type = float)
     parser.add_argument("--sim_samples",   default = 400, help = "Number of simulated samples", type = float)
     parser.add_argument("--sim_sol",       default = 1.0, help = "Speed of light for simulation", type = float)

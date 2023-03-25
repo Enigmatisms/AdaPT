@@ -15,7 +15,7 @@
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
         <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
-        <boolean name="use_mis" value="false"/>				<!-- Whether to use multiple importance sampling -->
+        <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
 
 		<!-- Transient rendering configuration -->
         <string name="decomposition" value="transient_cam"/>	<!-- Decomposition mode -->				
@@ -25,7 +25,7 @@
 		<!-- End of Transient rendering configuration -->
 		
 		<transform name="toWorld">
-			<lookat target="0, 0, 1.0" origin="0, 0, -0.015051" up="0, 1, 0"/>
+			<lookat target="0, 0, 1.0" origin="0, 0, -0.020051" up="0, 1, 0"/>
 		</transform>
 
 		<film type="film">
@@ -42,9 +42,9 @@
 	<bsdf type="null" id="scattering">
 		<!-- Thin slab simulation -->
 		<medium type="hg">
-			<rgb name="u_a" value="0.02"/>
-			<!-- <rgb name="u_s" value="313.6645"/> -->
-			<rgb name="u_s" value="300.00"/>
+			<rgb name="u_a" value="3.3348"/>
+			<rgb name="u_s" value="313.6645"/>
+			<!-- <rgb name="u_s" value="300.00"/> -->
 			<rgb name="par" value="0.0"/>
 			<float name="ior" value="1.23"/>
 		</medium>
@@ -54,13 +54,13 @@
 		<rgb name="emission" value="5.0, 5.0, 5.0"/>
 		<!-- This should be very huge: 5.0 * 12000000.0, for laser beam with 1mm diameter -->
 		<rgb name="scaler" value="100.0"/>
-		<point name="pos" x="0" y="0" z="0.015051"/>
+		<point name="pos" x="0" y="0" z="0.020051"/>
 		<point name="dir" x="0.0" y="0.0" z="-1.0"/>
 		<float name="radius" value="0.0001"/>
 	</emitter>
 
 	<shape type="obj">
-		<string name="filename" value="../meshes/foam/foam3.obj"/>
+		<string name="filename" value="../meshes/foam/foam4.obj"/>
 		<ref type="material" id="scattering"/>
 	</shape>
 
