@@ -66,9 +66,9 @@
 
 	<bsdf type="null" id="scattering">
 		<medium type="hg">
-			<rgb name="u_a" value="0.00"/>
-			<rgb name="u_s" value="2.0"/>
-			<rgb name="par" value="0.5"/>
+			<rgb name="u_a" value="0.20"/>
+			<rgb name="u_s" value="1.5"/>
+			<rgb name="par" value="0.0"/>
 			<float name="ior" value="1.0"/>
 		</medium>
 	</bsdf>
