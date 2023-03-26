@@ -17,7 +17,7 @@ from scipy.signal import find_peaks, peak_widths
 
 __all__ = ['time_domain_curve']
 
-colors = ("#DF7857", "#4E6E81", "#F99417")
+colors = ("#DF7857", "#4E6E81", "#F99417", "#245953", "#B46060", "#567189")
 color_cnt = 0
 
 def lerp(pos, data):
@@ -26,11 +26,11 @@ def lerp(pos, data):
     return data[pos_sid] * (pos - pos_sid) + data[pos_eid] * (pos_eid - pos)
 
 def peak_analysis(
-    curves: np.ndarray, ts: np.ndarray = None, prominence = 0.5, 
+    curves: np.ndarray, ts: np.ndarray = None, prominence = 0.02, 
     distance = 50, scaler = 1e9, unit = "ns", show = False, 
     fw_cutoff = 5, sub_curve_avg = [0, 2]
 ):
-    # analysis for curves: find peaks and calculate FWHM for each peak
+    # analysis for curves: find peaks and calculate Width for each peak
     if curves.ndim > 1:
         result = np.zeros(curves.shape[-1])
         for index in sub_curve_avg:
@@ -80,6 +80,12 @@ def peak_analysis(
         plt.show()
     return peaks, heights, left_ips, right_ips, start_time
 
+def get_peak_analysis(results:np.ndarray, ts: np.ndarray, opts):
+    if opts.analyze_peak:
+        peaks, heights, left_ips, right_ips, start_time = peak_analysis(results, ts, prominence = opts.prominence)
+        return {'peaks': peaks, 'heights': heights, 'left_ips': left_ips, 'right_ips': right_ips, 'start_time': start_time}
+    return None
+
 def time_domain_curve(profiles: np.ndarray, window_mode = 'diag_tri', time_step = 1., sol = 1.0, name = "tdom-analysis", max_norm = True, viz = True):
     # transient profile shape (N, H, W, 3)
     # The intensity is averaged over all components of the spectrum
@@ -93,7 +99,7 @@ def time_domain_curve(profiles: np.ndarray, window_mode = 'diag_tri', time_step 
             intensity = profiles.mean(axis = -1)
             for i in range(3):
                 parts = intensity[:, i * win_h:(i + 1) * win_h, i * win_w:(i + 1) * win_w]
-                # TODO: to simply model the sensor, we can add weight kernels for averaging step 
+                # TODO: to simply model the sensor. We can of course add weight kernels for averaging step 
                 results[i, :] = parts.mean(axis = (-1, -2))      # spatial average 
         elif window_mode == 'whole':
             results = profiles.mean(axis = (-1, -2, -3))
@@ -107,47 +113,57 @@ def time_domain_curve(profiles: np.ndarray, window_mode = 'diag_tri', time_step 
     max_time = time_step * transient_num / sol
     ts = np.linspace(0., max_time, transient_num)
     if viz:
-        visualize(results, ts, window_mode, max_time)
+        visualizer = Visualizer(window_mode, max_time)
+        visualizer.visualize(results, ts)
     return results, ts
 
-def visualize(results: np.ndarray, ts: np.ndarray, method: str, max_time: float, name = "AdaPT", show = True, whole_legend = 'whole image', extras = None):
-    if method == "diag_tri":
-        for i in range(3):
-            plt.scatter(ts, results[i], s = 4, c = colors[i])
-            plt.plot(ts, results[i], label = f'diagonal window id = {i+1}', c = colors[i])
-        if show: plt.title(f"{name} window temporal analysis ({whole_legend})")
-    elif method == "diag_side_mean":
-        if results.ndim > 1:
-            results = (results[0] + results[2]) / 2.
-        plt.scatter(ts, results, s = 4, c = colors[0])
-        plt.plot(ts, results, label = f'side window avg', c = colors[0])
-        if show: plt.title(f"{name} window temporal analysis ({whole_legend})")
-    elif method == "whole":
-        global color_cnt
-        if results.ndim > 1:
-            results = results.mean(axis = 0)
-        plt.scatter(ts, results, s = 5, c = colors[color_cnt])
-        plt.plot(ts, results, label = name, c = colors[color_cnt])
-        color_cnt += 1
-        if show: plt.title(f"{name} window temporal analysis ({whole_legend})")
-    if show:
-        if extras is not None:
-            peaks      = extras['peaks']
-            heights    = extras['heights']
-            left_ips   = extras['left_ips']
-            right_ips  = extras['right_ips']
-            start_time = extras['start_time']
-            plt.scatter(ts[peaks], results[peaks], s = 40, facecolors = 'none', edgecolors = 'b')
-            plt.hlines(heights, left_ips, right_ips, color = "#22BB22", linewidth = 2, label = 'FWHM')
-            plt.vlines(start_time, 0., 1.0, color = "#444444", linewidth = 2, linestyles="--", label = f'start time = {start_time}')
-        plt.legend()
-        plt.grid(axis = 'both')
-        plt.xlim((0, max_time))
-        plt.xlabel("Temporal progression")
-        plt.ylabel("Photon number / Signal Intensity")
-        plt.show()
+class Visualizer:
+    color_cnt = 0
+    def __init__(self, method: str, max_time: str, name: str = "AdaPT") -> None:
+        self.method = method
+        self.max_time = max_time
+        self.name = name
 
-def mat_data_reader(mat_file_path: str, var_name: str, mode = 'diag_tri', time_step = 55e-12, sol = 1.0, viz = False, show = False, whole_legend = 'whole image'):
+    def visualize(self, results: np.ndarray, ts: np.ndarray, legend: str = "radiance", show = True, display = True, extras = None):
+        if self.method == "diag_tri":
+            for i in range(3):
+                plt.scatter(ts, results[i], s = 4, c = colors[i])
+                plt.plot(ts, results[i], label = f'diagonal window id = {i+1}', c = colors[i])
+        elif self.method == "diag_side_mean":
+            if results.ndim > 1:
+                results = (results[0] + results[2]) / 2.
+            plt.scatter(ts, results, s = 4, c = colors[Visualizer.color_cnt])
+            plt.plot(ts, results, label = legend, c = colors[Visualizer.color_cnt])
+            Visualizer.color_cnt += 1
+        elif self.method == "whole":
+            if results.ndim > 1:
+                results = results.mean(axis = 0)
+            plt.scatter(ts, results, s = 5, c = colors[Visualizer.color_cnt])
+            plt.plot(ts, results, label = legend, c = colors[Visualizer.color_cnt])
+            Visualizer.color_cnt += 1
+        if show:
+            if extras is not None:
+                peaks      = extras['peaks']
+                heights    = extras['heights']
+                left_ips   = extras['left_ips']
+                right_ips  = extras['right_ips']
+                start_time = extras['start_time']
+                peak_ys = results[peaks] if results.ndim == 1 else results.mean(axis = 0)[peaks]
+                plt.scatter(ts[peaks], peak_ys, s = 40, facecolors = 'none', edgecolors = 'b')
+                plt.hlines(heights, left_ips, right_ips, color = "#22BB22", linewidth = 2, label = f'Width: {right_ips - left_ips}')
+                plt.vlines(start_time, 0., 1.0, color = "#444444", linewidth = 2, linestyles="--", label = f'start time: {start_time}')
+            plt.title(f"{self.name} window temporal analysis\n({self.name})")
+            plt.legend()
+            plt.grid(axis = 'both')
+            plt.xlim((0, self.max_time))
+            plt.xlabel("Temporal progression")
+            plt.ylabel("Photon number / Signal Intensity")
+            if display: plt.show()
+
+def mat_data_reader(
+    mat_file_path: str, var_name: str, mode = 'diag_tri', time_step = 55e-12, 
+    sol = 1.0, viz_result = False, independent_show = False, legend = 'radiance', name = 'SPAD'
+):
     """ Matlab file reader 
         Time step second to nanosecond, 55e-12 is the time step of SPAD
     """
@@ -169,41 +185,50 @@ def mat_data_reader(mat_file_path: str, var_name: str, mode = 'diag_tri', time_s
             results = feature_mat.mean(axis = 0)
         else:                                   # SPAD 32 * 32 * 230
             results = feature_mat.mean(axis = (0, 1))
-    results /= results.max()
+    if mode in {'diag_tri', 'whole'}:
+        results /= results.max()
+    else:
+        results /= (0.5 * results[0] + 0.5 * results[2]).max()
     transient_num = results.shape[-1]
     max_time = time_step * transient_num / sol
     ts = np.linspace(0., max_time, transient_num)
-    if viz:
-        visualize(results, ts, mode, max_time, name = "SPAD", show = show, whole_legend = whole_legend)
+    if viz_result:
+        extras = get_peak_analysis(results, ts, opts)
+        viz = Visualizer(mode, max_time, name)
+        viz.visualize(results, ts, legend = legend, show = independent_show, extras = extras)
     return results, ts
 
-def sim_visualize(opts, whole_legend = 'whole image', analyze_peak = True):  
+def sim_visualize(opts, legend = 'radiance'):  
     time_step = opts.sim_interval
     sol       = opts.sim_sol
     file_name = os.path.join(opts.sim_path, opts.sim_name)
     results = np.fromfile(file_name, np.float32)
     if "diag" in file_name:
         results = results.reshape(3, -1)
-    results /= results.max()
+    if opts.window_mode in {'diag_tri', 'whole'}:
+        results /= results.max()
+    else:
+        results /= (0.5 * results[0] + 0.5 * results[2]).max()
 
     transient_num = results.shape[-1]
     max_time = time_step * transient_num / sol
     ts = np.linspace(0., max_time, transient_num)
-    extras = None
-    if analyze_peak:
-        peaks, heights, left_ips, right_ips, start_time = peak_analysis(results, ts)
-        extras = {'peaks': peaks, 'heights': heights, 'left_ips': left_ips, 'right_ips': right_ips, 'start_time': start_time}
-    visualize(results, ts, opts.window_mode, max_time, whole_legend = f"{whole_legend} of {opts.sim_name}", extras = extras)
+    extras = get_peak_analysis(results, ts, opts)
+    viz = Visualizer(opts.window_mode, max_time, name = f"AdaPT {opts.sim_name}")
+    viz.visualize(results, ts, legend = legend, display = not opts.save_fig, extras = extras)
 
 if __name__ == "__main__":
     opts = get_tdom_options()
     if opts.mode == 'sim':
         sim_visualize(opts, 'AdaPT simulation')
+        if opts.save_fig:
+            plt.savefig(os.path.join(opts.output_folder, f"{opts.sim_name[:-5]}.png"))
     else:
+        real_path = os.path.join(opts.real_path, opts.real_name)
+        diff_path = os.path.join(opts.theory_path, opts.theory_name)
         comp_mode = (opts.mode == 'comp')
-        file_path = os.path.join(opts.real_path, opts.real_name)
-        mat_data_reader(file_path, "transient", mode = opts.window_mode, viz = True, whole_legend = 'real data')
-        file_path = os.path.join(opts.theory_path, opts.theory_name)
-        mat_data_reader(file_path, "Phi", mode = opts.window_mode, viz = True, show = not comp_mode, whole_legend = 'diffusion theory')
+        # two curves are both needed
+        mat_data_reader(real_path, "s1", mode = opts.window_mode, viz_result = True, legend = 'real data', name = opts.real_name)
+        mat_data_reader(diff_path, "Phi", mode = opts.window_mode, viz_result = True, independent_show = not comp_mode, legend = 'diffusion theory', name = opts.theory_name)
         if comp_mode:
             sim_visualize(opts, 'AdaPT simulation')

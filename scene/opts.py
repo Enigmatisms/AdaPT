@@ -47,12 +47,19 @@ def get_tdom_options(delayed_parse = False):
     parser.add_argument("--sim_name",      default = "foam3-200-diag_tri.data", help = "Input simulation data name", type = str)
     parser.add_argument("--theory_name",   default = "diffuse_3cm.mat", help = "Input theoretical data name", type = str)
     parser.add_argument("--real_name",     default = "transient_3cm.mat", help = "Input SPAD transient data name", type = str)
+    parser.add_argument("--output_folder", default = "./output/", help = "Output folder of time analysis results", type = str)
 
     parser.add_argument("--mode",          default = "sim", choices=['sim', 'mat', 'comp'], help = "Evaluation mode", type = str)
     parser.add_argument("--window_mode",   default = "whole", choices=['diag_tri', 'diag_side_mean', 'whole'], help = "Window cropping mode", type = str)
     parser.add_argument("--sim_interval",  default = 0.001, help = "Time interval of simulated samples", type = float)
     parser.add_argument("--sim_samples",   default = 400, help = "Number of simulated samples", type = float)
     parser.add_argument("--sim_sol",       default = 1.0, help = "Speed of light for simulation", type = float)
+
+    parser.add_argument("--prominence",    default = 0.2, help = "Peak finding parameter", type = float)
+
+    parser.add_argument("--analyze_peak",  default = False, action = "store_true", help = "Whether to analyze peak data")
+    parser.add_argument("--save_fig",      default = False, action = "store_true", help = "Whether to save figure instead of displaying")
+    parser.add_argument("--show_real",     default = False, action = "store_true", help = "Diffusion & Real data, which to show")
 
     if delayed_parse:
         return parser
