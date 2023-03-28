@@ -50,6 +50,7 @@ class Vertex:
     def is_connectible(self):
         connectible = True
         if self._type == VERTEX_SURFACE or self._type == VERTEX_EMITTER:
+            # TODO: check whether all vertices are connectible (against PBRT-v3) -- for surface vertices
             connectible = (self.bool_bits & 0x02) == 0          # not directional delta
         return connectible
     

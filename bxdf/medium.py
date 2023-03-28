@@ -84,6 +84,7 @@ class Medium:
         sample_t = - ti.log(1. - ti.random(float)) / random_ue
         beta = vec3([1., 1., 1.])
         is_medium_interact = False
+        # TODO: This should be improved, references can be found in mitsuba renderer (currently being balanced sampling)
         if sample_t >= max_depth:
             sample_t = max_depth
             tr = ti.exp(-self.u_e * max_depth)

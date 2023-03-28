@@ -36,7 +36,8 @@ def export_transient_profile(rdr: BDPT, sample_cnt: int, out_path: str, out_name
     print(f"[INFO] Exporting transient profile to folder '{output_folder}'")
     if normalize > 0.9:
         qnt = np.quantile(all_files, normalize)
-        all_files[i, ...] /= qnt
+        for i in tqdm(range(sample_cnt)):
+            all_files[i, ...] /= qnt
     for i in tqdm(range(sample_cnt)):
         ti.tools.imwrite(all_files[i, ...], f"{output_folder}/img_{i + 1:03d}.{out_ext}")
     if analyze:

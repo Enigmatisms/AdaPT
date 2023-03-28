@@ -127,7 +127,6 @@ class BDPT(VolumeRenderer):
         """ Resetting path vertex container """
         self.cam_bitmask.deactivate_all()
         self.lit_bitmask.deactivate_all()
-        pass
 
     @ti.func
     def generate_eye_path(self, i: int, j: int, max_bnc: int):
@@ -181,6 +180,7 @@ class BDPT(VolumeRenderer):
             if obj_id < 0:     
                 if not self.world_scattering: break     # nothing is hit, break
                 else:                                   # the world is filled with scattering medium
+                    # TODO: This may not be totally correct, should be double-checked
                     min_depth = self.world_bound_time(ray_o, ray_d)
                     in_free_space = True
                     obj_id = -1
@@ -250,7 +250,6 @@ class BDPT(VolumeRenderer):
     
     @ti.func
     def connect_path(self, i: int, j: int, sid: int, tid: int, decomp: int):
-        """ Rigorous logic check, review and debug should be done """
         le = ZERO_V3
         ret_time = 0.
         sampled_v = Vertex(_type = VERTEX_NULL)         # a default vertex
@@ -332,12 +331,12 @@ class BDPT(VolumeRenderer):
                     ret_time = lit_v.time
                     if decomp == TRANSIENT_CAM:
                         ret_time += cam_v.time
-        weight = 0.
         if le.max() > 0 and calc_transmittance == True:
             tr, track_depth = self.track_ray(connect_dir, track_pos, depth)
             le *= tr
             if decomp == TRANSIENT_CAM:
                 ret_time += track_depth
+        weight = 0.
         if ti.static(self.use_mis):
             if le.max() > 0:     # zero-contribution will not have MIS weight, it could be possible that after applying the transmittance, le is 0
                 weight = 1.0

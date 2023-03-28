@@ -174,16 +174,6 @@ class PathTracer(TracerBase):
         return is_delta
     
     @ti.func
-    def get_bsdf_id(self, idx: int):
-        ret_id = -1
-        if idx >= 0:
-            if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                ret_id = self.brdf_field[idx]._type
-            else:
-                ret_id = self.bsdf_field[idx]._type + 10
-        return ret_id
-    
-    @ti.func
     def is_scattering(self, idx: int):           # check if the object with index idx is a scattering medium
         # FIXME: if sigma_t is too small, set the scattering medium to det-refract
         is_scattering = False
