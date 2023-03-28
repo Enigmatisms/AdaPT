@@ -42,12 +42,12 @@ def export_transient_profile(rdr: BDPT, sample_cnt: int, out_path: str, out_name
         ti.tools.imwrite(all_files[i, ...], f"{output_folder}/img_{i + 1:03d}.{out_ext}")
     if analyze:
         print(f"[INFO] Analyzing time domain information...")
-        time_domain_curve(all_files, name = out_name, viz = False)
+        time_domain_curve(all_files, name = out_name, viz = True)
 
 if __name__ == "__main__":
     opts = get_options()
     cache_path = folder_path(f"./cached/{opts.scene}", f"Cache path for scene {opts.scene} not found. JIT compilation might take some time (~30s)...")
-    ti.init(arch = mapped_arch(opts.arch), kernel_profiler = opts.profile, device_memory_fraction = 0.8, \
+    ti.init(arch = mapped_arch(opts.arch), kernel_profiler = opts.profile, device_memory_fraction = 0.5, \
             default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path, debug = opts.debug)
     input_folder = os.path.join(opts.input_path, opts.scene)
     emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, opts.name)  # complex_cornell
@@ -99,6 +99,7 @@ if __name__ == "__main__":
     rdr.summary()
     if opts.profile:
         ti.profiler.print_kernel_profiler_info() 
+        ti.profiler.memory_profiler.print_memory_profiler_info()
     image = apply_watermark(rdr, opts.normalize, True, not opts.no_watermark)
     ti.tools.imwrite(image, f"{folder_path(opts.output_path)}{opts.img_name}-{opts.name[:-4]}-{opts.type}.{opts.img_ext}")
     if type(rdr) == BDPT and rdr.decomp[None] > 0:

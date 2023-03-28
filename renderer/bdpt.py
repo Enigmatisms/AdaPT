@@ -20,7 +20,9 @@ from renderer.path_utils import Vertex
 from renderer.constants import *
 
 vec2i = ttype.vector(2, int)
-MAX_BOUNCE = 24
+
+N_MAX_BOUNCE = 32
+T_MAX_BOUNCE = 150
 MAX_SAMPLE_CNT = 512
 
 @ti.data_oriented
@@ -33,20 +35,34 @@ class BDPT(VolumeRenderer):
         
         self.light_paths = Vertex.field()
         self.cam_paths   = Vertex.field()
-        self.time_bins   = ti.Vector.field(3, float)
+        self.crop_range  = ti.field(ti.i8)              # dummy field, useless when there is no cropping
         self.time_cnts   = ti.field(ti.i32)
+        self.time_bins   = ti.Vector.field(3, float)
 
-        self.path_nodes = ti.root.dense(ti.ij, (self.w, self.h))
-        self.path_nodes.bitmasked(ti.k, sample_cnt).place(self.time_bins, self.time_cnts)
+        if self.do_crop:
+            # Memory conserving implementation
+            self.path_nodes = ti.root.dense(ti.ij, (self.crop_rx << 1, self.crop_ry << 1))
+            max_bounce_used = T_MAX_BOUNCE
+            print(f"[INFO] To conserve memory, dense field will have the same size as the cropped image. ")
+            print(f"[INFO] Max bounce allocated: {T_MAX_BOUNCE}. Small cropped image is recommended.")
+            print(f"[INFO] Typically, GPUs will be used, but dynamic memory allocation is not supported in Taichi")
+            print(f"[INFO] Therefore, a maximum bounce limit is set here. It can be modified should you wish to, but be careful.")
+        else:
+            max_bounce_used = N_MAX_BOUNCE
+            self.path_nodes = ti.root.dense(ti.ij, (self.w, self.h))
+            print(f"[INFO] Max bounce allocated: {N_MAX_BOUNCE}.")
+        offsets = (self.start_x, self.start_y, 0)
+        self.path_nodes.bitmasked(ti.k, sample_cnt).place(self.time_bins, self.time_cnts, offset = offsets)
+        self.cam_bitmask = self.path_nodes.bitmasked(ti.k, max_bounce_used + 1)
+        self.lit_bitmask = self.path_nodes.bitmasked(ti.k, max_bounce_used + 1)
+        self.cam_bitmask.place(self.cam_paths, offset = offsets)    
+        self.lit_bitmask.place(self.light_paths, offset = offsets)  
+        self.path_nodes.place(self.crop_range, offset = (offsets[:2]))
+        # ti.profiler.memory_profiler.print_memory_profiler_info()
 
-        # light vertex is not included, therefore +1
-        if self.max_bounce > 24:
-            print("[Warning] BDPT currently supports only upto 16 bounces per path (either eye or emitter).")
-        self.cam_bitmask = self.path_nodes.bitmasked(ti.k, MAX_BOUNCE + 1)
-        self.lit_bitmask = self.path_nodes.bitmasked(ti.k, MAX_BOUNCE + 1)
-        
-        self.cam_bitmask.place(self.cam_paths)       
-        self.lit_bitmask.place(self.light_paths)       
+        if self.max_bounce > max_bounce_used:
+            print(f"[Warning] BDPT currently supports only upto {max_bounce_used} bounces per path (either eye or emitter).")
+
         # camera vertex and extra light vertex is not included, therefore + 2
         self.inv_cam_r = self.cam_r.inverse()
         self.cam_normal = (self.cam_r @ vec3([0, 0, 1])).normalized()
@@ -84,7 +100,7 @@ class BDPT(VolumeRenderer):
 
     @ti.kernel
     def copy_average(self, time_idx: int):
-        for i, j in self.pixels:
+        for i, j in self.crop_range:
             cnt = self.time_cnts[i, j, time_idx]
             self.pixels[i, j] = ti.select(cnt > 0, self.time_bins[i, j, time_idx] / float(cnt), ZERO_V3)
 
@@ -98,7 +114,7 @@ class BDPT(VolumeRenderer):
 
         for i, j in self.pixels:
             in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
-            if not self.do_crop or in_crop_range:
+            if in_crop_range:
                 cam_vnum = self.generate_eye_path(i, j, max_bnc) + 1
                 lit_vnum = self.generate_light_path(i, j, max_bnc) + 1
                 s_end_i = ti.min(lit_vnum, s_end)
@@ -115,10 +131,10 @@ class BDPT(VolumeRenderer):
                             id_i = i
                             id_j = j
                             if t == 1 and raster_p.min() >= 0:      # non-local contribution
-                                id_i, id_j = raster_p
+                                id_i, id_j = raster_p               # splat samples can only contribute in cropping range
                             if decomp >= TRANSIENT_CAM and path_time < max_time and path_time > min_time:
                                 time_idx = int((path_time - min_time) / interval)
-                                self.time_bins[id_i, id_j, time_idx] += color
+                                self.time_bins[id_i, id_j, time_idx] += color   # time_bins and cnts have offset
                                 self.time_cnts[id_i, id_j, time_idx] += 1
                             self.color[id_i, id_j] += color
                 self.pixels[i, j] = self.color[i, j] / self.cnt[None]
@@ -443,7 +459,7 @@ class BDPT(VolumeRenderer):
 
         pi = int(self.half_w + 1.0 - local_ray_x / self.inv_focal)
         pj = int(self.half_h + 1.0 + local_ray_y / self.inv_focal)
-        if pi >= 0 and pj >= 0 and pi < self.w and pj < self.h:
+        if pi >= self.start_x and pj >= self.start_y and pi < self.end_x and pj < self.end_y:   # cropping is considered
             raster_p = vec2i([pi, pj]) 
             valid_raster = True
         return raster_p, valid_raster
