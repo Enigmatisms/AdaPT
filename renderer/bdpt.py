@@ -22,7 +22,7 @@ from renderer.constants import *
 vec2i = ttype.vector(2, int)
 
 N_MAX_BOUNCE = 32
-T_MAX_BOUNCE = 150
+T_MAX_BOUNCE = 160
 MAX_SAMPLE_CNT = 512
 
 @ti.data_oriented
