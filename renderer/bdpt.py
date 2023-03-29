@@ -22,7 +22,7 @@ from renderer.constants import *
 vec2i = ttype.vector(2, int)
 
 N_MAX_BOUNCE = 32
-T_MAX_BOUNCE = 160
+T_MAX_BOUNCE = 256
 MAX_SAMPLE_CNT = 512
 
 @ti.data_oriented
@@ -208,7 +208,7 @@ class BDPT(VolumeRenderer):
             is_mi, min_depth, path_beta = self.sample_mfp(obj_id, in_free_space, min_depth) 
             if obj_id < 0 and not is_mi: break  # exiting world bound
             throughput *= path_beta             # attenuate first
-            if throughput.max() < 1e-4: break
+            if throughput.max() < 5e-5: break
                 
             hit_point = ray_d * min_depth + ray_o
             hit_light = -1 if is_mi else self.emitter_id[obj_id]
