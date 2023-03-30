@@ -39,7 +39,7 @@ class CollimatedSource(LightSource):
             name = point_elem.get("name")
             if name in {"position", "pos"}:
                 self.pos = vec3d_parse(point_elem)
-            elif name == {"direction", "dir"}:
+            elif name in {"direction", "dir"}:
                 self.dir = vec3d_parse(point_elem)
                 norm = np.linalg.norm(self.dir)
                 if norm < 1e-5:

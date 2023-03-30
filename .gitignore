@@ -6,5 +6,6 @@
 cached/
 ti_tests/**
 **/__pycache__
+.vscode/bookmarks.json
 
 !assets/*.png

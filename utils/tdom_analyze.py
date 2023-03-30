@@ -86,7 +86,7 @@ def get_peak_analysis(results:np.ndarray, ts: np.ndarray, opts):
         return {'peaks': peaks, 'heights': heights, 'left_ips': left_ips, 'right_ips': right_ips, 'start_time': start_time}
     return None
 
-def time_domain_curve(profiles: np.ndarray, window_mode = 'diag_tri', time_step = 1., sol = 1.0, name = "tdom-analysis", max_norm = True, viz = True):
+def time_domain_curve(profiles: np.ndarray, window_mode = 'diag_tri', time_step = 1., sol = 1.0, name = "tdom-analysis", max_norm = False, viz = True):
     # transient profile shape (N, H, W, 3)
     # The intensity is averaged over all components of the spectrum
     # sol: speed of light, 1.0 by default
@@ -212,6 +212,7 @@ def sim_visualize(opts, legend = 'radiance'):
 
     transient_num = results.shape[-1]
     max_time = time_step * transient_num / sol
+    print(f"[INFO] Time step: {time_step}, transient num: {transient_num}, max time: {max_time * sol}, sol: {sol}")
     ts = np.linspace(0., max_time, transient_num)
     extras = get_peak_analysis(results, ts, opts)
     viz = Visualizer(opts.window_mode, max_time, name = f"AdaPT {opts.sim_name}")

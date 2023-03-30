@@ -109,6 +109,7 @@ class VolumeRenderer(PathTracer):
                 in_free_space = tm.dot(normal, cur_ray) < 0
                 acc_depth += min_depth * self.get_ior(obj_id, in_free_space)
             # invalid medium can be "BRDF" or "transparent medium". Transparent medium has non-null surface, therefore invalid
+            # TODO: I feel something is not right here...
             transmittance = self.get_transmittance(obj_id, in_free_space, min_depth)
             tr *= transmittance
             cur_point += cur_ray * min_depth
