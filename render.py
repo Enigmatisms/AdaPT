@@ -50,8 +50,8 @@ def export_transient_profile(
 
 if __name__ == "__main__":
     opts = get_options()
-    cache_path = folder_path(f"./cached/{opts.scene}", f"Cache path for scene {opts.scene} not found. JIT compilation might take some time (~30s)...")
-    ti.init(arch = mapped_arch(opts.arch), kernel_profiler = opts.profile, device_memory_fraction = 0.5, offline_cache = not opts.no_cache, \
+    cache_path = folder_path(f"./cached/{opts.scene}", f"[INFO] Cache path for scene {opts.scene} not found. JIT compilation might take some time (~30s)...")
+    ti.init(arch = mapped_arch(opts.arch), kernel_profiler = opts.profile, device_memory_fraction = 0.8, offline_cache = not opts.no_cache, \
             default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = None if opts.no_cache else cache_path, debug = opts.debug)
     input_folder = os.path.join(opts.input_path, opts.scene)
     emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, opts.name)  # complex_cornell
@@ -68,11 +68,15 @@ if __name__ == "__main__":
     
     eye_start = configs.get('start_t', 1)
     lit_start = configs.get('start_s', 0)
-    eye_end = configs.get('end_t', 100)
-    lit_end = configs.get('end_s', 100)
-    max_bounce = configs.get('max_bounce', 12)
-    max_depth = configs.get('max_depth', 12)
-    print("[INFO] starting to loop...")
+    max_bounce = configs.get('max_bounce', 16)
+    max_depth = configs.get('max_depth', 16)
+    eye_end = configs.get('end_t', max_bounce + 2)      # one more vertex for each path (starting vertex)
+    lit_end = configs.get('end_s', max_bounce + 2)      # one more vertex for each path (starting vertex)
+    print(f"[INFO] starting to loop. Max eye vnum: {eye_end}, max light vnum: {lit_end}.")
+    if opts.type == "bdpt":
+        print(f"[INFO] BDPT with {max_bounce} bounce(s), max depth: {max_depth}. Cam vertices [{eye_start}, {eye_end}], light vertices [{lit_start}, {lit_end}]")
+    else:
+        print(f"[INFO] {name_mapping[opts.type]}Path Tracing with {max_bounce} bounce(s)")
 
     if opts.no_gui:
         try:
@@ -81,10 +85,6 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("[QUIT] Quit on Keyboard interruptions")
     else:
-        if opts.type == "bdpt":
-            print(f"[INFO] BDPT with {max_bounce} bounce(s), max depth: {max_depth}. Cam vertices [{eye_start}, {eye_end}], light vertices [{lit_start}, {lit_end}]")
-        else:
-            print(f"[INFO] {name_mapping[opts.type]}Path Tracing with {max_bounce} bounce(s)")
         window   = tui.Window(f"{name_mapping[opts.type]}Path Tracing", res = (rdr.w, rdr.h))
         canvas = window.get_canvas()
         gui = window.get_gui()

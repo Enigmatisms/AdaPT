@@ -36,15 +36,17 @@ class Vertex:
 
     @ti.func
     def set_pdf_bwd(self, pdf: float, next_point: vec3):
+        self.pdf_bwd = self.get_pdf_bwd(pdf, next_point)
+
+    @ti.func
+    def get_pdf_bwd(self, pdf: float, next_point: vec3):
         if pdf > 0:
             diff_vec = self.pos - next_point
             inv_norm2 = 1. / diff_vec.norm_sqr()
             pdf *= inv_norm2
             if self.has_normal():      # camera has no normal, for now (pin-hole)
                 pdf *= ti.abs(tm.dot(self.normal, diff_vec * ti.sqrt(inv_norm2)))
-            self.pdf_bwd = pdf
-        else:
-            self.pdf_bwd = 0
+        return pdf
 
     @ti.func
     def is_connectible(self):

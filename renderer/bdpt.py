@@ -14,16 +14,24 @@ from typing import List
 from la.cam_transform import *
 from emitters.abtract_source import LightSource
 
+from math import log2
 from scene.obj_desc import ObjDescriptor
 from renderer.vpt import VolumeRenderer
-from renderer.path_utils import Vertex
+from renderer.path_utils import Vertex, remap_pdf
 from renderer.constants import *
 
 vec2i = ttype.vector(2, int)
 
 N_MAX_BOUNCE = 32
-T_MAX_BOUNCE = 256
+T_MAX_BOUNCE = 255
 MAX_SAMPLE_CNT = 512
+
+def block_size(val, max_val = 512):
+    if val > max_val or val == 0: return max_val
+    if val % 32 == 0 or (val & (val-1) == 0): return val
+    cand1 = val - val % 32
+    cand2 = 1 << int(log2(val))
+    return cand1 if cand1 >= cand2 else cand2
 
 @ti.data_oriented
 class BDPT(VolumeRenderer):
@@ -39,12 +47,14 @@ class BDPT(VolumeRenderer):
         self.time_cnts   = ti.field(ti.i32)
         self.time_bins   = ti.Vector.field(3, float)
 
+        self.vertex_cnts = ti.field(ti.i32)
+
         if self.do_crop:
             # Memory conserving implementation
             self.path_nodes = ti.root.dense(ti.ij, (self.crop_rx << 1, self.crop_ry << 1))
-            max_bounce_used = T_MAX_BOUNCE
+            max_bounce_used = min(T_MAX_BOUNCE, self.max_bounce)
             print(f"[INFO] To conserve memory, dense field will have the same size as the cropped image. ")
-            print(f"[INFO] Max bounce allocated: {T_MAX_BOUNCE}. Small cropped image is recommended.")
+            print(f"[INFO] Max bounce allocated: {max_bounce_used}. Small cropped image is recommended.")
             print(f"[INFO] Typically, GPUs will be used, but dynamic memory allocation is not supported in Taichi")
             print(f"[INFO] Therefore, a maximum bounce limit is set here. It can be modified should you wish to, but be careful.")
         else:
@@ -52,12 +62,20 @@ class BDPT(VolumeRenderer):
             self.path_nodes = ti.root.dense(ti.ij, (self.w, self.h))
             print(f"[INFO] Max bounce allocated: {N_MAX_BOUNCE}.")
         offsets = (self.start_x, self.start_y, 0)
-        self.path_nodes.bitmasked(ti.k, sample_cnt).place(self.time_bins, self.time_cnts, offset = offsets)
-        self.cam_bitmask = self.path_nodes.bitmasked(ti.k, max_bounce_used + 1)
-        self.lit_bitmask = self.path_nodes.bitmasked(ti.k, max_bounce_used + 1)
+        self.path_nodes.dense(ti.k, sample_cnt).place(self.time_bins, self.time_cnts, offset = offsets)
+        """ Trying opt for dense to leverage BLS: 
+            During path connection and vertex construction, global memory ops will consume much time
+            if we can do the job in shared memory then it would be better
+            An coarse estimate of the shared memory usage: 256 * 64 = 16384B, which should be enough
+        """
+        self.cam_bitmask = self.path_nodes.dense(ti.k, max_bounce_used + 1)
+        self.lit_bitmask = self.path_nodes.dense(ti.k, max_bounce_used + 1)
         self.cam_bitmask.place(self.cam_paths, offset = offsets)    
         self.lit_bitmask.place(self.light_paths, offset = offsets)  
+        self.path_nodes.dense(ti.k, 2).place(self.vertex_cnts, offset = offsets)
         self.path_nodes.place(self.crop_range, offset = (offsets[:2]))
+        self.conn_path_block_size = block_size(self.max_bounce + 1, 256)
+
         # ti.profiler.memory_profiler.print_memory_profiler_info()
 
         if self.max_bounce > max_bounce_used:
@@ -112,14 +130,26 @@ class BDPT(VolumeRenderer):
         max_time = self.max_time[None]
         interval = self.interval[None]
 
-        for i, j in self.pixels:
+        ti.loop_config(parallelize = 8)
+        for i, j, k in self.vertex_cnts:
             in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
             if in_crop_range:
-                cam_vnum = self.generate_eye_path(i, j, max_bnc) + 1
-                lit_vnum = self.generate_light_path(i, j, max_bnc) + 1
-                s_end_i = ti.min(lit_vnum, s_end)
-                t_end_i = ti.min(cam_vnum, t_end)
-                for t in range(t_start, t_end_i):
+                if k == 1:
+                    self.vertex_cnts[i, j, 1] = ti.min(self.generate_light_path(i, j, max_bnc) + 1, s_end)     # k == 1
+                else:
+                    self.vertex_cnts[i, j, 0] = ti.min(self.generate_eye_path(i, j, max_bnc) + 1, t_end)       # k == 0
+        
+        ti.block_local(self.time_cnts)
+        ti.block_local(self.time_bins)
+        ti.block_local(self.cam_paths)
+        ti.block_local(self.light_paths)
+        ti.loop_config(parallelize = 8, block_dim = self.conn_path_block_size)
+        for i, j, t in self.cam_paths:
+            in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
+            if in_crop_range:
+                t_end_i = self.vertex_cnts[i, j, 0]
+                s_end_i = self.vertex_cnts[i, j, 1]
+                if t >= t_start and t < t_end_i:
                     for s in range(s_start, s_end_i):
                         depth = s + t - 2
                         if (s == 1 and t == 1) or depth < 0 or depth > max_depth:
@@ -137,12 +167,12 @@ class BDPT(VolumeRenderer):
                                 self.time_bins[id_i, id_j, time_idx] += color   # time_bins and cnts have offset
                                 self.time_cnts[id_i, id_j, time_idx] += 1
                             self.color[id_i, id_j] += color
-                self.pixels[i, j] = self.color[i, j] / self.cnt[None]
+        for i, j in self.pixels:
+            self.pixels[i, j] = self.color[i, j] / self.cnt[None]
     
     def reset(self):
         """ Resetting path vertex container """
-        self.cam_bitmask.deactivate_all()
-        self.lit_bitmask.deactivate_all()
+        pass
 
     @ti.func
     def generate_eye_path(self, i: int, j: int, max_bnc: int):
@@ -365,22 +395,22 @@ class BDPT(VolumeRenderer):
         return result, raster_p, ret_time
     
     @ti.func
-    def update_endpoint(self, cam_end: ti.template(), lit_end: ti.template(), i: int, j: int, idx_t: int, idx_s: int):
+    def update_endpoint(self, cam_end: ti.template(), lit_end: ti.template(), ratio: ti.template(), i: int, j: int, idx_t: int, idx_s: int):
         # s + t > 2, since s + t == 2 will not enter `mis_weight`, and s + t < 2 will not have path connection
         if idx_s >= 0:                  # If lit_end is not null vertex
             prev_pos = ti.select(idx_t < 1, ZERO_V3, self.cam_paths[i, j, idx_t - 1].pos)
-            self.pdf(cam_end, prev_pos, lit_end, idx_t < 1)
+            ratio[2] = self.pdf_ratio(cam_end, prev_pos, lit_end, idx_t < 1)
             if idx_t >= 1:
-                self.pdf(cam_end, lit_end.pos, self.cam_paths[i, j, idx_t - 1])
+                ratio[1] = self.pdf_ratio(cam_end, lit_end.pos, self.cam_paths[i, j, idx_t - 1])
             prev_pos = ti.select(idx_s < 1, ZERO_V3, self.light_paths[i, j, idx_s - 1].pos)
-            self.pdf(lit_end, prev_pos, cam_end, idx_s < 1)
+            ratio[0] = self.pdf_ratio(lit_end, prev_pos, cam_end, idx_s < 1)
             if idx_s >= 1:
-                self.pdf(lit_end, cam_end.pos, self.light_paths[i, j, idx_s - 1])
+                ratio[3] = self.pdf_ratio(lit_end, cam_end.pos, self.light_paths[i, j, idx_s - 1])
         else:           # idx_t must >= 2       
             # if the camera hits an emitter
-            self.pdf_light_origin(cam_end)
+            ratio[0] = remap_pdf(self.src_field[int(cam_end.emit_id)].area_pdf() / float(self.src_num)) / remap_pdf(cam_end.pdf_fwd)
             if idx_t >= 1:
-                self.pdf_light(cam_end, self.cam_paths[i, j, idx_t - 1])
+                ratio[1] = remap_pdf(self.pdf_light(cam_end, self.cam_paths[i, j, idx_t - 1])) / remap_pdf(self.cam_paths[i, j, idx_t - 1].pdf_fwd)
 
     @ti.func
     def bdpt_mis_weight(self, sampled_v, valid_sample: int, i: int, j: int, sid: int, tid: int):
@@ -390,28 +420,24 @@ class BDPT(VolumeRenderer):
         t_sampled = valid_sample & (tid == 1)
         s_sampled = valid_sample & (sid == 1)
         sum_ri = 0.
-        backup = vec4([-1, -1, -1, -1])             # p(t-1), p(t-2), q(s-1), q(s-2)
 
-        backup[0] = self.cam_paths[i, j, tid - 1].pdf_bwd
-        if tid > 1:
-            backup[1] = self.cam_paths[i, j, tid - 2].pdf_bwd
-        if sid > 0:
-            backup[2] = self.light_paths[i, j, sid - 1].pdf_bwd
-            if sid > 1:
-                backup[3] = self.light_paths[i, j, sid - 2].pdf_bwd
-
+        ratios = vec4([-1, -1, -1, -1])             # p(t-1), p(t-2), q(s-1), q(s-2)
         idx_t = tid - 1
         idx_s = sid - 1
-        backup_v = Vertex(_type = VERTEX_NULL)
-        if t_sampled:
-            backup_v = self.cam_paths[i, j, idx_t]
-            self.cam_paths[i, j, idx_t] = sampled_v
-        elif s_sampled:
-            backup_v = self.light_paths[i, j, idx_s]
-            self.light_paths[i, j, idx_s] = sampled_v
-        self.update_endpoint(self.cam_paths[i, j, idx_t], self.light_paths[i, j, ti.max(idx_s, 0)], i, j, idx_t, idx_s)
 
-        ri = self.cam_paths[i, j, idx_t].pdf_ratio()
+        cam_side = self.cam_paths[i, j, idx_t]
+        lit_side = Vertex(_type = VERTEX_NULL)
+        if s_sampled:
+            lit_side = sampled_v
+        else:
+            if t_sampled:
+                cam_side = sampled_v
+            if idx_s >= 0:
+                lit_side = self.light_paths[i, j, idx_s]
+
+        self.update_endpoint(cam_side, lit_side, ratios, i, j, idx_t, idx_s)
+
+        ri = ratios[0]
         # Avoid indexing one vertex of cam_paths / light_paths twice 
         not_delta = False
         if idx_t > 0 and self.cam_paths[i, j, idx_t - 1].not_delta():
@@ -419,13 +445,17 @@ class BDPT(VolumeRenderer):
             sum_ri += ri
         while idx_t > 1:
             idx_t -= 1
-            ri *= self.cam_paths[i, j, idx_t].pdf_ratio()
+            if ratios[1] <= 0.:
+                ri *= self.cam_paths[i, j, idx_t].pdf_ratio()
+            else:
+                ri *= ratios[1]
+                ratios[1] = -1.
             next_not_delta = self.cam_paths[i, j, idx_t - 1].not_delta()
             if not_delta and next_not_delta:
                 sum_ri += ri
             not_delta = next_not_delta
         if idx_s >= 0:                        # sid can be 0, 
-            ri = self.light_paths[i, j, idx_s].pdf_ratio()
+            ri = ratios[2]
             not_delta = False
             current_not_delta = self.light_paths[i, j, idx_s - 1].not_delta() if idx_s >= 1 else self.light_paths[i, j, 0].not_delta_source()
             if current_not_delta:
@@ -433,20 +463,16 @@ class BDPT(VolumeRenderer):
                 sum_ri += ri
             while idx_s >= 1:
                 idx_s -= 1
-                ri *= self.light_paths[i, j, idx_s].pdf_ratio()
+                if ratios[3] <= 0.:
+                    ri *= self.light_paths[i, j, idx_s].pdf_ratio()
+                else:
+                    ri *= ratios[3]
+                    ratios[3] = -1.
                 next_not_delta = self.light_paths[i, j, idx_s - 1].not_delta() if idx_s >= 1 else self.light_paths[i, j, 0].not_delta_source()
                 if not_delta and next_not_delta:
                     sum_ri += ri
                 not_delta = next_not_delta
 
-        # Recover from the backup values
-        for idx in ti.static(range(2)):
-            if tid - 1 - idx >= 0: self.cam_paths[i, j, tid - 1 - idx].pdf_bwd = backup[idx]
-            if sid - 1 - idx >= 0: self.light_paths[i, j, sid - 1 - idx].pdf_bwd = backup[idx + 2]
-        if t_sampled:
-            self.cam_paths[i, j, 0] = backup_v
-        elif s_sampled:
-            self.light_paths[i, j, 0] = backup_v 
         return 1. / (1. + sum_ri)
 
     @ti.func
@@ -502,16 +528,17 @@ class BDPT(VolumeRenderer):
         return pdf_pos, pdf_dir
     
     @ti.func
-    def pdf(self, cur: ti.template(), prev_pos, next: ti.template(), prev_null = False):
+    def pdf_ratio(self, cur: ti.template(), prev_pos, next: ti.template(), prev_null = False):
         """ Renderer passed in is a reference to BDPT class
             When connect to a new path, end point bwd pdf should be updated
             PDF is used when all three points are presented, next_v is directly modified (no race condition)
             Note that when calling `pdf`, self can never be VERTEX_CAMERA (you can check the logic)
         """
         pdf_sa = 0.
+        pdf_area = 0.0
         ray_out = next.pos - cur.pos
         if cur._type == VERTEX_EMITTER:
-            self.pdf_light(cur, next)
+            pdf_area = self.pdf_light(cur, next)
         elif cur._type == VERTEX_CAMERA:
             ray_norm = ray_out.norm()
             if ray_norm > 0:
@@ -527,7 +554,8 @@ class BDPT(VolumeRenderer):
                 pdf_sa = self.get_pdf(int(cur.obj_id), ray_in, normed_ray_out, cur.normal, cur._type == VERTEX_MEDIUM, is_in_fspace)
         if cur._type != VERTEX_EMITTER:
             # convert to area measure for the next node
-            next.set_pdf_bwd(pdf_sa, cur.pos)
+            pdf_area = next.get_pdf_bwd(pdf_sa, cur.pos)
+        return remap_pdf(pdf_area) / remap_pdf(next.pdf_fwd)
 
     @ti.func
     def pdf_light(self, cur: ti.template(), prev: ti.template()):
@@ -539,12 +567,7 @@ class BDPT(VolumeRenderer):
         if prev.has_normal():
             pdf *= ti.abs(tm.dot(ray_dir, prev.normal))
         pdf *= (inv_len * inv_len)
-        prev.pdf_bwd = pdf
-    
-    @ti.func
-    def pdf_light_origin(self, cur: ti.template()):
-        """ Calculate density if the current vertex is an emitter vertex """
-        cur.pdf_bwd = self.src_field[int(cur.emit_id)].area_pdf() / float(self.src_num)     # uniform emitter selection
+        return pdf
     
     @staticmethod
     @ti.func
