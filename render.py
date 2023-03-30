@@ -63,7 +63,7 @@ if __name__ == "__main__":
     if type(rdr) != BDPT and configs.get('decomposition', 'none').startswith('transient'):
         print("[Warning] Transient rendering is only supported in BDPT renderer.")
 
-    max_iter_num = opts.iter_num if opts.iter_num > 0 else 10000
+    max_iter_num = opts.iter_num if opts.iter_num > 0 else configs.get('iter_num', 2000)
     iter_cnt = 0
     
     eye_start = configs.get('start_t', 1)
