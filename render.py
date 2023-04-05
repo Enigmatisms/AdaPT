@@ -18,8 +18,8 @@ from la.cam_transform import *
 from utils.tools import folder_path
 from utils.watermark import apply_watermark
 from utils.tdom_analyze import time_domain_curve
-from scene.xml_parser import mitsuba_parsing
-from scene.opts import get_options, mapped_arch
+from parser.xml_parser import mitsuba_parsing
+from parser.opts import get_options, mapped_arch
 
 rdr_mapping = {"pt": Renderer, "vpt": VolumeRenderer, "bdpt": BDPT}
 name_mapping = {"pt": "", "vpt": "Volumetric ", "bdpt": "Bidirectional "}

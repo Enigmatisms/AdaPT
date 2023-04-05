@@ -15,7 +15,7 @@ from la.cam_transform import *
 from emitters.abtract_source import LightSource
 
 from math import log2
-from scene.obj_desc import ObjDescriptor
+from parser.obj_desc import ObjDescriptor
 from renderer.vpt import VolumeRenderer
 from renderer.path_utils import Vertex, remap_pdf
 from renderer.constants import *

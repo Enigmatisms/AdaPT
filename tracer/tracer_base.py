@@ -16,8 +16,8 @@ from taichi.math import vec3, mat3
 from typing import List
 from la.cam_transform import *
 
-from scene.obj_desc import ObjDescriptor
-from scene.xml_parser import mitsuba_parsing
+from parser.obj_desc import ObjDescriptor
+from parser.xml_parser import mitsuba_parsing
 
 __eps__ = 5e-5
 __inv_eps__ = 1 - __eps__ * 2.

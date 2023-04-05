@@ -13,7 +13,7 @@ import taichi.math as tm
 import xml.etree.ElementTree as xet
 from taichi.math import vec3
 
-from scene.general_parser import rgb_parse
+from parser.general_parser import rgb_parse
 from renderer.constants import INV_PI, ZERO_V3, AXIS_Y
 from la.cam_transform import delocalize_rotate, world_frame
 from sampler.general_sampling import sample_triangle, cosine_hemisphere, uniform_sphere, concentric_disk_sample

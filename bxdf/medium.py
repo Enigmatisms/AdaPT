@@ -13,7 +13,7 @@ import xml.etree.ElementTree as xet
 from taichi.math import vec3
 from bxdf.phase import PhaseFunction
 from la.cam_transform import delocalize_rotate
-from scene.general_parser import get, rgb_parse
+from parser.general_parser import get, rgb_parse
 from sampler.general_sampling import random_rgb
 
 __all__ = ['Medium', 'Medium_np']

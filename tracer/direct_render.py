@@ -17,8 +17,8 @@ from la.cam_transform import *
 from emitters.point import PointSource
 from tracer.tracer_base import TracerBase
 
-from scene.obj_desc import ObjDescriptor
-from scene.xml_parser import mitsuba_parsing
+from parser.obj_desc import ObjDescriptor
+from parser.xml_parser import mitsuba_parsing
 
 REDENDER_DEPTH = False
 
