@@ -61,6 +61,16 @@ class PathTracer(TracerBase):
         self.brdf_nodes.place(self.brdf_field)                              # BRDF Taichi storage
         ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
 
+        min_val = vec3([1e3, 1e3, 1e3])
+        max_val = vec3([-1e3, -1e3, -1e3])
+        for i in range(self.num_objects):
+            min_val = ti.min(min_val, self.aabbs[i, 0])
+            max_val = ti.max(max_val, self.aabbs[i, 1])
+        
+        # world aabb for unbounded scene
+        self.w_aabb_min = ti.min(self.cam_t, min_val) - 0.1         
+        self.w_aabb_max = ti.max(self.cam_t, max_val) + 0.1
+
         print(f"[INFO] Path tracer param loading in {self.clock.toc(True):.3f} ms")
         self.clock.tic()
         self.initialze(emitters, objects)
