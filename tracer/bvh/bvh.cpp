@@ -9,6 +9,30 @@ constexpr size_t num_bins = 12;            // the same as PBR-book
 constexpr float traverse_cost = 0.1;
 constexpr float max_node_prim = 1;
 
+SplitAxis BVHNode::max_extent_axis(const std::vector<BVHInfo>& bvhs, std::vector<float>& bins) const {
+    Eigen::Vector3f min_ctr = bvhs[base].centroid, max_ctr = bvhs[base].centroid;
+    for (int i = 1; i < prim_num; i++) {
+        const Eigen::Vector3f& ctr = bvhs[base + i].centroid;
+        min_ctr = min_ctr.cwiseMin(ctr);
+        max_ctr = min_ctr.cwiseMax(ctr);
+    }
+    Eigen::Vector3f diff = max_ctr - min_ctr;
+    float max_diff = diff(0);
+    int split_axis = 0;
+    for (int i = 1; i < 3; i++) {
+        if (diff(i) > max_diff) {
+            max_diff = diff(i);
+            split_axis = i;
+        }
+    }
+    bins.resize(num_bins);
+    float min_r = min_ctr(split_axis) - 0.001f, interval = (max_diff + 0.002f) / float(num_bins);
+    std::transform(bins.begin(), bins.end(), bins.begin(), [min_r, interval, i = 0] (const float&) mutable {
+        i++; return min_r + interval * float(i);
+    });
+    return SplitAxis(split_axis);
+}
+
 // Convert numpy wavefront obj to eigen vector
 void wavefront_input(const py::array_t<float>& obj_array, std::vector<Eigen::Matrix3f>& meshes) {
     auto buf = obj_array.request();
@@ -163,20 +187,31 @@ int recursive_bvh_SAH(BVHNode* const cur_node, std::vector<BVHInfo>& bvh_infos) 
         cur_node->axis = AXIS_NONE;
         return 1;
     }
-    // FIXME: node information update should be taken out from the inner branches
 }
 
-void linearize_bvh_tree(BVHNode* cur_node, std::vector<LinearNode>& lin_nodes) {
+// This is the final function call for `bvh_build`
+int recursive_linearize(BVHNode* cur_node, std::vector<LinearNode>& lin_nodes) {
     // BVH tree should be linearized to better traverse and fit in the system memory
     // The linearized BVH tree should contain: bound, base, prim_cnt, rchild_offset, total_offset (to skip the entire node)
     // Note that if rchild_offset is -1, then the node is leaf. Leaf node points to primitive array
     // which is already sorted during BVH construction, containing primitive_id and obj_id for true intersection
     // Note that lin_nodes has been reserved
-    std::stack<BVHNode *> st;
-    BVHNode* dfs_ptr = cur_node;
-    while (dfs_ptr != nullptr) {
-        st.push(dfs_ptr);
-        lin_nodes.emplace_back(dfs_ptr);
+    size_t current_size = lin_nodes.size();
+    lin_nodes.emplace_back(cur_node);
+    if (cur_node->lchild != nullptr) {
+        int lnodes = recursive_linearize(cur_node->lchild, lin_nodes);
+        lin_nodes[current_size].rc_offset = lnodes + 1;
+        lnodes += recursive_linearize(cur_node->rchild, lin_nodes);
+        lin_nodes[current_size].all_offset = lnodes + 1;
+        return lnodes + 1;                      // include the cur_node                       
+    } else {
+        lin_nodes.back().rc_offset = 0;         // no rchild, therefore 0
+        lin_nodes.back().all_offset = 1;        // to skip the current sub-tree, index should just add 1
+        return 1;
     }
+}
 
+void bvh_build(const py::array_t<float>& obj_array, const py::array_t<int>& id_array) {
+    // TODO: input output should be considered, about object id, sphere_flag and primitive for bounds calculation
+    // The output should be reordered BVHInfo (this should be a pybind class, too?) and linearized BVH tree nodes
 }

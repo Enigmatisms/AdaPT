@@ -31,4 +31,6 @@ PYBIND11_MODULE(bvh_cpp, m) {
     m.doc() = "Build SAH-BVH tree via cpp backend\nInput: obj_array of shape (N_faces, 3, 3), N_faces corresponds to ";
 
     m.def("bvh_build", &bvh_build, "Build SAH-BVH tree via cpp backend.");
+
+    // TODO: some pybind class should be added
 }

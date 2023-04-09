@@ -118,9 +118,18 @@ public:
  */
 class LinearNode {
 public:
-    LinearNode();
+    LinearNode(): base(0), prim_cnt(0) {
+        mini.resize({3});
+        maxi.resize({3});
+    }
     LinearNode(const BVHNode *const bvh): base(bvh->base), prim_cnt(bvh->prim_num) {
-
+        mini.resize({3});
+        maxi.resize({3});
+        float *const min_ptr = mini.mutable_data(0), *const max_ptr = maxi.mutable_data(0);
+        for (int i = 0; i < 3; i++) {
+            min_ptr[i] = bvh->bound.mini(i);
+            max_ptr[i] = bvh->bound.maxi(i);
+        }
     };       // linear nodes are initialized during DFS binary tree traversal
 public:
     // The linearized BVH tree should contain: bound, base, prim_cnt, rchild_offset, total_offset (to skip the entire node)
