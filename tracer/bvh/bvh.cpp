@@ -34,35 +34,36 @@ SplitAxis BVHNode::max_extent_axis(const std::vector<BVHInfo>& bvhs, std::vector
 }
 
 // Convert numpy wavefront obj to eigen vector
-void wavefront_input(const py::array_t<float>& obj_array, std::vector<Eigen::Matrix3f>& meshes) {
-    auto buf = obj_array.request();
+size_t wavefront_input(const py::array_t<float>& obj_array, std::vector<Eigen::Matrix3f>& meshes) {
     auto result_shape = obj_array.shape();
-    const float* const ptr = (float*)buf.ptr;
-    size_t num_triangles = result_shape[0];
-    std::vector<Eigen::Matrix3f> results(num_triangles, Eigen::Matrix3f::Zero());
+    const float* const ptr = obj_array.data(0);
+    size_t num_primitives = result_shape[0];
+    meshes.resize(num_primitives);
 
-    for (size_t i = 0; i < num_triangles; i++) {
+    for (size_t i = 0; i < num_primitives; i++) {
         Eigen::Matrix3f mat = Eigen::Matrix3f::Zero();
         float* const mat_data = mat.data();
         size_t base_index = i * 9;
         for (size_t j = 0; j < 9; j++) {
             mat_data[j] = ptr[base_index + j];
         }
-        
+        meshes[i] = mat;
     }
+    return num_primitives;
 }
 
-void index_input(const py::array_t<int>& obj_idxs, const py::array_t<int>& sphere_flags, std::vector<IntPair>& idxs) {
-    size_t result_shape = obj_idxs.shape()[0];
-    auto idx_buf  = obj_idxs.request();
-    auto flag_buf = sphere_flags.request();
-    const int* const idx_ptr  = (int*)idx_buf.ptr;
-    const int* const flag_ptr = (int*)flag_buf.ptr;
-
-    idxs.resize(result_shape);
-    std::transform(idx_ptr, idx_ptr + result_shape, flag_ptr, idxs.begin(), 
-        [] (int obj_idx, int sphere_flag) {return std::make_pair(obj_idx, sphere_flag);}
-    );
+void index_input(const py::array_t<int>& obj_info, std::vector<IntPair>& idxs, size_t num_primitives) {
+    // input follow the shape of the number of objects, for each position
+    // the number of primitive / whether the primitive is sphere will be stored, the index will be object id
+    size_t result_shape = obj_info.shape()[1];      // shape is (3, obj_num)
+    const int *num_ptr  = obj_info.data(0),
+              *flag_ptr = obj_info.data(result_shape);
+    idxs.reserve(num_primitives);                   // accumulate(num_ptr, num_ptr + result_shape) = num_primitives
+    for (size_t i = 0; i < result_shape; i++) {
+        int prim_num = num_ptr[i], obj_idx = int(i), sphere_flag = flag_ptr[i];
+        for (int j = 0; j < prim_num; j++)
+            idxs.emplace_back(obj_idx, sphere_flag);
+    }
 }
 
 void create_bvh_info(const std::vector<Eigen::Matrix3f>& meshes, const std::vector<IntPair>& idxs, std::vector<BVHInfo>& bvh_infos) {
@@ -78,8 +79,7 @@ BVHNode* bvh_root_start(const py::array_t<float>& world_min, const py::array_t<f
     // Build BVH tree root node and start recursive tree construction
     BVHNode* root_node = new BVHNode(0, bvh_infos.size());
     Eigen::Vector3f &bound_min = root_node->bound.mini, &bound_max = root_node->bound.maxi;
-    auto min_buf = world_min.request(), max_buf = world_max.request();
-    const float* const min_ptr = (float*)min_buf.ptr, * const max_ptr = (float*)max_buf.ptr;
+    const float* const min_ptr = world_min.data(0), * const max_ptr = world_max.data(0);
     for (int i = 0; i < 3; i++) {
         bound_min(i) = min_ptr[i];
         bound_max(i) = max_ptr[i];
@@ -211,7 +211,24 @@ int recursive_linearize(BVHNode* cur_node, std::vector<LinearNode>& lin_nodes) {
     }
 }
 
-void bvh_build(const py::array_t<float>& obj_array, const py::array_t<int>& id_array) {
-    // TODO: input output should be considered, about object id, sphere_flag and primitive for bounds calculation
-    // The output should be reordered BVHInfo (this should be a pybind class, too?) and linearized BVH tree nodes
+std::tuple<py::list, py::list> bvh_build(
+    const py::array_t<float>& obj_array, const py::array_t<int>& obj_info,
+    const py::array_t<float>& world_min, const py::array_t<int>& world_max
+) {
+    std::vector<Eigen::Matrix3f> meshes;
+    std::vector<IntPair> idx_prs;
+    std::vector<BVHInfo> bvh_infos;
+    int node_num = 0;
+    size_t num_prim = wavefront_input(obj_array, meshes);
+    index_input(obj_info, idx_prs, num_prim);
+    create_bvh_info(meshes, idx_prs, bvh_infos);
+    BVHNode* root_node = bvh_root_start(world_min, world_max, node_num, bvh_infos);
+    std::vector<LinearNode> lin_nodes;
+    recursive_linearize(root_node, lin_nodes);
+    std::vector<LinearBVH> lin_bvhs;
+    lin_bvhs.reserve(bvh_infos.size());
+    for (const BVHInfo& bvh: bvh_infos) {
+        lin_nodes.emplace_back(bvh);
+    }
+    return std::make_tuple(py::cast(lin_nodes), py::cast(lin_bvhs));
 }

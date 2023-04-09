@@ -115,6 +115,8 @@ public:
  * for a suboptimal solution, to traverse the tree using just DFS, resulting in a simple
  * traversal method: the index for the linear node container is monotonously increasing. So 
  * in this implementation, split axis will not be included (which will not be used anyway).
+ * TODO: we can opt for dynamic snode, but I think this would be ugly. Simple unidirectional traversal
+ * would be much better than brute-force traversal with only AABB pruning.
  */
 class LinearNode {
 public:
@@ -137,4 +139,26 @@ public:
     py::array_t<float> maxi;
     int base, prim_cnt;         // indicate the starting point and the length of the node
     int rc_offset, all_offset;  // indicate the rchild pos and the offset to the next node
+};
+
+class LinearBVH {
+public:
+    LinearBVH(): obj_idx(-1), prim_idx(-1) {
+        mini.resize({3});
+        maxi.resize({3});
+    }
+    LinearBVH(const BVHInfo& bvh): obj_idx(bvh.obj_idx), prim_idx(bvh.prim_idx) {
+        mini.resize({3});
+        maxi.resize({3});
+        float *const min_ptr = mini.mutable_data(0), *const max_ptr = maxi.mutable_data(0);
+        for (int i = 0; i < 3; i++) {
+            min_ptr[i] = bvh.bound.mini(i);
+            max_ptr[i] = bvh.bound.maxi(i);
+        }
+    }
+public:
+    int obj_idx;
+    int prim_idx;
+    py::array_t<float> mini;
+    py::array_t<float> maxi;
 };
