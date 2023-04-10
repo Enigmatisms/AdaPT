@@ -14,7 +14,7 @@ SplitAxis BVHNode::max_extent_axis(const std::vector<BVHInfo>& bvhs, std::vector
     for (int i = 1; i < prim_num; i++) {
         const Eigen::Vector3f& ctr = bvhs[base + i].centroid;
         min_ctr = min_ctr.cwiseMin(ctr);
-        max_ctr = min_ctr.cwiseMax(ctr);
+        max_ctr = max_ctr.cwiseMax(ctr);
     }
     Eigen::Vector3f diff = max_ctr - min_ctr;
     float max_diff = diff(0);
@@ -35,19 +35,17 @@ SplitAxis BVHNode::max_extent_axis(const std::vector<BVHInfo>& bvhs, std::vector
 
 // Convert numpy wavefront obj to eigen vector
 size_t wavefront_input(const py::array_t<float>& obj_array, std::vector<Eigen::Matrix3f>& meshes) {
-    auto result_shape = obj_array.shape();
     const float* const ptr = obj_array.data(0);
-    size_t num_primitives = result_shape[0];
+    size_t num_primitives = obj_array.shape()[0];
     meshes.resize(num_primitives);
 
     for (size_t i = 0; i < num_primitives; i++) {
-        Eigen::Matrix3f mat = Eigen::Matrix3f::Zero();
+        Eigen::Matrix3f& mat = meshes[i];
         float* const mat_data = mat.data();
         size_t base_index = i * 9;
         for (size_t j = 0; j < 9; j++) {
             mat_data[j] = ptr[base_index + j];
         }
-        meshes[i] = mat;
     }
     return num_primitives;
 }
@@ -92,7 +90,7 @@ int recursive_bvh_SAH(BVHNode* const cur_node, std::vector<BVHInfo>& bvh_infos) 
     AABB fwd_bound, bwd_bound;
     int seg_idx = 0, child_prim_cnt = 0;                // this index is used for indexing variable `bins`
     const int prim_num = cur_node->prim_num, base = cur_node->base, max_pos = base + prim_num;
-    float min_cost = 5e9, node_prim_cnt = float(cur_node->prim_num), node_inv_area = 1. / cur_node->bound.area();
+    float min_cost = 5e9, node_prim_cnt = float(prim_num), node_inv_area = 1. / cur_node->bound.area();
 
     // Step 1: decide the axis that expands the maximum extent of space
     std::vector<float> bins;        // bins: from (start_pos + interval) to end_pos
@@ -114,14 +112,13 @@ int recursive_bvh_SAH(BVHNode* const cur_node, std::vector<BVHInfo>& bvh_infos) 
             prim_cnts[i] = idx_bins[i].prim_cnt;
             fwd_areas[i] = fwd_bound.area();
             if (i > 0) {
-                bwd_bound += idx_bins[num_bins - 1].bound;
+                bwd_bound += idx_bins[num_bins - i].bound;
                 bwd_areas[num_bins - 1 - i] = bwd_bound.area();
             }
         }
         std::partial_sum(prim_cnts.begin(), prim_cnts.end(), prim_cnts.begin());
 
         // Step 4: use the calculated area to computed the segment boundary
-        float ;
         int seg_bin_idx = 0;
         for (int i = 0; i < num_bins - 1; i++) {
             float cost = traverse_cost + node_inv_area * 
@@ -140,12 +137,11 @@ int recursive_bvh_SAH(BVHNode* const cur_node, std::vector<BVHInfo>& bvh_infos) 
             child_prim_cnt = prim_cnts[seg_bin_idx];
             seg_idx = base + child_prim_cnt;        // bvh[seg_idx] will be in rchild
         }
-        
         fwd_bound.clear();
         bwd_bound.clear();
-        for (int i = 0; i < seg_idx; i++)       // calculate child node bound
+        for (int i = 0; i <= seg_bin_idx; i++)       // calculate child node bound
             fwd_bound += idx_bins[i].bound;
-        for (int i = num_bins - 1; i > seg_idx; i--)
+        for (int i = num_bins - 1; i > seg_bin_idx; i--)
             bwd_bound += idx_bins[i].bound;
     } else {                                    // equal primitive number
         seg_idx = (base + max_pos) >> 1;
@@ -157,7 +153,7 @@ int recursive_bvh_SAH(BVHNode* const cur_node, std::vector<BVHInfo>& bvh_infos) 
         );
         for (int i = base; i < seg_idx; i++)    // calculate child node bound
             fwd_bound += bvh_infos[i].bound;
-        for (int i = seg_idx; i < max_pos; i--)
+        for (int i = seg_idx; i < max_pos; i++)
             bwd_bound += bvh_infos[i].bound;
         child_prim_cnt = seg_idx - base;        // bvh[seg_idx] will be in rchild
         float split_cost = traverse_cost + node_inv_area * 
@@ -228,7 +224,8 @@ std::tuple<py::list, py::list> bvh_build(
     std::vector<LinearBVH> lin_bvhs;
     lin_bvhs.reserve(bvh_infos.size());
     for (const BVHInfo& bvh: bvh_infos) {
-        lin_nodes.emplace_back(bvh);
+        lin_bvhs.emplace_back(bvh);
     }
+    delete root_node;
     return std::make_tuple(py::cast(lin_nodes), py::cast(lin_bvhs));
 }

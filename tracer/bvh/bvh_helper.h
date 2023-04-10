@@ -32,7 +32,7 @@ struct AABB {
 
     AABB& operator+=(const AABB& aabb) {
         this->mini = aabb.mini.cwiseMin(this->mini);
-        this->maxi = aabb.mini.cwiseMax(this->mini);
+        this->maxi = aabb.maxi.cwiseMax(this->maxi);
     }
 
     void clear() {
@@ -55,7 +55,7 @@ struct BVHInfo {
 
     BVHInfo(): centroid(Eigen::Vector3f::Zero()), prim_idx(-1), obj_idx(-1) {}
     BVHInfo(const Eigen::Matrix3f& primitive, int prim_idx, int obj_idx, bool is_sphere = false): 
-        bound(primitive), prim_idx(prim_idx), obj_idx(obj_idx) 
+        bound(primitive, is_sphere), prim_idx(prim_idx), obj_idx(obj_idx) 
     {
         // Extract two vertices for the primitive, once converted to AABB
         // We don't need to distinguish between mesh or sphere
