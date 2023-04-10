@@ -5,10 +5,13 @@
     @date: 2023.1.26
 """
 
+import os
 import sys
 sys.path.append("..")
 
+import numpy as np
 import taichi as ti
+import taichi.math as tm
 from taichi.math import vec3
 
 from typing import List
@@ -25,6 +28,8 @@ from renderer.constants import TRANSPORT_UNI
 
 from sampler.general_sampling import *
 from utils.tools import TicToc
+from tracer.ti_bvh import LinearBVH, LinearNode, export_python_bvh
+from bvh_cpp import bvh_build
 
 @ti.data_oriented
 class PathTracer(TracerBase):
@@ -61,6 +66,12 @@ class PathTracer(TracerBase):
         self.brdf_nodes.place(self.brdf_field)                              # BRDF Taichi storage
         ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
 
+        print(f"[INFO] Path tracer param loading in {self.clock.toc(True):.3f} ms")
+        self.clock.tic()
+        self.initialze(emitters, objects)
+        print(f"[INFO] Path tracer initialization in {self.clock.toc(True):.3f} ms")
+        self.clock.tic()
+
         min_val = vec3([1e3, 1e3, 1e3])
         max_val = vec3([-1e3, -1e3, -1e3])
         for i in range(self.num_objects):
@@ -71,11 +82,32 @@ class PathTracer(TracerBase):
         self.w_aabb_min = ti.min(self.cam_t, min_val) - 0.1         
         self.w_aabb_max = ti.max(self.cam_t, max_val) + 0.1
 
-        print(f"[INFO] Path tracer param loading in {self.clock.toc(True):.3f} ms")
-        self.clock.tic()
-        self.initialze(emitters, objects)
-        print(f"[INFO] Path tracer initialization in {self.clock.toc(True):.3f} ms")
-        self.clock.tic()
+        primitives, obj_info = self.prepare_for_bvh(objects)
+        py_nodes, py_bvhs = bvh_build(primitives, obj_info, self.w_aabb_min.to_numpy(), self.w_aabb_max.to_numpy())
+
+        self.node_num = len(py_nodes)
+        self.bvh_num = len(py_bvhs)
+
+        self.lin_nodes = LinearNode.field()
+        self.lin_bvhs  = LinearBVH.field()
+        ti.root.dense(ti.i, self.node_num).place(self.lin_nodes)
+        ti.root.dense(ti.i, self.bvh_num).place(self.lin_bvhs)
+        export_python_bvh(self.lin_nodes, self.lin_bvhs, py_nodes, py_bvhs)
+        print(f"[INFO] {self.node_num } nodes and {self.bvh_num} bvh primitives are loaded.")
+
+    def prepare_for_bvh(self, objects: List[ObjDescriptor]):
+        primitives = []
+        obj_info = np.zeros((2, len(objects)), dtype = np.int32)        
+        for i, obj in enumerate(objects):
+            # for sphere, it would be (1, 2, 3), for others it would be (n, 3, 3)
+            num_primitive, num_points, _ = obj.meshes.shape
+            obj_info[0, i] = num_primitive
+            if num_primitive == 1 and num_points == 2:
+                obj_info[1, i] = 1
+            for primitive in obj.meshes:
+                primitives.append(primitive)
+        primitives = np.stack(primitives, axis = 0).astype(np.float32)
+        return primitives, obj_info
 
     def initialze(self, emitters: List[LightSource], objects: List[ObjDescriptor]):
         for i, emitter in enumerate(emitters):
@@ -104,6 +136,30 @@ class PathTracer(TracerBase):
             self.emitter_id[i]  = emitter_ref_id
             if emitter_ref_id  >= 0:
                 self.src_field[emitter_ref_id].obj_ref_id = i
+
+    @ti.func
+    def ray_intersect_bvh(self, ray, start_p, min_depth = -1.0):
+        """
+            Ray intersection with BVH, to prune unnecessary computation
+            FIXME: the logic here should be finished
+        """
+        obj_id = -1
+        tri_id = -1
+        min_depth = ti.select(min_depth > 0.0, min_depth - 5e-5, 1e7)
+        node_idx = 0
+        while node_idx < self.node_num:
+            aabb_intersect, t_near, _f = self.lin_nodes[node_idx].aabb_test(ray, start_p)
+            if aabb_intersect == False or t_near > min_depth: 
+                # if the current node is not intersected, then all of the following nodes can be skipped
+                node_idx += self.lin_nodes[node_idx].all_offset         # skip the entire node (and sub-tree)
+                continue
+            # otherwise, the current node should be investigated, check if it's leaf node
+            if self.lin_nodes[node_idx].is_leaf():
+                # Traverse all the primtives in the leaf, update min_depth, obj_id and tri_id
+                pass
+            # not a leaf node: moving downwards
+            node_idx += 1
+        return 0
 
     @ti.func
     def sample_new_ray(self, idx: int, incid: vec3, normal: vec3, is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI):
@@ -216,6 +272,7 @@ class PathTracer(TracerBase):
 
 if __name__ == "__main__":
     options = get_options()
-    ti.init(arch = ti.vulkan, kernel_profiler = options.profile, default_ip = int, default_fp = float)
-    emitter_configs, _, meshes, configs = mitsuba_parsing(options.input_path, options.scene)  # complex_cornell
+    ti.init(arch = ti.vulkan, kernel_profiler = options.profile, default_ip = ti.int32, default_fp = ti.f32)
+    input_folder = os.path.join(options.input_path, options.scene)
+    emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, options.name)  # complex_cornell
     pt = PathTracer(emitter_configs, meshes, configs)

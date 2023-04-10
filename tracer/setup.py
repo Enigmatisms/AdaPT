@@ -6,9 +6,10 @@ cxx_std=11
 
 ext_modules = [
     Pybind11Extension("bvh_cpp",
-        ["src/bvh.cpp"],
+        ["bvh/bvh.cpp"],
         # Example: passing in the version to the compiled code
         define_macros = [('VERSION_INFO', __version__)],
+        extra_compile_args= ['-g', '-O3'],
         ),
 ]
 

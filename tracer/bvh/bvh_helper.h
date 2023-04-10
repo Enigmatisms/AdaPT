@@ -12,7 +12,10 @@ struct AABB {
     Eigen::Vector3f mini;
     Eigen::Vector3f maxi;
 
-    AABB(): mini(Eigen::Vector3f::Zero()), maxi(Eigen::Vector3f::Zero()) {}
+    AABB() {
+        mini.fill(1e4);
+        maxi.fill(-1e4);
+    }
     /** Review needed: is this good to implement two overload? */
     AABB(const Eigen::Vector3f& mini, const Eigen::Vector3f& maxi): mini(mini), maxi(maxi) {}
     AABB(Eigen::Vector3f&& mini, Eigen::Vector3f&& maxi): mini(mini), maxi(maxi) {}
@@ -23,6 +26,13 @@ struct AABB {
         } else {
             mini = primitive.rowwise().minCoeff();      // rowwise --- get coeff in each row
             maxi = primitive.rowwise().maxCoeff();
+            Eigen::Vector3f diff = maxi - mini;
+            for (int i = 0; i < 3; i++) {               // expand ill-posed AABB
+                if (diff(i) < 1e-4) {
+                    mini(i) -= 1e-4;
+                    maxi(i) += 1e-4;
+                }
+            }
         }
     }
 
@@ -33,11 +43,12 @@ struct AABB {
     AABB& operator+=(const AABB& aabb) {
         this->mini = aabb.mini.cwiseMin(this->mini);
         this->maxi = aabb.maxi.cwiseMax(this->maxi);
+        return *this;
     }
 
     void clear() {
-        mini.setZero();
-        maxi.setZero();
+        mini.fill(1e4);
+        maxi.fill(-1e4);
     }
 
     float area() const {
@@ -138,7 +149,7 @@ public:
     py::array_t<float> mini;
     py::array_t<float> maxi;
     int base, prim_cnt;         // indicate the starting point and the length of the node
-    int rc_offset, all_offset;  // indicate the rchild pos and the offset to the next node
+    int all_offset;             // indicate the rchild pos and the offset to the next node
 };
 
 class LinearBVH {
