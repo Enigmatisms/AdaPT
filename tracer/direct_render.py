@@ -17,10 +17,10 @@ from la.cam_transform import *
 from emitters.point import PointSource
 from tracer.tracer_base import TracerBase
 
-from scene.obj_desc import ObjDescriptor
-from scene.xml_parser import mitsuba_parsing
+from parser.obj_desc import ObjDescriptor
+from parser.xml_parser import mitsuba_parsing
 
-REDENDER_DEPTH = False
+REDENDER_DEPTH = True
 
 @ti.data_oriented
 class BlinnPhongTracer(TracerBase):
@@ -33,28 +33,40 @@ class BlinnPhongTracer(TracerBase):
     """
     def __init__(self, emitter: PointSource, objects: List[ObjDescriptor], prop: dict):
         super().__init__(objects, prop)
-        self.emit_int = vec3(emitter.intensity, dt = float)   
+        self.emit_int = vec3(emitter.intensity)   
             
         self.surf_color = ti.Vector.field(3, float, self.num_objects)
         self.shininess  = ti.Vector.field(3, float, self.num_objects)
         self.depth_map  = ti.field(float, (self.w, self.h))                # output: gray-scale
+        self.norm_map   = ti.Vector.field(3, float, (self.w, self.h))                # output: gray-scale
 
         self.initialze(objects)
 
     def initialze(self, objects: List[ObjDescriptor]):
+        acc_prim_num = 0
         for i, obj in enumerate(objects):
             for j, (mesh, normal) in enumerate(zip(obj.meshes, obj.normals)):
-                for k, vec in enumerate(mesh):
-                    self.meshes[i, j, k]  = vec3(vec)
+                cur_id = acc_prim_num + j
+                self.prims[cur_id, 0] = vec3(mesh[0])
+                self.prims[cur_id, 1] = vec3(mesh[1])
                 if mesh.shape[0] > 2:       # not a sphere
-                    self.precom_vec[i, j, 0] = self.meshes[i, j, 1] - self.meshes[i, j, 0]                    
-                    self.precom_vec[i, j, 1] = self.meshes[i, j, 2] - self.meshes[i, j, 0]                     
-                self.normals[i, j] = vec3(normal) 
-            self.mesh_cnt[i]    = obj.tri_num
-            self.shininess[i]   = obj.bsdf.k_g
-            self.aabbs[i, 0]    = vec3(obj.aabb[0])       # unrolled
-            self.aabbs[i, 1]    = vec3(obj.aabb[1])
-            self.surf_color[i]  = vec3(obj.bsdf.k_d)
+                    self.prims[cur_id, 2] = vec3(mesh[2])
+                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 1] - self.prims[cur_id, 0]                    
+                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 2] - self.prims[cur_id, 0]                
+                    self.precom_vec[cur_id, 2] = self.prims[cur_id, 0]
+                else:
+                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 0]
+                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 1]     
+                self.normals[cur_id] = vec3(normal) 
+            self.obj_info[i, 0] = acc_prim_num
+            self.obj_info[i, 1] = obj.tri_num
+            self.obj_info[i, 2] = obj.type
+            acc_prim_num        += obj.tri_num
+
+            self.shininess[i]    = obj.bsdf.k_g
+            self.aabbs[i, 0]     = vec3(obj.aabb[0])       # unrolled
+            self.aabbs[i, 1]     = vec3(obj.aabb[1])
+            self.surf_color[i]   = vec3(obj.bsdf.k_d)
 
     @ti.kernel
     def render(self, emit_pos: vec3):
@@ -65,6 +77,7 @@ class BlinnPhongTracer(TracerBase):
             if obj_id >= 0:
                 if ti.static(REDENDER_DEPTH):
                     self.depth_map[i, j] = min_depth
+                    self.norm_map[i, j] = normal
                 # Calculate Blinn-Phong lighting model
                 hit_point  = ray * min_depth + self.cam_t
                 to_emitter = emit_pos - hit_point
@@ -85,8 +98,8 @@ class BlinnPhongTracer(TracerBase):
 
 if __name__ == "__main__":
     profiling = False
-    ti.init(arch = ti.vulkan, kernel_profiler = profiling)
-    emitter_configs, _, meshes, configs = mitsuba_parsing("../scene/test/", "point_cbox.xml")
+    ti.init(arch = ti.cuda, kernel_profiler = profiling)
+    emitter_configs, _, meshes, configs = mitsuba_parsing("../scenes/cbox/", "cbox-point.xml")
     emitter = emitter_configs[0]
     emitter_pos = vec3(emitter.pos)
     bpt = BlinnPhongTracer(emitter, meshes, configs)
@@ -126,3 +139,5 @@ if __name__ == "__main__":
         depth_map = bpt.depth_map.to_numpy()
         depth_map /= depth_map.max()
         ti.tools.imwrite(depth_map, "./depth.png")
+        normal = (bpt.norm_map.to_numpy() + 1.0) / 2.0
+        ti.tools.imwrite(normal, "./normal.png")

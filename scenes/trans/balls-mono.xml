@@ -18,7 +18,7 @@
         <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
 
 		<!-- Transient rendering configuration -->
-        <string name="decomposition" value="transient_lit"/>	<!-- Decomposition mode -->				
+        <string name="decomposition" value="transient_cam"/>	<!-- Decomposition mode -->				
         <integer name="sample_count" value="400"/>			<!-- Number of bins -->
         <float name="min_time" value="0.0"/>					<!-- Starting time for camera -->				
         <float name="interval" value="0.05"/>				<!-- Width of a time bin -->			

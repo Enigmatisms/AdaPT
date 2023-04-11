@@ -19,7 +19,7 @@ def get_options(delayed_parse = False):
     parser.add_argument("--iter_num",      default = -1, help = "Number of iterations (-1 means infinite)", type = int)
     parser.add_argument("--normalize",     default = 0., help = "Normalize the output picture with its <x> quantile value", type = float)
     parser.add_argument("--output_freq",   default = 0, help = "Whether to output intermediate results (0 means no)", type = int)
-    parser.add_argument("--input_path",    default = "./inputs/", help = "Input scene file folder", type = str)
+    parser.add_argument("--input_path",    default = "./scenes/", help = "Input scene file folder", type = str)
     parser.add_argument("--output_path",   default = "./outputs/", help = "Output image file folder", type = str)
     parser.add_argument("--img_name",      default = "pbr", help = "Output image name", type = str)
     parser.add_argument("--img_ext",       default = "png", choices=['png', 'jpg', 'bmp'], help = "Output image extension", type = str)

@@ -14,7 +14,7 @@ from la.cam_transform import *
 from tracer.path_tracer import PathTracer
 from emitters.abtract_source import LightSource
 
-from scene.obj_desc import ObjDescriptor
+from parser.obj_desc import ObjDescriptor
 
 """
    MIS is required to make convergence faster and supress variance
@@ -28,16 +28,6 @@ class VolumeRenderer(PathTracer):
     def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
         super().__init__(emitters, objects, prop)
         self.world_scattering = self.world.medium._type >= 0
-
-        min_val = vec3([1e3, 1e3, 1e3])
-        max_val = vec3([-1e3, -1e3, -1e3])
-        for i in range(self.num_objects):
-            min_val = ti.min(min_val, self.aabbs[i, 0])
-            max_val = ti.max(max_val, self.aabbs[i, 1])
-        
-        # world aabb for unbounded scene
-        self.w_aabb_min = ti.min(self.cam_t, min_val) - 0.1         
-        self.w_aabb_max = ti.max(self.cam_t, max_val) + 0.1
         
     @ti.func
     def get_transmittance(self, idx: int, in_free_space: int, depth: float):
@@ -175,7 +165,7 @@ class VolumeRenderer(PathTracer):
                         # direct / emission component evaluation
                         if emitter_valid:
                             emit_pos, shadow_int, _d, _n = emitter.         \
-                                sample_hit(self.precom_vec, self.normals, self.mesh_cnt, hit_point)        # sample light
+                                sample_hit(self.precom_vec, self.normals, self.obj_info, hit_point)        # sample light
                             to_emitter  = emit_pos - hit_point
                             emitter_d   = to_emitter.norm()
                             light_dir   = to_emitter / emitter_d

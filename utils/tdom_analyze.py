@@ -10,14 +10,11 @@ sys.path.append("..")
 import numpy as np
 import matplotlib.pyplot as plt
 
-from scipy import io
 from utils.tools import folder_path
-from scene.opts import get_tdom_options
+from parser.opts import get_tdom_options
 from scipy.signal import find_peaks, peak_widths
 
-__all__ = ['time_domain_curve']
-
-colors = ("#DF7857", "#4E6E81", "#F99417", "#245953", "#B46060", "#567189")
+colors = ("#DF7857", "#4E6E81", "#F99417")
 color_cnt = 0
 
 def lerp(pos, data):
@@ -160,44 +157,6 @@ class Visualizer:
             plt.ylabel("Photon number / Signal Intensity")
             if display: plt.show()
 
-def mat_data_reader(
-    mat_file_path: str, var_name: str, mode = 'diag_tri', time_step = 55e-12, 
-    sol = 1.0, viz_result = False, independent_show = False, legend = 'radiance', name = 'SPAD'
-):
-    """ Matlab file reader 
-        Time step second to nanosecond, 55e-12 is the time step of SPAD
-    """
-    feature_mat: np.ndarray = io.loadmat(mat_file_path)[var_name]
-    # the shape of the feature mat is (32, 32, 230), (32, 32) is the spatial resolution of the SPAD
-    # 230 means the temporal resolution
-    if feature_mat.ndim < 3 and mode != 'whole':
-        print(f"[Warning] Mode is set to be '{mode}' but the shape of the feature mat is {feature_mat.shape}, therefore mode is set to 'whole'")
-        mode = 'whole'
-    if 'diag' in mode:
-        img_h, img_w, _ = feature_mat.shape
-        results = np.zeros((3, 230))                    # 230 bins for SPAD
-        win_h, win_w = img_h // 3, img_w // 3 
-        for i in range(3):
-            values = feature_mat[i * win_h:(i + 1) * win_h, i * win_w:(i + 1) * win_w, :].mean(axis = (0, 1))
-            results[i, :] = values
-    else:
-        if feature_mat.ndim < 3:               # single channel for one pixel
-            results = feature_mat.mean(axis = 0)
-        else:                                   # SPAD 32 * 32 * 230
-            results = feature_mat.mean(axis = (0, 1))
-    if mode in {'diag_tri', 'whole'}:
-        results /= results.max()
-    else:
-        results /= (0.5 * results[0] + 0.5 * results[2]).max()
-    transient_num = results.shape[-1]
-    max_time = time_step * transient_num / sol
-    ts = np.linspace(0., max_time, transient_num)
-    if viz_result:
-        extras = get_peak_analysis(results, ts, opts)
-        viz = Visualizer(mode, max_time, name)
-        viz.visualize(results, ts, legend = legend, show = independent_show, extras = extras)
-    return results, ts
-
 def sim_visualize(opts, legend = 'radiance'):  
     time_step = opts.sim_interval
     sol       = opts.sim_sol
@@ -220,16 +179,6 @@ def sim_visualize(opts, legend = 'radiance'):
 
 if __name__ == "__main__":
     opts = get_tdom_options()
-    if opts.mode == 'sim':
-        sim_visualize(opts, 'AdaPT simulation')
-        if opts.save_fig:
-            plt.savefig(os.path.join(opts.output_folder, f"{opts.sim_name[:-5]}.png"))
-    else:
-        real_path = os.path.join(opts.real_path, opts.real_name)
-        diff_path = os.path.join(opts.theory_path, opts.theory_name)
-        comp_mode = (opts.mode == 'comp')
-        # two curves are both needed
-        mat_data_reader(real_path, "s1", mode = opts.window_mode, viz_result = True, legend = 'real data', name = opts.real_name)
-        mat_data_reader(diff_path, "Phi", mode = opts.window_mode, viz_result = True, independent_show = not comp_mode, legend = 'diffusion theory', name = opts.theory_name)
-        if comp_mode:
-            sim_visualize(opts, 'AdaPT simulation')
+    sim_visualize(opts, 'AdaPT simulation')
+    if opts.save_fig:
+        plt.savefig(os.path.join(opts.output_folder, f"{opts.sim_name[:-5]}.png"))

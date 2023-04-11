@@ -1,0 +1,163 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- A test file for mitsuba-like scene xml file parser -->
+<!-- Author: Qianyue He / Original credit goes to Wenzel Jakob -->
+<!-- Only Steady state rendering are supported -->
+<!-- Only RGB or rgb spectrums are supported -->
+<scene version="1.1">
+	<sensor type="perspective">
+		<float name="near_clip" value="0.001"/>
+		<float name="far_clip" value="2000"/>
+		<float name="fov" value="39.3077"/>
+        <integer name="sample_count" value="128"/>
+        <integer name="max_bounce" value="18"/>
+        <integer name="max_depth" value="18"/>
+        <integer name="num_shadow_ray" value="4"/>       
+
+        <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
+        <boolean name="anti_alias" value="true"/>       	
+        <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
+        <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
+
+        <string name="accelerator" value="bvh"/>       
+		<string name="decomposition" value="none"/>	<!-- Decomposition mode -->				
+        <integer name="sample_count" value="400"/>			<!-- Number of bins -->
+        <float name="min_time" value="0.0"/>					<!-- Starting time for camera -->				
+        <float name="interval" value="0.05"/>				<!-- Width of a time bin -->			
+		
+		<transform name="toWorld">
+			<lookat target="2.78, 2.73, -7.99" origin="2.78, 2.73, -8.00" up="0, 1, 0"/>
+		</transform>
+
+		<film type="film">
+			<integer name="width" value="512"/>
+			<integer name="height" value="512"/>
+			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
+			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
+			<integer name="crop_rx" value="0"/>		<!-- Crop half radius for x-axis -->
+			<integer name="crop_ry" value="0"/>		<!-- Crop half radius for y-axis -->
+		</film>
+	</sensor>
+
+	<brdf type="lambertian" id="box">
+		<rgb name="k_d" value="#BCBCBC"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="white">
+		<rgb name="k_d" value="#BDBDBD"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="left_wall">
+		<rgb name="k_d" value="#DD2525"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="right_wall">
+		<rgb name="k_d" value="#2525DD"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="light">
+		<rgb name="k_d" value="#555555"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<emitter type="area" id="area">
+		<rgb name="emission" value="50.0, 50.0, 50.0"/>
+		<rgb name="scaler" value="1.0"/>
+	</emitter>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
+		<transform name="toWorld">
+			<translate x="0" y="-0.001" z="0"/>
+		</transform>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
+		<ref type="material" id="white"/>
+		<transform name="toWorld">
+			<translate x="0" y="0.0" z="0"/>
+		</transform>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_ceiling.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_back.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_greenwall.obj"/>
+		<ref type="material" id="right_wall"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_redwall.obj"/>
+
+		<ref type="material" id="left_wall"/>
+	</shape>
+
+	<bsdf type="det-refraction" id="glass">
+		<rgb name="k_d" value="#FAFAFA"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.5"/>
+		</medium>
+	</bsdf>
+
+	<brdf type="fresnel-blend" id="fresnel">
+		<rgb name="k_d" value="#CACACA"/>
+		<!-- <rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/> -->
+		<rgb name="k_s" value="#333333"/>
+		<rgb name="k_g" r="10" g="1000"/>
+	</brdf>
+
+	<brdf type="specular" id="mirror">
+		<rgb name="k_d" value="#EFEFEF"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/bunny_full1.obj"/>
+		<ref type="material" id="glass"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/bunny_full2.obj"/>
+		<ref type="material" id="mirror"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/bunny_full3.obj"/>
+		<ref type="material" id="fresnel"/>
+	</shape>
+
+	<world name="yes!">
+		<rgb name="skybox" value="0.0"/>
+		<rgb name="ambient" value="0.0"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.25"/>
+			<rgb name="par" value="0.2"/>
+			<float name="ior" value="1.0"/>
+		</medium>
+	</world>
+</scene>

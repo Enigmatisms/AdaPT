@@ -41,8 +41,6 @@ class ObjDescriptor:
         self.aabb = get_aabb(meshes, _type)        # of shape (2, 3)
         self.emitter_ref_id = emit_id
         self.type = _type
-        if _type != 0:
-            self.tri_num = 0
 
     def __repr__(self):
         centroid = (self.aabb[0] + self.aabb[1]) / 2

@@ -16,8 +16,8 @@ from taichi.math import vec3, mat3
 from typing import List
 from la.cam_transform import *
 
-from scene.obj_desc import ObjDescriptor
-from scene.xml_parser import mitsuba_parsing
+from parser.obj_desc import ObjDescriptor
+from parser.xml_parser import mitsuba_parsing
 
 __eps__ = 5e-5
 __inv_eps__ = 1 - __eps__ * 2.
@@ -61,28 +61,27 @@ class TracerBase:
         self.half_h     = self.h / 2
 
         self.num_objects = len(objects)
-        max_tri_num = max([obj.tri_num for obj in objects])
+        self.num_prims  = sum([obj.tri_num for obj in objects])
 
         self.cam_orient = prop['transform'][0]                          # first field is camera orientation
         self.cam_orient /= np.linalg.norm(self.cam_orient)
         self.cam_t      = vec3(prop['transform'][1])
         self.cam_r      = mat3(np_rotation_between(np.float32([0, 0, 1]), self.cam_orient))
         
+        # A more compact way to store the primitives
         self.aabbs      = ti.Vector.field(3, float, (self.num_objects, 2))
         self.normals    = ti.Vector.field(3, float)
-        self.meshes     = ti.Vector.field(3, float)                    # leveraging SSDS, shape (N, mesh_num, 3) - vector3d
+        self.prims      = ti.Vector.field(3, float)                             # leveraging SSDS, shape (N, mesh_num, 3) - vector3d
         self.precom_vec = ti.Vector.field(3, float)
-        self.pixels     = ti.Vector.field(3, float, (self.w, self.h))      # output: color
+        self.pixels     = ti.Vector.field(3, float, (self.w, self.h))           # output: color
 
-        self.bitmasked_nodes = ti.root.dense(ti.i, self.num_objects).bitmasked(ti.j, max_tri_num)
-        self.bitmasked_nodes.place(self.normals)
-        self.bitmasked_nodes.bitmasked(ti.k, 3).place(self.meshes)      # for simple shapes, this would be efficient
-        # triangle has 3 vertices, v1, v2, v3. precom_vec stores (v2 - v1), (v3 - v1)
-        # These two precom(puted) vectors can be used in ray intersection and triangle sampling (for shape-attached emitters)
-        self.bitmasked_nodes.dense(ti.k, 3).place(self.precom_vec)
+        self.dense_nodes = ti.root.dense(ti.i, self.num_prims)
+        self.dense_nodes.place(self.normals)
+        self.dense_nodes.dense(ti.j, 3).place(self.prims, self.precom_vec)      # for simple shapes, this would be efficient
 
-        self.mesh_cnt   = ti.field(int, self.num_objects)
-        self.cnt        = ti.field(int, ())                          # useful in path tracer (sample counter)
+        # pos0: start_idx, pos1: number of primitives, pos2: obj_id (being triangle / sphere? Others to be added, like cylinder, etc.)
+        self.obj_info  = ti.field(int, (self.num_objects, 3))
+        self.cnt       = ti.field(int, ())                          # useful in path tracer (sample counter)
 
     def __repr__(self):
         """
@@ -127,34 +126,20 @@ class TracerBase:
 
     @ti.func
     def ray_intersect(self, ray, start_p, min_depth = -1.0):
-        """
-            Intersection function and mesh organization can be reused
-            TODO: BVH can further accelerate this method
-        """
+        """ Villina intersection logic without acceleration structure """
         obj_id = -1
-        tri_id = -1
+        prm_id = -1
+        sphere_flag = False
         min_depth = ti.select(min_depth > 0.0, min_depth - 5e-5, 1e7)
         for aabb_idx in range(self.num_objects):
             aabb_intersect, t_near, _f = self.aabb_test(aabb_idx, ray, start_p)
             if aabb_intersect == False: continue
             if t_near > min_depth: continue
-            tri_num = self.mesh_cnt[aabb_idx]
-            if tri_num:
-                for mesh_idx in range(tri_num):
-                    # Sadly, Taichi does not support slicing. I think this restrict the use cases of Matrix field
-                    p1 = self.meshes[aabb_idx, mesh_idx, 0]
-                    vec1 = self.precom_vec[aabb_idx, mesh_idx, 0]
-                    vec2 = self.precom_vec[aabb_idx, mesh_idx, 1]
-                    mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
-                    u, v, t = mat @ (start_p - p1)
-                    if u >= 0 and v >= 0 and u + v <= 1.0:
-                        if t > 5e-5 and t < min_depth:
-                            min_depth = t
-                            obj_id = aabb_idx
-                            tri_id = mesh_idx
-            else:
-                center  = self.meshes[aabb_idx, 0, 0]
-                radius2 = self.meshes[aabb_idx, 0, 1][0] ** 2
+            start_id  = self.obj_info[aabb_idx, 0]
+            is_sphere = self.obj_info[aabb_idx, 2]
+            if is_sphere:
+                center  = self.prims[start_id, 0]
+                radius2 = self.prims[start_id, 1][0] ** 2
                 s2c     = center - start_p
                 center_norm2 = s2c.norm_sqr()
                 proj_norm = tm.dot(ray, s2c)
@@ -166,45 +151,45 @@ class TracerBase:
                 if ray_t > 5e-5 and ray_t < min_depth:
                     min_depth = ray_t
                     obj_id = aabb_idx
-                    tri_id = -1
-        normal = vec3([1, 0, 0])
-        if obj_id >= 0:
-            if tri_id < 0:
-                center = self.meshes[obj_id, 0, 0]
-                normal = (start_p + min_depth * ray - center).normalized() 
+                    prm_id = start_id
+                    sphere_flag = True
             else:
-                normal = self.normals[obj_id, tri_id]
-        return (obj_id, normal, min_depth)
-
-    @ti.func
-    def does_intersect(self, ray, start_p, depth = -1.0) -> bool:
-        """
-            Faster (greedy) checking for intersection, returns True if intersect anything within depth \\
-            If depth is None (not specified), then depth range will be a large float (1e7) \\
-            Taichi does not support compile-time branching. Actually it does, but not flexible, for e.g \\
-            C++ supports compile-time branching via template parameter, but Taichi can not "pass" compile-time constants
-        """
-        depth = ti.select(depth > 0.0, depth - 5e-5, 1e7)
-        flag = False
-        for aabb_idx in range(self.num_objects):
-            aabb_intersect, t_near, _f =  self.aabb_test(aabb_idx, ray, start_p)
-            if aabb_intersect == False: continue
-            if t_near > depth: continue
-            tri_num = self.mesh_cnt[aabb_idx]
-            if tri_num:
-                for mesh_idx in range(tri_num):
-                    p1 = self.meshes[aabb_idx, mesh_idx, 0]
-                    vec1 = self.precom_vec[aabb_idx, mesh_idx, 0]
-                    vec2 = self.precom_vec[aabb_idx, mesh_idx, 1]
+                tri_num  = self.obj_info[aabb_idx, 1]
+                for mesh_idx in range(start_id, tri_num + start_id):
+                    p1 = self.prims[mesh_idx, 0]
+                    vec1 = self.precom_vec[mesh_idx, 0]
+                    vec2 = self.precom_vec[mesh_idx, 1]
                     mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
                     u, v, t = mat @ (start_p - p1)
                     if u >= 0 and v >= 0 and u + v <= 1.0:
-                        if t > 5e-5 and t < depth:
-                            flag = True
-                            break
+                        if t > 5e-5 and t < min_depth:
+                            min_depth = t
+                            obj_id = aabb_idx
+                            prm_id = mesh_idx
+                            sphere_flag = False
+        normal = vec3([1, 0, 0])
+        if obj_id >= 0:
+            if sphere_flag:
+                center = self.prims[prm_id, 0]
+                normal = (start_p + min_depth * ray - center).normalized() 
             else:
-                center  = self.meshes[aabb_idx, 0, 0]
-                radius2 = self.meshes[aabb_idx, 0, 1][0] ** 2
+                normal = self.normals[prm_id]
+        return (obj_id, normal, min_depth)
+
+    @ti.func
+    def does_intersect(self, ray, start_p, min_depth = -1.0):
+        """ Villina intersection test logic without acceleration structure """
+        hit_flag = False
+        min_depth = ti.select(min_depth > 0.0, min_depth - 5e-5, 1e7)
+        for aabb_idx in range(self.num_objects):
+            aabb_intersect, t_near, _f = self.aabb_test(aabb_idx, ray, start_p)
+            if aabb_intersect == False: continue
+            if t_near > min_depth: continue
+            start_id  = self.obj_info[aabb_idx, 0]
+            is_sphere = self.obj_info[aabb_idx, 2]
+            if is_sphere:
+                center  = self.prims[start_id, 0]
+                radius2 = self.prims[start_id, 1][0] ** 2
                 s2c     = center - start_p
                 center_norm2 = s2c.norm_sqr()
                 proj_norm = tm.dot(ray, s2c)
@@ -215,10 +200,22 @@ class TracerBase:
                     ray_t -= ti.sqrt(radius2 - c2ray_norm)
                 else:
                     ray_t += ti.sqrt(radius2 - c2ray_norm)
-                if ray_t > 5e-5 and ray_t < depth:
-                    flag = True
-            if flag == True: break
-        return flag
+                if ray_t > 5e-5 and ray_t < min_depth:
+                    hit_flag = True
+            else:
+                tri_num   = self.obj_info[aabb_idx, 1]
+                for mesh_idx in range(start_id, tri_num + start_id):
+                    p1 = self.prims[mesh_idx, 0]
+                    vec1 = self.precom_vec[mesh_idx, 0]
+                    vec2 = self.precom_vec[mesh_idx, 1]
+                    mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
+                    u, v, t = mat @ (start_p - p1)
+                    if u >= 0 and v >= 0 and u + v <= 1.0:
+                        if t > 5e-5 and t < min_depth:
+                            hit_flag = True
+                            break
+            if hit_flag: break
+        return hit_flag
 
     @ti.kernel
     def render(self, t_start: int, t_end: int, s_start: int, s_end: int, max_bnc: int, max_depth: int):

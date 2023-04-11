@@ -16,7 +16,7 @@ from taichi.math import vec3, vec4, mat3
 from la.geo_optics import *
 from la.cam_transform import *
 from sampler.general_sampling import *
-from scene.general_parser import rgb_parse
+from parser.general_parser import rgb_parse
 from renderer.constants import INV_PI, ZERO_V3
 
 __all__ = ['BRDF_np', 'BRDF']

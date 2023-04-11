@@ -13,7 +13,7 @@ import taichi.math as tm
 import xml.etree.ElementTree as xet
 from taichi.math import vec3
 
-from scene.general_parser import rgb_parse
+from parser.general_parser import rgb_parse
 from renderer.constants import INV_PI, ZERO_V3, AXIS_Y
 from la.cam_transform import delocalize_rotate, world_frame
 from sampler.general_sampling import sample_triangle, cosine_hemisphere, uniform_sphere, concentric_disk_sample
@@ -76,7 +76,7 @@ class TaichiSource:
     @ti.func
     def sample_hit(
         self, dvs: ti.template(), normals: ti.template(), 
-        mesh_cnt: ti.template(), hit_pos: vec3
+        prim_info: ti.template(), hit_pos: vec3
     ):
         """
             A unified sampling function, choose sampling strategy according to _type \\
@@ -94,22 +94,24 @@ class TaichiSource:
             ret_pdf     = self.inv_area
             dot_light   = 1.0
             diff        = ZERO_V3
-            mesh_num = mesh_cnt[self.obj_ref_id]
-            if mesh_num:
-                tri_id    = ti.random(int) % mesh_num       # ASSUME that triangles are similar in terms of area
-                normal    = normals[self.obj_ref_id, tri_id]
-                dv1       = dvs[self.obj_ref_id, tri_id, 0]
-                dv2       = dvs[self.obj_ref_id, tri_id, 1]
-                ret_pos   = sample_triangle(dv1, dv2) + dvs[self.obj_ref_id, tri_id, 2]
-            else:
-                center    = dvs[self.obj_ref_id, 0, 0]
-                radius    = dvs[self.obj_ref_id, 0, 1][0]
+            is_sphere   = prim_info[self.obj_ref_id, 2]
+            if is_sphere:
+                tri_id    = prim_info[self.obj_ref_id, 0]
+                center    = dvs[tri_id, 0]
+                radius    = dvs[tri_id, 1][0]
                 to_hit    = (hit_pos - center).normalized()
                 local_dir, pdf = cosine_hemisphere()
                 normal, _ = delocalize_rotate(to_hit, local_dir)
                 ret_pos   = center + normal * radius
                 # We only choose the hemisphere, therefore we have a 0.5. Also, this is both sa & area measure
                 ret_pdf   = 0.5 * pdf
+            else:
+                mesh_num = prim_info[self.obj_ref_id, 1]
+                tri_id    = (ti.random(int) % mesh_num) + prim_info[self.obj_ref_id, 0]  # ASSUME that triangles are similar in terms of area
+                normal    = normals[tri_id]
+                dv1       = dvs[tri_id, 0]
+                dv2       = dvs[tri_id, 1]
+                ret_pos   = sample_triangle(dv1, dv2) + dvs[tri_id, 2]
             diff      = hit_pos - ret_pos
             dot_light = tm.dot(diff.normalized(), normal)
             if dot_light <= 0.0:
@@ -138,7 +140,7 @@ class TaichiSource:
         return ret_pos, ret_int, ret_pdf, normal
     
     @ti.func
-    def sample_le(self, dvs: ti.template(), normals: ti.template(), mesh_cnt: ti.template()):
+    def sample_le(self, dvs: ti.template(), normals: ti.template(), prim_info: ti.template()):
         """ Sample a point on the emitter and sample a random ray without ref point """
         ray_o   = ZERO_V3
         ray_d   = AXIS_Y
@@ -151,18 +153,20 @@ class TaichiSource:
             ray_o = self.pos
             normal = ray_d
         elif self._type == AREA_SOURCE:       # sampling cosine hemisphere for a given point
-            mesh_num = mesh_cnt[self.obj_ref_id]
-            if mesh_num:
-                tri_id = ti.random(int) % mesh_num       # ASSUME that triangles are similar in terms of area
-                normal = normals[self.obj_ref_id, tri_id]
-                dv1    = dvs[self.obj_ref_id, tri_id, 0]
-                dv2    = dvs[self.obj_ref_id, tri_id, 1]
-                ray_o  = sample_triangle(dv1, dv2) + dvs[self.obj_ref_id, tri_id, 2]
-            else:
+            is_sphere = prim_info[self.obj_ref_id, 2]
+            if is_sphere:
+                tri_id = prim_info[self.obj_ref_id, 0]
                 normal, _p = uniform_sphere()
-                center = dvs[self.obj_ref_id, 0, 0]
-                radius = dvs[self.obj_ref_id, 0, 1][0]
+                center = dvs[tri_id, 0]
+                radius = dvs[tri_id, 1][0]
                 ray_o  = center + normal * radius
+            else:
+                mesh_num  = prim_info[self.obj_ref_id, 1]
+                tri_id    = (ti.random(int) % mesh_num) + prim_info[self.obj_ref_id, 0]       # ASSUME that triangles are similar in terms of area
+                normal    = normals[tri_id]
+                dv1       = dvs[tri_id, 0]
+                dv2       = dvs[tri_id, 1]
+                ray_o     = sample_triangle(dv1, dv2) + dvs[tri_id, 2]
             local_d, pdf_dir = cosine_hemisphere()
             ray_d, _R = delocalize_rotate(normal, local_d)
             pdf_pos = self.inv_area

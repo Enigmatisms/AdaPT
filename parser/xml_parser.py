@@ -17,10 +17,10 @@ from numpy import ndarray as Arr
 from bxdf.brdf import BRDF_np
 from bxdf.bsdf import BSDF_np
 
-from scene.obj_loader import *
-from scene.world import World_np
-from scene.obj_desc import ObjDescriptor
-from scene.general_parser import get, transform_parse, parse_sphere_element
+from parser.obj_loader import *
+from parser.world import World_np
+from parser.obj_desc import ObjDescriptor
+from parser.general_parser import get, transform_parse, parse_sphere_element
 
 # import emitters
 from emitters.point import PointSource
@@ -47,7 +47,7 @@ def update_emitter_config(emitter_config: List, area_lut: dict):
             emitter.attached = True
         else:
             if emitter.type == "area":
-                emitter.inv_area = 1. / (emitter.l1 * emitter.l2)
+                raise ValueError("Setting L1 / L2 for area light is deprecated a long ago. Please attach area light to an object.")
     return emitter_config
 
 def parse_emitters(em_elem: list):
@@ -177,5 +177,5 @@ def mitsuba_parsing(directory: str, file: str):
     return emitter_configs, bsdf_dict, meshes, configs
 
 if __name__ == "__main__":
-    emitter_configs, bsdf_configs, meshes, configs = mitsuba_parsing("../inputs/", "cbox/complex.xml")
+    emitter_configs, bsdf_configs, meshes, configs = mitsuba_parsing("../scenes/", "cbox/complex.xml")
     print(emitter_configs, bsdf_configs, meshes, configs)

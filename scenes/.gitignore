@@ -1,7 +1,11 @@
 *
 !.gitignore
 !cbox/
+!cbox/*
 !csphere/
+!csphere/*
 !vpt/
+!vpt/*
 !trans/
+!trans/*
 !meshes/
