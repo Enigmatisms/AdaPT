@@ -114,6 +114,12 @@
 		<ref type="material" id="box"/>
 	</shape>
 
+	<shape type="sphere">
+		<point name="center" x="4.5" y="0.6" z="1.1"/>
+		<float name="radius" value="0.6"/>
+		<ref type="material" id="left_wall"/>
+	</shape>
+
 	<world name="yes!">
 		<rgb name="skybox" value="0.0"/>
 		<rgb name="ambient" value="0.0"/>

@@ -189,7 +189,7 @@ class BDPT(VolumeRenderer):
     @ti.func
     def generate_light_path(self, i: int, j: int, max_bnc: int):
         emitter, emitter_pdf, _ , emit_id = self.sample_light()
-        ray_o, ray_d, pdf_pos, pdf_dir, normal = emitter.sample_le(self.precom_vec, self.normals, self.mesh_cnt)
+        ray_o, ray_d, pdf_pos, pdf_dir, normal = emitter.sample_le(self.precom_vec, self.normals, self.obj_info)
         ret_int = emitter.intensity
         vertex_pdf = pdf_pos * emitter_pdf
         self.light_paths[i, j, 0] = Vertex(_type = VERTEX_EMITTER, obj_id = emitter.obj_ref_id, 
@@ -339,7 +339,7 @@ class BDPT(VolumeRenderer):
                 # randomly sample an emitter and corresponding point (direct component)
                 emitter, emitter_pdf, _ev, emit_id = self.sample_light()
                 emit_pos, emit_int, _, normal = emitter.         \
-                    sample_hit(self.precom_vec, self.normals, self.mesh_cnt, vertex.pos)        # sample light
+                    sample_hit(self.precom_vec, self.normals, self.obj_info, vertex.pos)        # sample light
                 connect_dir    = emit_pos - vertex.pos
                 depth          = connect_dir.norm()
                 connect_dir    = connect_dir / depth

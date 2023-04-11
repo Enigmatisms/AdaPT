@@ -18,7 +18,8 @@
         <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
         <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
 
-		<string name="decomposition" value="transient_lit"/>	<!-- Decomposition mode -->				
+        <string name="accelerator" value="bvh"/>       
+		<string name="decomposition" value="none"/>	<!-- Decomposition mode -->				
         <integer name="sample_count" value="400"/>			<!-- Number of bins -->
         <float name="min_time" value="0.0"/>					<!-- Starting time for camera -->				
         <float name="interval" value="0.05"/>				<!-- Width of a time bin -->			
@@ -56,7 +57,7 @@
 	</brdf>
 
 	<brdf type="lambertian" id="right_wall">
-		<rgb name="k_d" value="#25DD25"/>
+		<rgb name="k_d" value="#2525DD"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
@@ -67,11 +68,19 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<emitter type="point" id="point">
-		<rgb name="emission" value="60.0, 60., 60.0"/>
-		<rgb name="scaler" value="1.5"/>
-		<point name="center" x="2.779" y="5.0" z="2.8"/>
+	<emitter type="area" id="area">
+		<rgb name="emission" value="50.0, 50.0, 50.0"/>
+		<rgb name="scaler" value="1.0"/>
 	</emitter>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
+		<transform name="toWorld">
+			<translate x="0" y="-0.001" z="0"/>
+		</transform>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area"/>
+	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
@@ -112,9 +121,33 @@
 		</medium>
 	</bsdf>
 
+	<brdf type="fresnel-blend" id="fresnel">
+		<rgb name="k_d" value="#CACACA"/>
+		<!-- <rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/> -->
+		<rgb name="k_s" value="#333333"/>
+		<rgb name="k_g" r="10" g="1000"/>
+	</brdf>
+
+	<brdf type="specular" id="mirror">
+		<rgb name="k_d" value="#EFEFEF"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
 	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/bunny.obj"/>
+		<string name="filename" value="../meshes/cornell/bunny_full1.obj"/>
 		<ref type="material" id="glass"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/bunny_full2.obj"/>
+		<ref type="material" id="mirror"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/bunny_full3.obj"/>
+		<ref type="material" id="fresnel"/>
 	</shape>
 
 	<world name="yes!">

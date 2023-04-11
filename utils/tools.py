@@ -17,6 +17,10 @@ class TicToc:
 
     def tic(self): self.start_t = time()
     def toc(self, to_ms = False): return (time() - self.start_t) * (1. if to_ms == False else 1e3)
+    def toc_tic(self, to_ms = False): 
+        result = (time() - self.start_t) * (1. if to_ms == False else 1e3)
+        self.tic()
+        return result
 
 def timing(verbose = True):
     """ Timer decorator: verbose -- if False, outputs nothing """

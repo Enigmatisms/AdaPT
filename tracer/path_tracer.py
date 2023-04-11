@@ -29,7 +29,6 @@ from renderer.constants import TRANSPORT_UNI
 from sampler.general_sampling import *
 from utils.tools import TicToc
 from tracer.ti_bvh import LinearBVH, LinearNode, export_python_bvh
-from bvh_cpp import bvh_build
 
 @ti.data_oriented
 class PathTracer(TracerBase):
@@ -66,11 +65,9 @@ class PathTracer(TracerBase):
         self.brdf_nodes.place(self.brdf_field)                              # BRDF Taichi storage
         ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
 
-        print(f"[INFO] Path tracer param loading in {self.clock.toc(True):.3f} ms")
-        self.clock.tic()
+        print(f"[INFO] Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
         self.initialze(emitters, objects)
         print(f"[INFO] Path tracer initialization in {self.clock.toc(True):.3f} ms")
-        self.clock.tic()
 
         min_val = vec3([1e3, 1e3, 1e3])
         max_val = vec3([-1e3, -1e3, -1e3])
@@ -82,29 +79,42 @@ class PathTracer(TracerBase):
         self.w_aabb_min = ti.min(self.cam_t, min_val) - 0.1         
         self.w_aabb_max = ti.max(self.cam_t, max_val) + 0.1
 
-        primitives, obj_info = self.prepare_for_bvh(objects)
-        py_nodes, py_bvhs = bvh_build(primitives, obj_info, self.w_aabb_min.to_numpy(), self.w_aabb_max.to_numpy())
+        if prop.get('accelerator', 'none') == 'bvh':
+            try:
+                from bvh_cpp import bvh_build
+            except ImportError:
+                print("[Warning] pybind11 BVH cpp is not built. Please check whether you have compiled bvh_cpp module.")
+                print("[INFO] Fall back to brute force primitive traversal.")
+            else:
+                print("[INFO] Using SAH-BVH tree accelerator.")
+                primitives, obj_info = self.prepare_for_bvh(objects)
+                self.clock.tic()
+                py_nodes, py_bvhs = bvh_build(primitives, obj_info, self.w_aabb_min.to_numpy(), self.w_aabb_max.to_numpy())
+                print(f"[INFO] BVH construction finished in {self.clock.toc_tic(True):.3f} ms")
 
-        self.node_num = len(py_nodes)
-        self.bvh_num = len(py_bvhs)
+                self.node_num = len(py_nodes)
+                self.bvh_num = len(py_bvhs)
 
-        self.lin_nodes = LinearNode.field()
-        self.lin_bvhs  = LinearBVH.field()
-        ti.root.dense(ti.i, self.node_num).place(self.lin_nodes)
-        ti.root.dense(ti.i, self.bvh_num).place(self.lin_bvhs)
-        export_python_bvh(self.lin_nodes, self.lin_bvhs, py_nodes, py_bvhs)
-        print(f"[INFO] {self.node_num } nodes and {self.bvh_num} bvh primitives are loaded.")
+                self.lin_nodes = LinearNode.field()
+                self.lin_bvhs  = LinearBVH.field()
+                ti.root.dense(ti.i, self.node_num).place(self.lin_nodes)
+                ti.root.dense(ti.i, self.bvh_num).place(self.lin_bvhs)
+                export_python_bvh(self.lin_nodes, self.lin_bvhs, py_nodes, py_bvhs)
+                print(f"[INFO] {self.node_num } nodes and {self.bvh_num} bvh primitives are loaded.")
+                self.__setattr__("ray_intersect", self.ray_intersect_bvh)
+                self.__setattr__("does_intersect", self.does_intersect_bvh)
 
     def prepare_for_bvh(self, objects: List[ObjDescriptor]):
         primitives = []
         obj_info = np.zeros((2, len(objects)), dtype = np.int32)        
         for i, obj in enumerate(objects):
             # for sphere, it would be (1, 2, 3), for others it would be (n, 3, 3)
-            num_primitive, num_points, _ = obj.meshes.shape
+            num_primitive = obj.meshes.shape[0]
             obj_info[0, i] = num_primitive
-            if num_primitive == 1 and num_points == 2:
-                obj_info[1, i] = 1
+            obj_info[1, i] = obj.type
             for primitive in obj.meshes:
+                if primitive.shape[0] < 3:
+                    primitive = np.vstack((primitive, np.zeros((1, 3), dtype=np.float32)))
                 primitives.append(primitive)
         primitives = np.stack(primitives, axis = 0).astype(np.float32)
         return primitives, obj_info
@@ -113,19 +123,27 @@ class PathTracer(TracerBase):
         for i, emitter in enumerate(emitters):
             self.src_field[i] = emitter.export()
             self.src_field[i].obj_ref_id = -1
+
+        acc_prim_num = 0
         for i, obj in enumerate(objects):
             for j, (mesh, normal) in enumerate(zip(obj.meshes, obj.normals)):
-                self.normals[i, j] = vec3(normal) 
-                for k, vec in enumerate(mesh):
-                    self.meshes[i, j, k]  = vec3(vec)
+                cur_id = acc_prim_num + j
+                self.prims[cur_id, 0] = vec3(mesh[0])
+                self.prims[cur_id, 1] = vec3(mesh[1])
                 if mesh.shape[0] > 2:       # not a sphere
-                    self.precom_vec[i, j, 0] = self.meshes[i, j, 1] - self.meshes[i, j, 0]                    
-                    self.precom_vec[i, j, 1] = self.meshes[i, j, 2] - self.meshes[i, j, 0]             
-                    self.precom_vec[i, j, 2] = self.meshes[i, j, 0]
+                    self.prims[cur_id, 2] = vec3(mesh[2])
+                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 1] - self.prims[cur_id, 0]                    
+                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 2] - self.prims[cur_id, 0] 
+                    self.precom_vec[cur_id, 2] = self.prims[cur_id, 0]
                 else:
-                    self.precom_vec[i, j, 0] = self.meshes[i, j, 0]
-                    self.precom_vec[i, j, 1] = self.meshes[i, j, 1]
-            self.mesh_cnt[i]    = obj.tri_num
+                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 0]
+                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 1]           
+                self.normals[cur_id] = vec3(normal) 
+            self.obj_info[i, 0] = acc_prim_num
+            self.obj_info[i, 1] = obj.tri_num
+            self.obj_info[i, 2] = obj.type
+            acc_prim_num        += obj.tri_num
+
             if type(obj.bsdf) == BSDF_np:
                 self.bsdf_field[i]  = obj.bsdf.export()
             else:
@@ -138,17 +156,42 @@ class PathTracer(TracerBase):
                 self.src_field[emitter_ref_id].obj_ref_id = i
 
     @ti.func
-    def ray_intersect_bvh(self, ray, start_p, min_depth = -1.0):
-        """
-            Ray intersection with BVH, to prune unnecessary computation
-            FIXME: the logic here should be finished
-        """
-        obj_id = -1
-        tri_id = -1
+    def bvh_intersect(self, bvh_id, ray, start_p):
+        obj_idx, prim_idx = self.lin_bvhs[bvh_id].get_info()
+        is_sphere = self.obj_info[obj_idx, 2]
+        ray_t = -1.
+        if is_sphere > 0:
+            center  = self.prims[prim_idx, 0]
+            radius2 = self.prims[prim_idx, 1][0] ** 2
+            s2c     = center - start_p
+            center_norm2 = s2c.norm_sqr()
+            proj_norm = tm.dot(ray, s2c)
+            c2ray_norm = center_norm2 - proj_norm ** 2  # center to ray distance ** 2
+            if c2ray_norm < radius2:
+                ray_t = proj_norm
+                ray_cut = ti.sqrt(radius2 - c2ray_norm)
+                ray_t += ti.select(center_norm2 > radius2 + 5e-5, -ray_cut, ray_cut)
+        else:
+            p1 = self.prims[prim_idx, 0]
+            vec1 = self.precom_vec[prim_idx, 0]
+            vec2 = self.precom_vec[prim_idx, 1]
+            mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
+            u, v, t = mat @ (start_p - p1)
+            if u >= 0 and v >= 0 and u + v <= 1.0:
+                ray_t = t
+        return ray_t, obj_idx, prim_idx, is_sphere
+
+    @ti.func
+    def ray_intersect_bvh(self, ray: vec3, start_p, min_depth = -1.0):
+        """ Ray intersection with BVH, to prune unnecessary computation """
+        obj_id  = -1
+        prim_id = -1
+        sphere_flag = False
         min_depth = ti.select(min_depth > 0.0, min_depth - 5e-5, 1e7)
         node_idx = 0
+        inv_ray = 1. / ray
         while node_idx < self.node_num:
-            aabb_intersect, t_near, _f = self.lin_nodes[node_idx].aabb_test(ray, start_p)
+            aabb_intersect, t_near = self.lin_nodes[node_idx].aabb_test(inv_ray, start_p)
             if aabb_intersect == False or t_near > min_depth: 
                 # if the current node is not intersected, then all of the following nodes can be skipped
                 node_idx += self.lin_nodes[node_idx].all_offset         # skip the entire node (and sub-tree)
@@ -156,10 +199,54 @@ class PathTracer(TracerBase):
             # otherwise, the current node should be investigated, check if it's leaf node
             if self.lin_nodes[node_idx].is_leaf():
                 # Traverse all the primtives in the leaf, update min_depth, obj_id and tri_id
-                pass
-            # not a leaf node: moving downwards
+                begin_i, end_i = self.lin_nodes[node_idx].get_range() 
+                for bvh_i in range(begin_i, end_i):
+                    aabb_intersect, t_near = self.lin_bvhs[bvh_i].aabb_test(inv_ray, start_p)
+                    if aabb_intersect == False or t_near > min_depth: 
+                        continue
+                    ray_t, obj_idx, prim_idx, obj_type = self.bvh_intersect(bvh_i, ray, start_p)
+                    if ray_t > 5e-5 and ray_t < min_depth:
+                        min_depth   = ray_t
+                        obj_id      = obj_idx
+                        prim_id     = prim_idx
+                        sphere_flag = obj_type
             node_idx += 1
-        return 0
+        normal = vec3([1, 0, 0])
+        if obj_id >= 0:
+            if sphere_flag:
+                center = self.prims[prim_id, 0]
+                normal = (start_p + min_depth * ray - center).normalized() 
+            else:
+                normal = self.normals[prim_id]
+        return (obj_id, normal, min_depth)
+    
+    @ti.func
+    def does_intersect_bvh(self, ray, start_p, min_depth = -1.0):
+        """ Ray intersection with BVH, to prune unnecessary computation """
+        node_idx = 0
+        hit_flag = False
+        min_depth = ti.select(min_depth > 0.0, min_depth - 5e-5, 1e7)
+        inv_ray = 1. / ray
+        while node_idx < self.node_num:
+            aabb_intersect, t_near = self.lin_nodes[node_idx].aabb_test(inv_ray, start_p)
+            if aabb_intersect == False or t_near > min_depth: 
+                # if the current node is not intersected, then all of the following nodes can be skipped
+                node_idx += self.lin_nodes[node_idx].all_offset         # skip the entire node (and sub-tree)
+                continue
+            # otherwise, the current node should be investigated, check if it's leaf node
+            if self.lin_nodes[node_idx].is_leaf():
+                # Traverse all the primtives in the leaf, update min_depth, obj_id and tri_id
+                begin_i, end_i = self.lin_nodes[node_idx].get_range() 
+                for bvh_i in range(begin_i, end_i):
+                    aabb_intersect, t_near = self.lin_bvhs[bvh_i].aabb_test(inv_ray, start_p)
+                    if aabb_intersect == False or t_near > min_depth: continue
+                    ray_t, _i, _p, _o = self.bvh_intersect(bvh_i, ray, start_p)
+                    if ray_t > 5e-5 and ray_t < min_depth:
+                        hit_flag = True
+                        break
+            if hit_flag: break
+            node_idx += 1
+        return hit_flag
 
     @ti.func
     def sample_new_ray(self, idx: int, incid: vec3, normal: vec3, is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI):

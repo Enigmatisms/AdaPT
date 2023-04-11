@@ -31,7 +31,7 @@ class Renderer(PathTracer):
                 ray_d = self.pix2ray(i, j)
                 ray_o = self.cam_t
                 obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
-                hit_light       = self.emitter_id[obj_id]   # id for hit emitter, if nothing is hit, this value will be -1
+                hit_light       = self.emitter_id[ti.max(obj_id, 0)]   # id for hit emitter, if nothing is hit, this value will be -1
                 color           = vec3([0, 0, 0])
                 contribution    = vec3([1, 1, 1])
                 emission_weight = 1.0
@@ -58,7 +58,7 @@ class Renderer(PathTracer):
                         # direct / emission component evaluation
                         if emitter_valid:
                             emit_pos, shadow_int, direct_pdf, _n = emitter.         \
-                                sample_hit(self.precom_vec, self.normals, self.mesh_cnt, hit_point)        # sample light
+                                sample_hit(self.precom_vec, self.normals, self.obj_info, hit_point)        # sample light
                             to_emitter  = emit_pos - hit_point
                             emitter_d   = to_emitter.norm()
                             light_dir   = to_emitter / emitter_d

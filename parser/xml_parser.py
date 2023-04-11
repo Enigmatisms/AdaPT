@@ -47,7 +47,7 @@ def update_emitter_config(emitter_config: List, area_lut: dict):
             emitter.attached = True
         else:
             if emitter.type == "area":
-                emitter.inv_area = 1. / (emitter.l1 * emitter.l2)
+                raise ValueError("Setting L1 / L2 for area light is deprecated a long ago. Please attach area light to an object.")
     return emitter_config
 
 def parse_emitters(em_elem: list):

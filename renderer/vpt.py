@@ -165,7 +165,7 @@ class VolumeRenderer(PathTracer):
                         # direct / emission component evaluation
                         if emitter_valid:
                             emit_pos, shadow_int, _d, _n = emitter.         \
-                                sample_hit(self.precom_vec, self.normals, self.mesh_cnt, hit_point)        # sample light
+                                sample_hit(self.precom_vec, self.normals, self.obj_info, hit_point)        # sample light
                             to_emitter  = emit_pos - hit_point
                             emitter_d   = to_emitter.norm()
                             light_dir   = to_emitter / emitter_d
