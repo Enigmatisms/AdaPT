@@ -1,8 +1,8 @@
-<img src="assets/heading.png" style="zoom: 60%;" />
+<p align="center"><img src="https://user-images.githubusercontent.com/46109954/231167203-dc5d7efa-85b7-4d04-b00f-2984051bed17.png" style="zoom: 40%;" /></p>
 
 ---
 
-**Ada** **P**ath **T**racer is a simple Monte Carlo path tracing renderer based on [Taichi Lang](https://www.taichi-lang.org/), with which you can play easily. The name `AdaPT` is given by my GF and I think this name is brilliant. The icon (first version) is inspired by the *oracle bone script of Chinese character "光"*, which means 'Light'. 
+**Ada** **P**ath **T**racer is a simple Monte Carlo path tracing renderer based on [Taichi Lang](https://www.taichi-lang.org/), with which you can play easily. The name `AdaPT` is given by my GF and I think this name is brilliant. 
 
 This renderer is implemented based on **MY OWN** understanding of path tracing and other CG knowledge, therefore I **DO NOT** guarantee usability (also, I have done no verification experiments). The output results just... look decent:
 
