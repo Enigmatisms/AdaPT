@@ -39,6 +39,11 @@ class BDPT(VolumeRenderer):
         super().__init__(emitters, objects, prop)
         decomp_mode = {'transient_cam': TRANSIENT_CAM, 'transient_lit': TRANSIENT_LIT, 'none': STEADY_STATE}
         decomp_state = decomp_mode[prop.get('decomposition', 'none')]
+        if decomp_mode == TRANSIENT_LIT:
+            decomp_state = TRANSIENT_CAM
+            print("[Warning] Transient camera unwarped output mode has unfixed bugs. It is not supported since v1.2.1.")
+            print("[Warning] This problem is reported in one of the issues of this repo, and will be fixed in the future.")
+            print("[INFO] Fall back to TRANSIENT_CAM mode.")
         sample_cnt       = prop.get('sample_count', 1) if decomp_state else 1
         
         self.light_paths = Vertex.field()
@@ -309,9 +314,7 @@ class BDPT(VolumeRenderer):
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_light():                       # is the current vertex an emitter vertex?
                 le = self.src_field[int(vertex.emit_id)].eval_le(vertex.ray_in, vertex.normal) * vertex.beta
-                ret_time = self.src_field[int(vertex.emit_id)].emit_time      # for emission, we should acount for their emission time
-                if decomp == TRANSIENT_CAM:             # for emission, we should acount for their emission time
-                    ret_time += vertex.time      
+                ret_time = self.src_field[int(vertex.emit_id)].emit_time + vertex.time      # for emission, we should acount for their emission time
         elif tid == 1:                                  # re-rasterize point onto the film, atomic add is allowed
             vertex = self.light_paths[i, j, sid - 1]
             if vertex.is_connectible():
@@ -355,9 +358,7 @@ class BDPT(VolumeRenderer):
                     vertex_sampled = True
                     calc_transmittance = fr2light.max() > 0
                     le = vertex.beta * fr2light * sampled_v.beta
-                    ret_time = emitter.emit_time
-                    if decomp == TRANSIENT_CAM:
-                        ret_time += vertex.time
+                    ret_time = emitter.emit_time + vertex.time
         else:                   # general cases
             cam_v = self.cam_paths[i, j, tid - 1]
             lit_v = self.light_paths[i, j, sid - 1]
@@ -374,14 +375,11 @@ class BDPT(VolumeRenderer):
                     # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                     calc_transmittance = fr_cam.max() > 0 and fr_lit.max() > 0
                     le = cam_v.beta * fr_cam * fr_lit * lit_v.beta / (depth * depth)
-                    ret_time = lit_v.time
-                    if decomp == TRANSIENT_CAM:
-                        ret_time += cam_v.time
+                    ret_time = lit_v.time + cam_v.time
         if le.max() > 0 and calc_transmittance == True:
             tr, track_depth = self.track_ray(connect_dir, track_pos, depth)
             le *= tr
-            if decomp == TRANSIENT_CAM:
-                ret_time += track_depth
+            ret_time += track_depth
         weight = 0.
         if ti.static(self.use_mis):
             if le.max() > 0:     # zero-contribution will not have MIS weight, it could be possible that after applying the transmittance, le is 0
