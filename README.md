@@ -22,7 +22,7 @@ Note that the gifs presented here are made by compressed jpeg files and optimize
 | :------------------------------------: | :---------------------------------: |
 | ![ezgif-2-7af135f165](https://user-images.githubusercontent.com/126778364/226910459-ee6a3dbd-ad12-480d-a257-8dac1d038842.gif)|![ezgif-4-ab2bd63172](https://user-images.githubusercontent.com/126778364/226910971-3764eb68-9e29-41bd-894d-4a27e9dc49d7.gif)|
 
-[^foot]: 'Camera unwarped' means the transient profile shows the time when a position in the scene is *hit* by emitter ray. 'Camera warped' means the transient profile shows the total time of a position being hit by the emitter ray which should finally transmits to the camera.
+[^foot]: 'Camera unwarped' means the transient profile shows the time when a position in the scene is *hit* by emitter ray. 'Camera warped' means the transient profile shows the total time of a position being hit by the emitter ray which should finally transmits to the camera. Starting from v1.2.1, the support for mode `transient_lit` (camera unwarped) is temporarily lifted, since there are still some problem with this mode. Any attempt to using this mode will fall back to `transient_cam` (camera warped) mode.
 
 Here are the features I currently implemented and supports:
 
@@ -30,6 +30,7 @@ Here are the features I currently implemented and supports:
 - A **unidirectional / bidirectional Monte-Carlo MIS path tracer**: supports as many bounce times as you wish, and the rendering process is based on Taichi Lang, therefore it can be very fast (not on the first run, the first run of a scene might take a long time due to taichi function inlining, especially for BDPT). The figures displayed above can be rendered within 15-20s (with cuda-backend, GPU supported). The rendering result is displayed incrementally, or maximum iteration number can be pre-set.
 - **Volumetric path tracer** that supports uni/bidirectional path tracing in both bounded and unbounded condition
 - A **transient renderer** with which you can visualize the propagation of the global radiance.
+- Ray tracing accelerating structure, for now, we only support `BVH`. `KD-tree` will be implemented in the future.
 - Global / indirect illumination & Ability to handle simple caustics
 - BRDFs: `Lambertian`, `Modified Phong` (Lafortune and Willems 1994), `Fresnel Blend` (Ashikhmin and Shirley 2002), `Blinn-Phong`, `Mirror-specular`.
 - BSDFs (with medium): deterministic refractive (glass-like)
