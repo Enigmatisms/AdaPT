@@ -1,3 +1,10 @@
+/**
+ * @file bvh_helper.h
+ * @author Qianyue He
+ * @brief BVH utilities
+ * @copyright Copyright (c) 2023
+ */
+
 #pragma once
 #include <algorithm>
 #include <pybind11/stl.h>
