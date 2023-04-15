@@ -1,3 +1,10 @@
+/**
+ * @file bvh.cpp
+ * @author Qianyue He
+ * @brief BVH construction main logic
+ * @copyright Copyright (c) 2023
+ */
+
 #include <stack>
 #include <algorithm>
 #include "bvh_helper.h"
