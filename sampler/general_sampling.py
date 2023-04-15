@@ -70,6 +70,15 @@ def uniform_sphere():
     return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta]), INV_2PI * 0.5
 
 @ti.func
+def uniform_cone(cos_range = 1.0):
+    """ Uniform direction sampling on a sphere """
+    epsilon = ti.random(float)
+    cos_theta = 1. - epsilon + cos_range * epsilon
+    sin_theta =  ti.sqrt(1 - cos_theta * cos_theta)
+    phi = PI2 * ti.random(float)
+    return vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta])
+
+@ti.func
 def concentric_disk_sample():
     off_x = ti.random(float) * 2. - 1.
     off_y = ti.random(float) * 2. - 1.

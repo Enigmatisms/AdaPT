@@ -29,6 +29,8 @@ INV_2PI = INV_PI * 0.5
 PI2 = 2. * pi
 PI_DIV2 = pi / 2.
 PI_DIV4 = pi / 4.
+RAD2DEG = 180. * INV_PI
+DEG2RAD = pi / 180.
 
 ZERO_V3 = vec3([0, 0, 0])
 ONES_V3 = vec3([1, 1, 1])

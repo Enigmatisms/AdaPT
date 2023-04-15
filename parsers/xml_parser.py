@@ -25,14 +25,14 @@ from parsers.general_parser import get, transform_parse, parse_sphere_element
 # import emitters
 from emitters.point import PointSource
 from emitters.area import AreaSource
-from emitters.directional import DirectionalSource
+from emitters.spot import SpotSource
 from emitters.collimated import CollimatedSource
 
 from utils.tools import timing
 
 __VERSION__   = "1.1"
 __MAPPING__   = {"integer": int, "float": float, "string": str, "boolean": lambda x: True if x.lower() == "true" else False}
-__SOURCE_MAP__ = {"point": PointSource, "area": AreaSource, "directional": DirectionalSource, "spot": None, "collimated": CollimatedSource}
+__SOURCE_MAP__ = {"point": PointSource, "area": AreaSource, "spot": SpotSource, "collimated": CollimatedSource}
 
 """
     Actually I think in Taichi, we can leverage SSDS:

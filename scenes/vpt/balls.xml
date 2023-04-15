@@ -58,19 +58,12 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<bsdf type="det-refraction" id="scattering">
-		<rgb name="k_d" value="#FAFAFA"/>
-		<medium type="hg">
-			<rgb name="u_a" value="0.05"/>
-			<rgb name="u_s" value="1.0"/>
-			<rgb name="par" value="0.5"/>
-			<float name="ior" value="1.5"/>
-		</medium>
-	</bsdf>
-
-	<emitter type="area" id="area">
-		<rgb name="emission" value="50.0, 50.0, 50.0"/>
-		<rgb name="scaler" value="1.0"/>
+	<emitter type="spot">
+		<rgb name="emission" value="5.0, 5.0, 5.0"/>
+		<rgb name="scaler" value="200.0"/>
+		<point name="pos" x="2.779" y="4.9" z="2.745"/>
+		<point name="dir" x="-0.2" y="-1.5" z="-0.3"/>
+		<float name="half-angle" value="20.0"/>
 	</emitter>
 
 	<!-- <emitter type="point" id="point">
@@ -78,14 +71,14 @@
 		<point name="center" x="2.779" y="4.9" z="2.745"/>
 	</emitter> -->
 
-	<shape type="obj">
+	<!-- <shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
 		<transform name="toWorld">
 			<translate x="0" y="-0.001" z="0"/>
 		</transform>
 		<ref type="material" id="light"/>
 		<ref type="emitter" id="area"/>
-	</shape>
+	</shape> -->
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>

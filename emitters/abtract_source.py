@@ -14,17 +14,16 @@ import xml.etree.ElementTree as xet
 from taichi.math import vec3
 
 from parsers.general_parser import rgb_parse
-from renderer.constants import INV_PI, ZERO_V3, AXIS_Y
+from renderer.constants import INV_PI, INV_2PI, ZERO_V3, AXIS_Y
 from la.cam_transform import delocalize_rotate, world_frame
-from sampler.general_sampling import sample_triangle, cosine_hemisphere, uniform_sphere, concentric_disk_sample
+from sampler.general_sampling import sample_triangle, cosine_hemisphere, uniform_sphere, uniform_cone, concentric_disk_sample
 
-# point-0: PointSource, area-1: AreaSource, directional-2: DirectionalSource, spot-3: None, collimated-4: CollimatedSource
+# point-0: PointSource, area-1: AreaSource, spot-2: SpotSource, collimated-4: CollimatedSource
 
 # =============== Emitter Type =================
 POINT_SOURCE        = 0
 AREA_SOURCE         = 1
-DIRECTIONAL_SOURCE  = 2     # infinite light
-SPOT_SOURCE         = 3
+SPOT_SOURCE         = 2
 COLLIMATED_SOURCE   = 4
 
 @ti.dataclass
@@ -36,16 +35,16 @@ class TaichiSource:
         node.place(pos); node.place(dirv); node.place(base_1); node.place(base_2); \\
         The following implementation is much simpler, and light source will not consume too much memory
     """
-    _type:      int         # 0 Point, 1 Area, 2 Spot, 3 Directional, 4 collimated
+    _type:      int         # 0 Point, 1 Area, 2 Spot, 4 collimated
     obj_ref_id: int         # Referring to the attaching object
 
     # Bool bits: [0 pos delta, 1 dir delta, 2 is area, 3 is inifite, 4 is in free space, 5 is delta, others reserved]
     bool_bits:  int         # indicate whether the source is a delta source / inside free space
     intensity:  vec3
-    dir:        vec3        # direction for directional / collimated source
+    dir:        vec3        # direction for spot / collimated source
     pos:        vec3
     inv_area:   float       # inverse area (for non-point emitters, like rect-area or mesh attached emitters)
-    r:          float       # only useful for collimated source - beam radius
+    r:          float       # only useful for collimated source - beam radius, for spot source: half-angle range
     emit_time:  float       # used in transient rendering: when does this emitter start to emit
 
     @ti.func
@@ -121,6 +120,15 @@ class TaichiSource:
                 diff_norm2 = diff.norm_sqr()
                 ret_pdf *= ti.select(dot_light > 0.0, diff_norm2 / dot_light, 0.0)
                 ret_int = ti.select(ret_pdf > 0.0, ret_int / ret_pdf, 0.)
+        elif self._type == SPOT_SOURCE:
+            to_hit = hit_pos - ret_pos
+            depth = ti.max(to_hit.norm(), 1e-5)
+            to_hit /= depth                     # normalized
+            cos_val = tm.dot(to_hit, self.dir)
+            if cos_val > self.r:
+                ret_int /= (depth * depth)
+            else:
+                ret_int.fill(0)
         elif self._type == COLLIMATED_SOURCE:
             # It is possible that we are not able to `sample` (actually, not sample, deterministic calculation) the collimated source
             ret_pdf = 0.
@@ -170,6 +178,12 @@ class TaichiSource:
             local_d, pdf_dir = cosine_hemisphere()
             ray_d, _R = delocalize_rotate(normal, local_d)
             pdf_pos = self.inv_area
+        elif self._type == SPOT_SOURCE:
+            local_d = uniform_cone(self.r)
+            ray_d, _R = delocalize_rotate(self.dir, local_d)
+            pdf_dir = INV_2PI / (1. - self.r)
+            ray_o = self.pos
+            normal = self.dir
         elif self._type == COLLIMATED_SOURCE:
             # pdf of direction should be delta?
             ray_o = self.pos
@@ -213,6 +227,8 @@ class TaichiSource:
         pdf = 0.0
         if self._type == POINT_SOURCE:         # uniform sphere PDF
             pdf = INV_PI * 0.25 
+        elif self._type == SPOT_SOURCE:
+            pdf = INV_2PI / (1. - self.r)
         elif self._type == AREA_SOURCE:       # cosine weighted PDF
             pdf = ti.max(tm.dot(exit_dir, light_n), 0.0) * INV_PI
         return pdf
@@ -220,7 +236,7 @@ class TaichiSource:
 class LightSource:
     """
         Sampling function is implemented in Taichi source. Currently:
-        Point / Area / Spot / Directional are to be supported
+        Point / Area / Spot / Collimated are to be supported
     """
     def __init__(self, base_elem: xet.Element = None):
         self.intensity = np.ones(3, np.float32)

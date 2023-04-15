@@ -170,7 +170,7 @@ class PathTracer(TracerBase):
             if c2ray_norm < radius2:
                 ray_t = proj_norm
                 ray_cut = ti.sqrt(radius2 - c2ray_norm)
-                ray_t += ti.select(center_norm2 > radius2 + 5e-5, -ray_cut, ray_cut)
+                ray_t += ti.select(center_norm2 > radius2 + 1e-4, -ray_cut, ray_cut)
         else:
             p1 = self.prims[prim_idx, 0]
             vec1 = self.precom_vec[prim_idx, 0]
@@ -187,7 +187,7 @@ class PathTracer(TracerBase):
         obj_id  = -1
         prim_id = -1
         sphere_flag = False
-        min_depth = ti.select(min_depth > 0.0, min_depth - 5e-5, 1e7)
+        min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
         node_idx = 0
         inv_ray = 1. / ray
         while node_idx < self.node_num:
@@ -205,7 +205,7 @@ class PathTracer(TracerBase):
                     if aabb_intersect == False or t_near > min_depth: 
                         continue
                     ray_t, obj_idx, prim_idx, obj_type = self.bvh_intersect(bvh_i, ray, start_p)
-                    if ray_t > 5e-5 and ray_t < min_depth:
+                    if ray_t > 1e-4 and ray_t < min_depth:
                         min_depth   = ray_t
                         obj_id      = obj_idx
                         prim_id     = prim_idx
@@ -225,7 +225,7 @@ class PathTracer(TracerBase):
         """ Ray intersection with BVH, to prune unnecessary computation """
         node_idx = 0
         hit_flag = False
-        min_depth = ti.select(min_depth > 0.0, min_depth - 5e-5, 1e7)
+        min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
         inv_ray = 1. / ray
         while node_idx < self.node_num:
             aabb_intersect, t_near = self.lin_nodes[node_idx].aabb_test(inv_ray, start_p)
@@ -241,7 +241,7 @@ class PathTracer(TracerBase):
                     aabb_intersect, t_near = self.lin_bvhs[bvh_i].aabb_test(inv_ray, start_p)
                     if aabb_intersect == False or t_near > min_depth: continue
                     ray_t, _i, _p, _o = self.bvh_intersect(bvh_i, ray, start_p)
-                    if ray_t > 5e-5 and ray_t < min_depth:
+                    if ray_t > 1e-4 and ray_t < min_depth:
                         hit_flag = True
                         break
             if hit_flag: break

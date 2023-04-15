@@ -19,7 +19,7 @@ from la.cam_transform import *
 from parsers.obj_desc import ObjDescriptor
 from parsers.xml_parser import mitsuba_parsing
 
-__eps__ = 5e-5
+__eps__ = 1e-4
 __inv_eps__ = 1 - __eps__ * 2.
 
 @ti.data_oriented
@@ -130,7 +130,7 @@ class TracerBase:
         obj_id = -1
         prm_id = -1
         sphere_flag = False
-        min_depth = ti.select(min_depth > 0.0, min_depth - 5e-5, 1e7)
+        min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
         for aabb_idx in range(self.num_objects):
             aabb_intersect, t_near, _f = self.aabb_test(aabb_idx, ray, start_p)
             if aabb_intersect == False: continue
@@ -147,8 +147,8 @@ class TracerBase:
                 if c2ray_norm >= radius2: continue
                 ray_t = proj_norm
                 ray_cut = ti.sqrt(radius2 - c2ray_norm)
-                ray_t += ti.select(center_norm2 > radius2 + 5e-5, -ray_cut, ray_cut)
-                if ray_t > 5e-5 and ray_t < min_depth:
+                ray_t += ti.select(center_norm2 > radius2 + 1e-4, -ray_cut, ray_cut)
+                if ray_t > 1e-4 and ray_t < min_depth:
                     min_depth = ray_t
                     obj_id = aabb_idx
                     prm_id = start_id
@@ -162,7 +162,7 @@ class TracerBase:
                     mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
                     u, v, t = mat @ (start_p - p1)
                     if u >= 0 and v >= 0 and u + v <= 1.0:
-                        if t > 5e-5 and t < min_depth:
+                        if t > 1e-4 and t < min_depth:
                             min_depth = t
                             obj_id = aabb_idx
                             prm_id = mesh_idx
@@ -180,7 +180,7 @@ class TracerBase:
     def does_intersect(self, ray, start_p, min_depth = -1.0):
         """ Villina intersection test logic without acceleration structure """
         hit_flag = False
-        min_depth = ti.select(min_depth > 0.0, min_depth - 5e-5, 1e7)
+        min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
         for aabb_idx in range(self.num_objects):
             aabb_intersect, t_near, _f = self.aabb_test(aabb_idx, ray, start_p)
             if aabb_intersect == False: continue
@@ -196,11 +196,11 @@ class TracerBase:
                 c2ray_norm = center_norm2 - proj_norm ** 2  # center to ray distance ** 2
                 if c2ray_norm >= radius2: continue
                 ray_t = proj_norm
-                if center_norm2 > radius2 + 5e-5:
+                if center_norm2 > radius2 + 1e-4:
                     ray_t -= ti.sqrt(radius2 - c2ray_norm)
                 else:
                     ray_t += ti.sqrt(radius2 - c2ray_norm)
-                if ray_t > 5e-5 and ray_t < min_depth:
+                if ray_t > 1e-4 and ray_t < min_depth:
                     hit_flag = True
             else:
                 tri_num   = self.obj_info[aabb_idx, 1]
@@ -211,7 +211,7 @@ class TracerBase:
                     mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
                     u, v, t = mat @ (start_p - p1)
                     if u >= 0 and v >= 0 and u + v <= 1.0:
-                        if t > 5e-5 and t < min_depth:
+                        if t > 1e-4 and t < min_depth:
                             hit_flag = True
                             break
             if hit_flag: break
