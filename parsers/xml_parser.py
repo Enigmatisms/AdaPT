@@ -17,10 +17,10 @@ from numpy import ndarray as Arr
 from bxdf.brdf import BRDF_np
 from bxdf.bsdf import BSDF_np
 
-from parser.obj_loader import *
-from parser.world import World_np
-from parser.obj_desc import ObjDescriptor
-from parser.general_parser import get, transform_parse, parse_sphere_element
+from parsers.obj_loader import *
+from parsers.world import World_np
+from parsers.obj_desc import ObjDescriptor
+from parsers.general_parser import get, transform_parse, parse_sphere_element
 
 # import emitters
 from emitters.point import PointSource

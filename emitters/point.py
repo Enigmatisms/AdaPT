@@ -13,7 +13,7 @@ from taichi.math import vec3
 import xml.etree.ElementTree as xet
 
 from emitters.abtract_source import LightSource, TaichiSource, POINT_SOURCE
-from parser.general_parser import vec3d_parse
+from parsers.general_parser import vec3d_parse
 
 
 class PointSource(LightSource):

@@ -14,7 +14,7 @@ import numpy as np
 from taichi.math import vec3
 import xml.etree.ElementTree as xet
 
-from parser.general_parser import vec3d_parse, get
+from parsers.general_parser import vec3d_parse, get
 from renderer.constants import ZERO_V3, AXIS_Z, INV_PI
 from emitters.abtract_source import LightSource, TaichiSource, COLLIMATED_SOURCE
 

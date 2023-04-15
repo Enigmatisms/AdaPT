@@ -13,7 +13,7 @@ import xml.etree.ElementTree as xet
 
 from taichi.math import vec3
 from bxdf.medium import Medium, Medium_np
-from parser.general_parser import rgb_parse
+from parsers.general_parser import rgb_parse
 
 class World_np:
     def __init__(self, elem: xet.Element):

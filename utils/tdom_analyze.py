@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from utils.tools import folder_path
-from parser.opts import get_tdom_options
+from parsers.opts import get_tdom_options
 from scipy.signal import find_peaks, peak_widths
 
 colors = ("#DF7857", "#4E6E81", "#F99417")

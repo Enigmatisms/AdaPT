@@ -14,7 +14,7 @@ from la.cam_transform import *
 from tracer.path_tracer import PathTracer
 from emitters.abtract_source import LightSource
 
-from parser.obj_desc import ObjDescriptor
+from parsers.obj_desc import ObjDescriptor
 
 """
    MIS is required to make convergence faster and supress variance

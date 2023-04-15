@@ -9,7 +9,7 @@ import numpy as np
 import xml.etree.ElementTree as xet
 
 from emitters.abtract_source import LightSource
-from parser.general_parser import vec3d_parse
+from parsers.general_parser import vec3d_parse
 
 class DirectionalSource(LightSource):
     def __init__(self, elem: xet.Element):

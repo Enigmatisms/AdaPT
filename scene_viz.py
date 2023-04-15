@@ -19,9 +19,9 @@ from la.cam_transform import *
 from scipy.spatial.transform import Rotation as Rot
 from tracer.tracer_base import TracerBase
 
-from parser.obj_desc import ObjDescriptor
-from parser.xml_parser import mitsuba_parsing
-from parser.opts import get_options
+from parsers.obj_desc import ObjDescriptor
+from parsers.xml_parser import mitsuba_parsing
+from parsers.opts import get_options
 from utils.tools import folder_path
 
 """

@@ -21,9 +21,9 @@ from emitters.abtract_source import LightSource, TaichiSource
 
 from bxdf.brdf import BRDF
 from bxdf.bsdf import BSDF, BSDF_np
-from parser.opts import get_options
-from parser.obj_desc import ObjDescriptor
-from parser.xml_parser import mitsuba_parsing
+from parsers.opts import get_options
+from parsers.obj_desc import ObjDescriptor
+from parsers.xml_parser import mitsuba_parsing
 from renderer.constants import TRANSPORT_UNI
 
 from sampler.general_sampling import *
