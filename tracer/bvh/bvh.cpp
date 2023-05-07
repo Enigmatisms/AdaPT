@@ -1,6 +1,7 @@
 /**
  * @file bvh.cpp
  * @author Qianyue He
+ * @date 2023.5
  * @brief BVH construction main logic
  * @copyright Copyright (c) 2023
  */
