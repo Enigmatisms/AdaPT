@@ -59,7 +59,11 @@ def parse_emitters(em_elem: list):
     source_id_dict = dict()
     for elem in em_elem:
         emitter_type = elem.get("type")
-        source = __SOURCE_MAP__.get(emitter_type, None)(elem)
+        source_type = __SOURCE_MAP__.get(emitter_type, None)
+        source = None
+        if source_type is None:
+            raise ValueError(f"Source type '{emitter_type}' is not supported. Please check your XML settings.")
+        source = source_type(elem)
         if source is not None:
             if source.id in source_id_dict:
                 raise ValueError(f"Two sources with same id {source.id} will result in conflicts")

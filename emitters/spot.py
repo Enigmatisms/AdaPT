@@ -48,6 +48,5 @@ class SpotSource(LightSource):
 
     def export(self) -> TaichiSource:
         bool_bits = 0x01 + (self.in_free_space << 4)       # positional delta but not directional delta
-        print(self.half_cos)
         return TaichiSource(_type = SPOT_SOURCE, intensity = vec3(self.intensity), inv_area = self.inv_area,
                     pos = vec3(self.pos), dir = vec3(self.dir), r = self.half_cos, bool_bits = bool_bits, emit_time = self.emit_time)

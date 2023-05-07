@@ -29,8 +29,8 @@
 		</transform>
 
 		<film type="film">
-			<integer name="width" value="512"/>
-			<integer name="height" value="512"/>
+			<integer name="width" value="800"/>
+			<integer name="height" value="800"/>
 			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
 			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
 			<integer name="crop_rx" value="0"/>		<!-- Crop half radius for x-axis -->
@@ -57,7 +57,7 @@
 	</brdf>
 
 	<brdf type="lambertian" id="right_wall">
-		<rgb name="k_d" value="#2525DD"/>
+		<rgb name="k_d" value="#25DD25"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
@@ -68,19 +68,30 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<emitter type="area" id="area">
-		<rgb name="emission" value="50.0, 50.0, 50.0"/>
-		<rgb name="scaler" value="1.0"/>
+	<emitter type="spot" id="source1">
+		<rgb name="emission" value="5.0, 5.0, 5.0"/>
+		<rgb name="scaler" value="250.0"/>
+		<point name="pos" x="3.779" y="5.2" z="2.745"/>
+		<point name="dir" x="-0.2" y="-1.5" z="-0.3"/>
+		<float name="half-angle" value="20.0"/>
 	</emitter>
 
-	<shape type="obj">
+	<emitter type="spot" id="source2">
+		<rgb name="emission" value="5.0, 5.0, 5.0"/>
+		<rgb name="scaler" value="200.0"/>
+		<point name="pos" x="1.2" y="4.8" z="3.2"/>
+		<point name="dir" x="0.6" y="-1.5" z="-0.05"/>
+		<float name="half-angle" value="15.0"/>
+	</emitter>
+
+	<!-- <shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
 		<transform name="toWorld">
 			<translate x="0" y="-0.001" z="0"/>
 		</transform>
 		<ref type="material" id="light"/>
 		<ref type="emitter" id="area"/>
-	</shape>
+	</shape> -->
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
@@ -153,7 +164,7 @@
 	<world name="yes!">
 		<rgb name="skybox" value="0.0"/>
 		<rgb name="ambient" value="0.0"/>
-		<medium type="transparent">
+		<medium type="hg">
 			<rgb name="u_a" value="0.0"/>
 			<rgb name="u_s" value="0.25"/>
 			<rgb name="par" value="0.2"/>
