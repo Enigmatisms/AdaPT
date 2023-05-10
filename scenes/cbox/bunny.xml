@@ -84,6 +84,14 @@
 		<float name="half-angle" value="15.0"/>
 	</emitter>
 
+	<emitter type="spot" id="source3">
+		<rgb name="emission" value="5.0, 5.0, 6.0"/>
+		<rgb name="scaler" value="190.0"/>
+		<point name="pos" x="4.5" y="2.3" z="3.7"/>
+		<point name="dir" x="-1.6" y="-0.6" z="-0.4"/>
+		<float name="half-angle" value="10.0"/>
+	</emitter>
+
 	<!-- <shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
 		<transform name="toWorld">

@@ -18,6 +18,7 @@ from la.cam_transform import *
 
 from parsers.obj_desc import ObjDescriptor
 from parsers.xml_parser import mitsuba_parsing
+from renderer.constants import INV_PI, INV_2PI
 
 __eps__ = 1e-4
 __inv_eps__ = 1 - __eps__ * 2.
@@ -129,6 +130,8 @@ class TracerBase:
         """ Villina intersection logic without acceleration structure """
         obj_id = -1
         prm_id = -1
+        coord_u = 0.
+        coord_v = 0.
         sphere_flag = False
         min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
         for aabb_idx in range(self.num_objects):
@@ -166,15 +169,19 @@ class TracerBase:
                             min_depth = t
                             obj_id = aabb_idx
                             prm_id = mesh_idx
+                            coord_u = u
+                            coord_v = v
                             sphere_flag = False
         normal = vec3([1, 0, 0])
         if obj_id >= 0:
             if sphere_flag:
                 center = self.prims[prm_id, 0]
                 normal = (start_p + min_depth * ray - center).normalized() 
+                coord_u = (tm.atan2(normal[1], normal[0]) + tm.pi) * INV_2PI
+                coord_v = tm.acos(normal[2]) * INV_PI
             else:
                 normal = self.normals[prm_id]
-        return (obj_id, normal, min_depth)
+        return (obj_id, normal, min_depth, coord_u, coord_v)
 
     @ti.func
     def does_intersect(self, ray, start_p, min_depth = -1.0):

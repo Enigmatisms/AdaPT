@@ -49,6 +49,7 @@ class BRDF_np:
         self.ks_default = True
         self.kg_default = True
         self.ka_default = True
+        self.uv_coords = None
 
         rgb_nodes = elem.findall("rgb")
         for rgb_node in rgb_nodes:

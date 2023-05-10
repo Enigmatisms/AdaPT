@@ -51,7 +51,7 @@ class Medium_np:
                         self.__setattr__(name, query_func(tag_elem))
         else:
             if not is_world:
-                CONSOLE.log("[yellow]Warning: default initialization yields <transparent>, which is a trivial medium.")
+                CONSOLE.log("[yellow]:warning: Warning: default initialization yields <transparent>, which is a trivial medium.")
         self.u_e = self.u_a + self.u_s
     
     def export(self):

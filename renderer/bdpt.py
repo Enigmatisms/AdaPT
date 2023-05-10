@@ -44,8 +44,8 @@ class BDPT(VolumeRenderer):
         decomp_state = decomp_mode[prop.get('decomposition', 'none')]
         if decomp_mode == TRANSIENT_LIT:
             decomp_state = TRANSIENT_CAM
-            CONSOLE.log("Warning: Transient [bold yellow]camera unwarped[/bold yellow] output mode has unfixed bugs. It is not supported since v1.2.1.")
-            CONSOLE.log("Warning: This problem is reported in one of the issues of this repo, and will be fixed in the future.")
+            CONSOLE.log(":warning: Warning: Transient [bold yellow]camera unwarped[/bold yellow] output mode has unfixed bugs. It is not supported since v1.2.1.")
+            CONSOLE.log(":warning: Warning: This problem is reported in one of the issues of this repo, and will be fixed in the future.")
             CONSOLE.log("[blue]Fall back to TRANSIENT_CAM :camera: mode.")
         sample_cnt       = prop.get('sample_count', 1) if decomp_state else 1
         
@@ -100,7 +100,7 @@ class BDPT(VolumeRenderer):
         self.interval   = ti.field(float, shape = ())
 
         if decomp_state > STEADY_STATE and "interval" not in prop:
-            CONSOLE.log("[yellow]Warning: Some transient attributes not in propeties, fall back to default settings.")
+            CONSOLE.log("[yellow]:warning: Warning: Some transient attributes not in propeties, fall back to default settings.")
         self.decomp[None]     = decomp_state
         self.min_time[None]   = prop.get('min_time', 0.)                                            # lower bounce for time of recording
         self.interval[None]   = prop.get('interval', 0.1)
@@ -110,7 +110,7 @@ class BDPT(VolumeRenderer):
             CONSOLE.log(f":low_brightness: Transient state BDPT rendering, start at: {self.min_time[None]:.4f}, step size: {self.interval[None]:.4f}, bin num: {sample_cnt}")
             CONSOLE.log(f":low_brightness: Transient {'actual camera recording - TRANSIENT_CAM' if self.decomp[None] == TRANSIENT_CAM else 'emitter only - TRANSIENT_LIT'}")
             if prop['sample_count'] > MAX_SAMPLE_CNT:
-                CONSOLE.log(f"[yellow]Warning: sample cnt = {prop['sample_count']} which is larger than {MAX_SAMPLE_CNT}. Bitmasked node might introduce too much memory consumption.")
+                CONSOLE.log(f"[yellow]:warning: Warning: sample cnt = {prop['sample_count']} which is larger than {MAX_SAMPLE_CNT}. Bitmasked node might introduce too much memory consumption.")
             if self.interval[None] <= 0:
                 raise ValueError("Transient interval must be positive. Otherwise, meaningful or futile.")
         else:
@@ -229,7 +229,7 @@ class BDPT(VolumeRenderer):
 
         while True:
             # Step 1: ray intersection
-            obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
+            obj_id, normal, min_depth, _u, _v = self.ray_intersect(ray_d, ray_o)
 
             if obj_id < 0:     
                 if not self.world_scattering: break     # nothing is hit, break

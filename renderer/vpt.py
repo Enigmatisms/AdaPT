@@ -87,7 +87,7 @@ class VolumeRenderer(PathTracer):
         cur_ray = ray.normalized()
         acc_depth = 0.0
         for _i in range(7):             # maximum tracking depth = 7 (corresponding to at most 2 clouds of smoke)
-            obj_id, normal, min_depth = self.ray_intersect(cur_ray, cur_point, depth)
+            obj_id, normal, min_depth, _u, _v = self.ray_intersect(cur_ray, cur_point, depth)
             if obj_id < 0:     
                 acc_depth += depth * self.world.medium.ior      # definitely not in an object
                 if not self.world_scattering: break             # nothing is hit, break
@@ -137,7 +137,7 @@ class VolumeRenderer(PathTracer):
                     if ti.random(float) > max_value: break
                     else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
                     # Step 2: ray intersection
-                    obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
+                    obj_id, normal, min_depth, _u, _v = self.ray_intersect(ray_d, ray_o)
                     if obj_id < 0:     
                         if not self.world_scattering: break     # nothing is hit, break
                         else:                                   # the world is filled with scattering medium

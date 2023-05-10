@@ -12,6 +12,7 @@ ti.init(kernel_profiler = True, arch = ti.cuda)
 class Vertex:
     pos: vec3
     vec: vec3
+    fp: float
     type: int
 
 vertices = Vertex.field()
@@ -24,7 +25,9 @@ node_handle.dense(ti.j, 64).place(vec_field)
 @ti.kernel
 def initialize():
     for i, j in vertices:
-        vertices[i, j] = Vertex(pos = vec3([i, j, 0]), vec = vec3([-i, -j, 0]), type = (i + j) % 2)
+        vertices[i, j] = Vertex(
+            fp = (float(i) + float(j)).__mod__(2.6),
+            pos = vec3([i, j, 0]), vec = vec3([-i, -j, 0]), type = (i + j) % 2)
 
 
 @ti.kernel

@@ -121,7 +121,7 @@ class Visualizer(TracerBase):
     def render(self):
         for i, j in self.pixels:
             ray = self.pix2ray(i, j)
-            obj_id, normal, _ = self.ray_intersect(ray, self.cam_t[None])
+            obj_id, normal, _, _u, _v = self.ray_intersect(ray, self.cam_t[None])
             if obj_id >= 0:
                 self.pixels[i, j].fill(ti.max(-tm.dot(ray, normal), 0.))
             else:

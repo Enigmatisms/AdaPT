@@ -24,7 +24,7 @@ from bxdf.bsdf import BSDF, BSDF_np
 from parsers.opts import get_options
 from parsers.obj_desc import ObjDescriptor
 from parsers.xml_parser import mitsuba_parsing
-from renderer.constants import TRANSPORT_UNI
+from renderer.constants import TRANSPORT_UNI, INV_2PI, INV_PI
 
 from sampler.general_sampling import *
 from utils.tools import TicToc
@@ -107,6 +107,10 @@ class PathTracer(TracerBase):
                 self.__setattr__("ray_intersect", self.ray_intersect_bvh)
                 self.__setattr__("does_intersect", self.does_intersect_bvh)
 
+    def read_store_texture(self):
+        
+        pass
+
     def prepare_for_bvh(self, objects: List[ObjDescriptor]):
         primitives = []
         obj_info = np.zeros((2, len(objects)), dtype = np.int32)        
@@ -163,6 +167,8 @@ class PathTracer(TracerBase):
         obj_idx, prim_idx = self.lin_bvhs[bvh_id].get_info()
         is_sphere = self.obj_info[obj_idx, 2]
         ray_t = -1.
+        u = 0.
+        v = 0.
         if is_sphere > 0:
             center  = self.prims[prim_idx, 0]
             radius2 = self.prims[prim_idx, 1][0] ** 2
@@ -180,12 +186,16 @@ class PathTracer(TracerBase):
             vec2 = self.precom_vec[prim_idx, 1]
             mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
             u, v, t = mat @ (start_p - p1)
+            # u, v as barycentric coordinates should be returned
             if u >= 0 and v >= 0 and u + v <= 1.0:
                 ray_t = t
-        return ray_t, obj_idx, prim_idx, is_sphere
+        return ray_t, obj_idx, prim_idx, is_sphere, u, v
 
     @ti.func
     def ray_intersect_bvh(self, ray: vec3, start_p, min_depth = -1.0):
+        # FIXME: major revision should be made. In order to properly use texture
+        # We need to return the intersection barycentric coordinates / sphere coordinates
+        # This is going to be a laborious job
         """ Ray intersection with BVH, to prune unnecessary computation """
         obj_id  = -1
         prim_id = -1
@@ -193,6 +203,8 @@ class PathTracer(TracerBase):
         min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
         node_idx = 0
         inv_ray = 1. / ray
+        coord_u = 0.
+        coord_v = 0.
         while node_idx < self.node_num:
             aabb_intersect, t_near = self.lin_nodes[node_idx].aabb_test(inv_ray, start_p)
             if aabb_intersect == False or t_near > min_depth: 
@@ -207,21 +219,25 @@ class PathTracer(TracerBase):
                     aabb_intersect, t_near = self.lin_bvhs[bvh_i].aabb_test(inv_ray, start_p)
                     if aabb_intersect == False or t_near > min_depth: 
                         continue
-                    ray_t, obj_idx, prim_idx, obj_type = self.bvh_intersect(bvh_i, ray, start_p)
+                    ray_t, obj_idx, prim_idx, obj_type, u, v = self.bvh_intersect(bvh_i, ray, start_p)
                     if ray_t > 1e-4 and ray_t < min_depth:
                         min_depth   = ray_t
                         obj_id      = obj_idx
                         prim_id     = prim_idx
                         sphere_flag = obj_type
+                        coord_u     = u
+                        coord_v     = v
             node_idx += 1
         normal = vec3([1, 0, 0])
         if obj_id >= 0:
             if sphere_flag:
                 center = self.prims[prim_id, 0]
                 normal = (start_p + min_depth * ray - center).normalized() 
+                coord_u = (tm.atan2(normal[1], normal[0]) + tm.pi) * INV_2PI
+                coord_v = tm.acos(normal[2]) * INV_PI
             else:
                 normal = self.normals[prim_id]
-        return (obj_id, normal, min_depth)
+        return (obj_id, normal, min_depth, coord_u, coord_v)
     
     @ti.func
     def does_intersect_bvh(self, ray, start_p, min_depth = -1.0):

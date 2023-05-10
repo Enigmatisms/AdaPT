@@ -252,7 +252,7 @@ class LightSource:
                 elif name == "scaler":
                     self.intensity *= rgb_parse(rgb_elem)
         else:
-            CONSOLE.log("[yellow]Warning: default intializer should only be used in testing.")
+            CONSOLE.log("[yellow]:warning: Warning: default intializer should only be used in testing.")
         self.type: str = base_elem.get("type")
         self.id:   str = base_elem.get("id")
         self.inv_area  = 1.0        # inverse area (for non-point emitters, like rect-area or mesh attached emitters)

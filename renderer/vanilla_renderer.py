@@ -33,7 +33,7 @@ class Renderer(PathTracer):
             if not self.do_crop or in_crop_range:
                 ray_d = self.pix2ray(i, j)
                 ray_o = self.cam_t
-                obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
+                obj_id, normal, min_depth, _u, _v = self.ray_intersect(ray_d, ray_o)
                 hit_light       = self.emitter_id[ti.max(obj_id, 0)]   # id for hit emitter, if nothing is hit, this value will be -1
                 color           = vec3([0, 0, 0])
                 contribution    = vec3([1, 1, 1])
@@ -96,7 +96,7 @@ class Renderer(PathTracer):
                     color += (direct_int + emit_int * emission_weight) * contribution
                     # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)
                     contribution *= indirect_spec / ray_pdf
-                    obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
+                    obj_id, normal, min_depth, _u, _v = self.ray_intersect(ray_d, ray_o)
 
                     if obj_id >= 0:
                         hit_light = self.emitter_id[obj_id]
