@@ -21,6 +21,13 @@ from utils.tdom_analyze import time_domain_curve
 from parsers.xml_parser import mitsuba_parsing
 from parsers.opts import get_options, mapped_arch
 
+from utils.rich_utils import ItersPerSecColumn
+from rich.progress import (BarColumn, Progress, TaskProgressColumn, TextColumn, SpinnerColumn, 
+                           TimeElapsedColumn, TimeRemainingColumn)
+from rich.console import Console
+
+CONSOLE = Console(width = 128)
+
 rdr_mapping = {"pt": Renderer, "vpt": VolumeRenderer, "bdpt": BDPT}
 name_mapping = {"pt": "", "vpt": "Volumetric ", "bdpt": "Bidirectional "}
 
@@ -30,13 +37,13 @@ def export_transient_profile(
 ):
     output_folder = folder_path(os.path.join(out_path, out_name))
     all_files = []
-    print(f"[INFO] Transient profile post processing... ")
+    CONSOLE.log(f"Transient profile post processing... ")
     for i in tqdm(range(sample_cnt)):
         rdr.copy_average(i)
         transient_img = apply_watermark(rdr, 0.0, False)
         all_files.append(transient_img)
     all_files = np.stack(all_files, axis = 0)
-    print(f"[INFO] Exporting transient profile to folder '{output_folder}'")
+    CONSOLE.log(f":floppy_disk: Exporting transient profile to folder [green]'{output_folder}'")
     if normalize > 0.9:
         qnt = np.quantile(all_files, normalize)
         for i in tqdm(range(sample_cnt)):
@@ -45,12 +52,12 @@ def export_transient_profile(
         for i in tqdm(range(sample_cnt)):
             ti.tools.imwrite(all_files[i, ...], f"{output_folder}/img_{i + 1:03d}.{out_ext}")
     if analyze:
-        print(f"[INFO] Analyzing time domain information...")
+        CONSOLE.log(f":minidisc: Analyzing time domain information... :minidisc:")
         time_domain_curve(all_files, name = out_name, viz = False)
 
 if __name__ == "__main__":
     opts = get_options()
-    cache_path = folder_path(f"./cached/{opts.scene}", f"[INFO] Cache path for scene {opts.scene} not found. JIT compilation might take some time (~30s)...")
+    cache_path = folder_path(f"./cached/{opts.scene}", f"Cache path for scene {opts.scene} not found. JIT compilation might take some time (~30s)...")
     ti.init(arch = mapped_arch(opts.arch), kernel_profiler = opts.profile, device_memory_fraction = 0.8, offline_cache = not opts.no_cache, \
             default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path, debug = opts.debug)
     input_folder = os.path.join(opts.input_path, opts.scene)
@@ -61,7 +68,7 @@ if __name__ == "__main__":
         output_folder = folder_path(f"{output_folder}{opts.img_name}-{opts.name[:-4]}-{opts.type}/")
     rdr: PathTracer = rdr_mapping[opts.type](emitter_configs, meshes, configs)
     if type(rdr) != BDPT and configs.get('decomposition', 'none').startswith('transient'):
-        print("[Warning] Transient rendering is only supported in BDPT renderer.")
+        CONSOLE.log("[bold yellow] Transient rendering is only supported in BDPT renderer.")
 
     max_iter_num = opts.iter_num if opts.iter_num > 0 else configs.get('iter_num', 2000)
     iter_cnt = 0
@@ -72,34 +79,47 @@ if __name__ == "__main__":
     max_depth = configs.get('max_depth', 16)
     eye_end = configs.get('end_t', max_bounce + 2)      # one more vertex for each path (starting vertex)
     lit_end = configs.get('end_s', max_bounce + 2)      # one more vertex for each path (starting vertex)
-    print(f"[INFO] starting to loop. Max eye vnum: {eye_end}, max light vnum: {lit_end}.")
+    CONSOLE.log(f"Starting to loop. Max eye :eyes: vnum: {eye_end}, max light :bulb: vnum: {lit_end}.")
     if opts.type == "bdpt":
-        print(f"[INFO] BDPT with {max_bounce} bounce(s), max depth: {max_depth}. Cam vertices [{eye_start}, {eye_end}], light vertices [{lit_start}, {lit_end}]")
+        CONSOLE.log(f"BDPT with {max_bounce} bounce(s), max depth: {max_depth}. Cam vertices [{eye_start}, {eye_end}], light vertices [{lit_start}, {lit_end}]")
     else:
-        print(f"[INFO] {name_mapping[opts.type]}Path Tracing with {max_bounce} bounce(s)")
+        CONSOLE.log(f"{name_mapping[opts.type]}Path Tracing with {max_bounce} bounce(s)")
 
     if opts.no_gui:
         try:
             for iter_cnt in tqdm(range(max_iter_num)):
                 rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)
         except KeyboardInterrupt:
-            print("[QUIT] Quit on Keyboard interruptions")
+            CONSOLE.log(":ok: Quit on Keyboard interruptions")
     else:
         window   = tui.Window(f"{name_mapping[opts.type]}Path Tracing", res = (rdr.w, rdr.h))
         canvas = window.get_canvas()
         gui = window.get_gui()
-        for iter_cnt in tqdm(range(max_iter_num)):
-            rdr.reset()
-            for e in window.get_events(tui.PRESS):
-                if e.key == tui.ESCAPE:
-                    window.running = False
-            rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)
-            canvas.set_image(rdr.pixels)
-            window.show()
-            if window.running == False: break
-            if output_freq > 0 and iter_cnt % output_freq == 0:
-                image = rdr.pixels.to_numpy()
-                ti.tools.imwrite(image, f"{output_folder}img_{iter_cnt:05d}.{opts.img_ext}")
+        CONSOLE.rule()
+        progress = Progress(
+            TextColumn(":movie_camera: Rendering :movie_camera:"),
+            SpinnerColumn(),
+            BarColumn(),
+            TaskProgressColumn(show_speed=True),
+            ItersPerSecColumn(suffix="fps"),
+            TextColumn(" | ETA: "),
+            TimeRemainingColumn(elapsed_when_finished=True),
+            TextColumn(" | elasped: "),
+            TimeElapsedColumn()
+        )
+        with progress:
+            for iter_cnt in progress.track(range(max_iter_num), description=""):
+                rdr.reset()
+                for e in window.get_events(tui.PRESS):
+                    if e.key == tui.ESCAPE:
+                        window.running = False
+                rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)
+                canvas.set_image(rdr.pixels)
+                window.show()
+                if window.running == False: break
+                if output_freq > 0 and iter_cnt % output_freq == 0:
+                    image = rdr.pixels.to_numpy()
+                    ti.tools.imwrite(image, f"{output_folder}img_{iter_cnt:05d}.{opts.img_ext}")
     rdr.summary()
     if opts.profile:
         ti.profiler.print_kernel_profiler_info() 

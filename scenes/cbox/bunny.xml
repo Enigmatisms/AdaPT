@@ -9,8 +9,8 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="18"/>
-        <integer name="max_depth" value="18"/>
+        <integer name="max_bounce" value="10"/>
+        <integer name="max_depth" value="12"/>
         <integer name="num_shadow_ray" value="4"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
@@ -69,16 +69,16 @@
 	</brdf>
 
 	<emitter type="spot" id="source1">
-		<rgb name="emission" value="5.0, 5.0, 5.0"/>
-		<rgb name="scaler" value="250.0"/>
+		<rgb name="emission" value="6.0, 5.0, 5.0"/>
+		<rgb name="scaler" value="230.0"/>
 		<point name="pos" x="3.779" y="5.2" z="2.745"/>
 		<point name="dir" x="-0.2" y="-1.5" z="-0.3"/>
 		<float name="half-angle" value="20.0"/>
 	</emitter>
 
 	<emitter type="spot" id="source2">
-		<rgb name="emission" value="5.0, 5.0, 5.0"/>
-		<rgb name="scaler" value="200.0"/>
+		<rgb name="emission" value="6.0, 6.0, 5.0"/>
+		<rgb name="scaler" value="190.0"/>
 		<point name="pos" x="1.2" y="4.8" z="3.2"/>
 		<point name="dir" x="0.6" y="-1.5" z="-0.05"/>
 		<float name="half-angle" value="15.0"/>
@@ -132,14 +132,6 @@
 		</medium>
 	</bsdf>
 
-	<brdf type="fresnel-blend" id="fresnel">
-		<rgb name="k_d" value="#CACACA"/>
-		<!-- <rgb name="k_g" value="1.0"/>
-		<rgb name="k_s" value="0.0"/> -->
-		<rgb name="k_s" value="#333333"/>
-		<rgb name="k_g" r="10" g="1000"/>
-	</brdf>
-
 	<brdf type="specular" id="mirror">
 		<rgb name="k_d" value="#EFEFEF"/>
 		<rgb name="k_g" value="1.0"/>
@@ -158,7 +150,7 @@
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/bunny_full3.obj"/>
-		<ref type="material" id="fresnel"/>
+		<ref type="material" id="glass"/>
 	</shape>
 
 	<world name="yes!">

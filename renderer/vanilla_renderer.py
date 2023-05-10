@@ -14,6 +14,9 @@ from emitters.abtract_source import LightSource
 from parsers.obj_desc import ObjDescriptor
 from sampler.general_sampling import balance_heuristic
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 @ti.data_oriented
 class Renderer(PathTracer):
     """
@@ -107,4 +110,5 @@ class Renderer(PathTracer):
                 self.pixels[i, j] = self.color[i, j] / self.cnt[None]
     
     def summary(self):
-        print(f"[INFO] PT Finished rendering. SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s")
+        super().summary()
+        CONSOLE.print(f"PT SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s", justify="center")

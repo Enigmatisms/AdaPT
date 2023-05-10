@@ -16,6 +16,9 @@ from emitters.abtract_source import LightSource
 
 from parsers.obj_desc import ObjDescriptor
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 """
    MIS is required to make convergence faster and supress variance
 """
@@ -198,5 +201,6 @@ class VolumeRenderer(PathTracer):
                 self.pixels[i, j] = self.color[i, j] / self.cnt[None]
             
     def summary(self):
-        print(f"[INFO] VPT Finished rendering. SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s")
+        super().summary()
+        CONSOLE.print(f"VPT SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s", justify="center")
         

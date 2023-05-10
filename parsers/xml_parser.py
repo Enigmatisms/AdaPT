@@ -30,6 +30,9 @@ from emitters.collimated import CollimatedSource
 
 from utils.tools import timing
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 __VERSION__   = "1.1"
 __MAPPING__   = {"integer": int, "float": float, "string": str, "boolean": lambda x: True if x.lower() == "true" else False}
 __SOURCE_MAP__ = {"point": PointSource, "area": AreaSource, "spot": SpotSource, "collimated": CollimatedSource}
@@ -85,9 +88,10 @@ def parse_wavefront(directory: str, obj_list: List[xet.Element], bsdf_dict: dict
         trans_r, trans_t = None, None                           # transform
         obj_type = 0
         if elem.get("type") == "obj":
-            filepath_child      = elem.find("string")
-            meshes, normals     = load_obj_file(os.path.join(directory, filepath_child.get("value")))
-            transform_child     = elem.find("transform")
+            # TODO: UV coordinates to be added
+            filepath_child       = elem.find("string")
+            meshes, normals, _uv = extract_obj_info(os.path.join(directory, filepath_child.get("value")))
+            transform_child      = elem.find("transform")
             if transform_child is not None:
                 trans_r, trans_t    = transform_parse(transform_child)
                 meshes, normals     = apply_transform(meshes, normals, trans_r, trans_t)
@@ -123,15 +127,15 @@ def parse_bxdf(bxdf_list: List[xet.Element]):
         else:
             bxdf = BSDF_np(bxdf_node)
         if bxdf_id in results:
-            print(f"[Warning] BXDF {bxdf_id} re-defined in XML file. Overwriting the existing BXDF.")
+            CONSOLE.log(f"[yellow]Warning: BXDF[/yellow] {bxdf_id} [bold yellow]re-defined[/bold yellow] in XML file. Overwriting the existing BXDF.")
         results[bxdf_id] = bxdf
     return results
 
 def parse_world(world_elem: xet.Element):
     world = World_np(world_elem)
     if world_elem is None:
-        print("[Warning] world element not found in xml file. Using default world settings:")
-        print(world)
+        CONSOLE.log("[yellow]Warning: world element not found in xml file. Using default world settings:")
+        CONSOLE.log(world)
     return world
 
 def parse_global_sensor(sensor_elem: xet.Element):
@@ -158,7 +162,7 @@ def parse_global_sensor(sensor_elem: xet.Element):
 @timing()
 def mitsuba_parsing(directory: str, file: str):
     xml_file = os.path.join(directory, file)
-    print(f"[INFO] Parsing XML file from '{xml_file}'")
+    CONSOLE.log(f":fax: Parsing XML file from '{xml_file}'")
     node_tree = xet.parse(xml_file)
     root_node = node_tree.getroot()
     version_tag = root_node.attrib["version"]

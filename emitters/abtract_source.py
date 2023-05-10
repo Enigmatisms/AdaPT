@@ -18,6 +18,9 @@ from renderer.constants import INV_PI, INV_2PI, ZERO_V3, AXIS_Y
 from la.cam_transform import delocalize_rotate, world_frame
 from sampler.general_sampling import sample_triangle, cosine_hemisphere, uniform_sphere, uniform_cone, concentric_disk_sample
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 # point-0: PointSource, area-1: AreaSource, spot-2: SpotSource, collimated-4: CollimatedSource
 
 # =============== Emitter Type =================
@@ -249,7 +252,7 @@ class LightSource:
                 elif name == "scaler":
                     self.intensity *= rgb_parse(rgb_elem)
         else:
-            print("[Warning] default intializer should only be used in testing.")
+            CONSOLE.log("[yellow]Warning: default intializer should only be used in testing.")
         self.type: str = base_elem.get("type")
         self.id:   str = base_elem.get("id")
         self.inv_area  = 1.0        # inverse area (for non-point emitters, like rect-area or mesh attached emitters)

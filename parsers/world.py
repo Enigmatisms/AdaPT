@@ -15,6 +15,9 @@ from taichi.math import vec3
 from bxdf.medium import Medium, Medium_np
 from parsers.general_parser import rgb_parse
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 class World_np:
     def __init__(self, elem: xet.Element):
         self.skybox = np.zeros(3, np.float32)
@@ -26,7 +29,7 @@ class World_np:
                 self.__setattr__(name, rgb_parse(rgb_elem))
         self.medium = Medium_np(elem.find("medium"))
         self.C = 1.0
-        print(f"[INFO] World loading completed: \n[INFO] {self}")
+        CONSOLE.log(f":earth_asia: World loading completed: \n {self}")
 
     def export(self):
         return World(skybox = vec3(self.skybox), ambient = vec3(self.ambient), medium = self.medium.export(), C = self.C)

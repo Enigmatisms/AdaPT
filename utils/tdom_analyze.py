@@ -14,6 +14,9 @@ from utils.tools import folder_path
 from parsers.opts import get_tdom_options
 from scipy.signal import find_peaks, peak_widths
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 colors = ("#DF7857", "#4E6E81", "#F99417")
 color_cnt = 0
 
@@ -61,9 +64,9 @@ def peak_analysis(
         left_ips, right_ips = lerp(left_ips, ts), lerp(right_ips, ts)
         start_time = lerp(start_time, ts)
     fwhm_width = right_ips - left_ips
-    print(f"{len(peaks)} detected, length:")
+    CONSOLE.log(f"{len(peaks)} detected, length:")
     for i, width in enumerate(fwhm_width):
-        print(f"No.{i+1} peak, width = {width * scaler:.5f} {unit}")
+        CONSOLE.log(f"No.{i+1} peak, width = {width * scaler:.5f} {unit}")
     if show == True:
         ts = np.arange(result.shape[-1]) if ts is None else ts
         plt.plot(ts, result, color = '#FF5533')
@@ -171,7 +174,7 @@ def sim_visualize(opts, legend = 'radiance'):
 
     transient_num = results.shape[-1]
     max_time = time_step * transient_num / sol
-    print(f"[INFO] Time step: {time_step}, transient num: {transient_num}, max time: {max_time * sol}, sol: {sol}")
+    CONSOLE.log(f"Time step: {time_step}, transient num: {transient_num}, max time: {max_time * sol}, sol: {sol}")
     ts = np.linspace(0., max_time, transient_num)
     extras = get_peak_analysis(results, ts, opts)
     viz = Visualizer(opts.window_mode, max_time, name = f"AdaPT {opts.sim_name}")

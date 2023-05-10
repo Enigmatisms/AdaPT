@@ -20,6 +20,9 @@ from renderer.vpt import VolumeRenderer
 from renderer.path_utils import Vertex, remap_pdf
 from renderer.constants import *
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 vec2i = ttype.vector(2, int)
 
 N_MAX_BOUNCE = 32
@@ -41,9 +44,9 @@ class BDPT(VolumeRenderer):
         decomp_state = decomp_mode[prop.get('decomposition', 'none')]
         if decomp_mode == TRANSIENT_LIT:
             decomp_state = TRANSIENT_CAM
-            print("[Warning] Transient camera unwarped output mode has unfixed bugs. It is not supported since v1.2.1.")
-            print("[Warning] This problem is reported in one of the issues of this repo, and will be fixed in the future.")
-            print("[INFO] Fall back to TRANSIENT_CAM mode.")
+            CONSOLE.log("Warning: Transient [bold yellow]camera unwarped[/bold yellow] output mode has unfixed bugs. It is not supported since v1.2.1.")
+            CONSOLE.log("Warning: This problem is reported in one of the issues of this repo, and will be fixed in the future.")
+            CONSOLE.log("[blue]Fall back to TRANSIENT_CAM :camera: mode.")
         sample_cnt       = prop.get('sample_count', 1) if decomp_state else 1
         
         self.light_paths = Vertex.field()
@@ -58,14 +61,14 @@ class BDPT(VolumeRenderer):
             # Memory conserving implementation
             self.path_nodes = ti.root.dense(ti.ij, (self.crop_rx << 1, self.crop_ry << 1))
             max_bounce_used = min(T_MAX_BOUNCE, self.max_bounce)
-            print(f"[INFO] To conserve memory, dense field will have the same size as the cropped image. ")
-            print(f"[INFO] Max bounce allocated: {max_bounce_used}. Small cropped image is recommended.")
-            print(f"[INFO] Typically, GPUs will be used, but dynamic memory allocation is not supported in Taichi")
-            print(f"[INFO] Therefore, a maximum bounce limit is set here. It can be modified should you wish to, but be careful.")
+            CONSOLE.log(f"To conserve memory, dense field will have the same size as the cropped image. ")
+            CONSOLE.log(f"Max bounce allocated: {max_bounce_used}. [bold]Small cropped image is recommended.")
+            CONSOLE.log(f"Typically, GPUs will be used, but dynamic memory allocation is not supported in Taichi")
+            CONSOLE.log(f"Therefore, a maximum bounce limit is set here. It can be modified should you wish to, but be careful.")
         else:
             max_bounce_used = N_MAX_BOUNCE
             self.path_nodes = ti.root.dense(ti.ij, (self.w, self.h))
-            print(f"[INFO] Max bounce allocated: {N_MAX_BOUNCE}.")
+            CONSOLE.log(f"Max bounce allocated: {N_MAX_BOUNCE}.")
         offsets = (self.start_x, self.start_y, 0)
         self.path_nodes.dense(ti.k, sample_cnt).place(self.time_bins, self.time_cnts, offset = offsets)
         """ Trying opt for dense to leverage BLS: 
@@ -84,7 +87,7 @@ class BDPT(VolumeRenderer):
         # ti.profiler.memory_profiler.print_memory_profiler_info()
 
         if self.max_bounce > max_bounce_used:
-            print(f"[Warning] BDPT currently supports only upto {max_bounce_used} bounces per path (either eye or emitter).")
+            CONSOLE.log(f"[yellow]Warning: BDPT currently supports only upto {max_bounce_used} bounces per path (either eye or emitter).")
 
         # camera vertex and extra light vertex is not included, therefore + 2
         self.inv_cam_r = self.cam_r.inverse()
@@ -97,21 +100,21 @@ class BDPT(VolumeRenderer):
         self.interval   = ti.field(float, shape = ())
 
         if decomp_state > STEADY_STATE and "interval" not in prop:
-            print("[Warning] some transient attributes not in propeties, fall back to default settings.")
+            CONSOLE.log("[yellow]Warning: Some transient attributes not in propeties, fall back to default settings.")
         self.decomp[None]     = decomp_state
         self.min_time[None]   = prop.get('min_time', 0.)                                            # lower bounce for time of recording
         self.interval[None]   = prop.get('interval', 0.1)
         self.max_time[None]   = self.min_time[None] + self.interval[None] * sample_cnt  # precomputed max bound
 
         if self.decomp[None] >= TRANSIENT_CAM:
-            print(f"[INFO] Transient state BDPT rendering, start at: {self.min_time[None]:.4f}, step size: {self.interval[None]:.4f}, bin num: {sample_cnt}")
-            print(f"[INFO] Transient {'actual camera recording - TRANSIENT_CAM' if self.decomp[None] == TRANSIENT_CAM else 'emitter only - TRANSIENT_LIT'}")
+            CONSOLE.log(f":low_brightness: Transient state BDPT rendering, start at: {self.min_time[None]:.4f}, step size: {self.interval[None]:.4f}, bin num: {sample_cnt}")
+            CONSOLE.log(f":low_brightness: Transient {'actual camera recording - TRANSIENT_CAM' if self.decomp[None] == TRANSIENT_CAM else 'emitter only - TRANSIENT_LIT'}")
             if prop['sample_count'] > MAX_SAMPLE_CNT:
-                print(f"[Warning] sample cnt = {prop['sample_count']} which is larger than {MAX_SAMPLE_CNT}. Bitmasked node might introduce too much memory consumption.")
+                CONSOLE.log(f"[yellow]Warning: sample cnt = {prop['sample_count']} which is larger than {MAX_SAMPLE_CNT}. Bitmasked node might introduce too much memory consumption.")
             if self.interval[None] <= 0:
                 raise ValueError("Transient interval must be positive. Otherwise, meaningful or futile.")
         else:
-            print("[INFO] Steady state BDPT rendering")
+            CONSOLE.log(":flashlight: Steady state BDPT rendering")
 
         # self.A is the area of the imaging space on z = 1 plane
         self.A = float(self.w * self.h) * (self.inv_focal * self.inv_focal)
@@ -586,5 +589,7 @@ class BDPT(VolumeRenderer):
         return p_delta + (d_delta << 1) + (is_area << 2) + (is_inf << 3) + (in_fspace << 4) + (is_delta << 5)
     
     def summary(self):
-        print(f"[INFO] BDPT Finished rendering. SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s")
+        CONSOLE.rule()
+        CONSOLE.print("[bold blue]:tada: :tada: :tada: Rendering Finished :tada: :tada: :tada:", justify="center")
+        CONSOLE.print(f"BDPT SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s", justify="center")
     

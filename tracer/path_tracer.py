@@ -30,6 +30,9 @@ from sampler.general_sampling import *
 from utils.tools import TicToc
 from tracer.ti_bvh import LinearBVH, LinearNode, export_python_bvh
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 @ti.data_oriented
 class PathTracer(TracerBase):
     """
@@ -65,9 +68,9 @@ class PathTracer(TracerBase):
         self.brdf_nodes.place(self.brdf_field)                              # BRDF Taichi storage
         ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
 
-        print(f"[INFO] Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
+        CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
         self.initialze(emitters, objects)
-        print(f"[INFO] Path tracer initialization in {self.clock.toc(True):.3f} ms")
+        CONSOLE.log(f"Path tracer initialization in {self.clock.toc(True):.3f} ms")
 
         min_val = vec3([1e3, 1e3, 1e3])
         max_val = vec3([-1e3, -1e3, -1e3])
@@ -83,14 +86,14 @@ class PathTracer(TracerBase):
             try:
                 from bvh_cpp import bvh_build
             except ImportError:
-                print("[Warning] pybind11 BVH cpp is not built. Please check whether you have compiled bvh_cpp module.")
-                print("[INFO] Fall back to brute force primitive traversal.")
+                CONSOLE.log(":warning: Warning: [bold green]pybind11 BVH cpp[/bold green] is not built. Please check whether you have compiled bvh_cpp module.")
+                CONSOLE.log("[yellow]:warning: Warning: Fall back to brute force primitive traversal.")
             else:
-                print("[INFO] Using SAH-BVH tree accelerator.")
+                CONSOLE.log(":rocket: Using SAH-BVH tree accelerator.")
                 primitives, obj_info = self.prepare_for_bvh(objects)
                 self.clock.tic()
                 py_nodes, py_bvhs = bvh_build(primitives, obj_info, self.w_aabb_min.to_numpy(), self.w_aabb_max.to_numpy())
-                print(f"[INFO] BVH construction finished in {self.clock.toc_tic(True):.3f} ms")
+                CONSOLE.log(f":rocket: BVH construction finished in {self.clock.toc_tic(True):.3f} ms")
 
                 self.node_num = len(py_nodes)
                 self.bvh_num = len(py_bvhs)
@@ -100,7 +103,7 @@ class PathTracer(TracerBase):
                 ti.root.dense(ti.i, self.node_num).place(self.lin_nodes)
                 ti.root.dense(ti.i, self.bvh_num).place(self.lin_bvhs)
                 export_python_bvh(self.lin_nodes, self.lin_bvhs, py_nodes, py_bvhs)
-                print(f"[INFO] {self.node_num } nodes and {self.bvh_num} bvh primitives are loaded.")
+                CONSOLE.log(f"{self.node_num } nodes and {self.bvh_num} bvh primitives are loaded.")
                 self.__setattr__("ray_intersect", self.ray_intersect_bvh)
                 self.__setattr__("does_intersect", self.does_intersect_bvh)
 
@@ -356,6 +359,10 @@ class PathTracer(TracerBase):
     @ti.func
     def get_associated_obj(self, emit_id: int):
         return self.src_field[emit_id].obj_ref_id
+    
+    def summary(self):
+        CONSOLE.rule()
+        CONSOLE.print("[bold blue]:tada: :tada: :tada: Rendering Finished :tada: :tada: :tada:", justify="center")
 
 if __name__ == "__main__":
     options = get_options()
