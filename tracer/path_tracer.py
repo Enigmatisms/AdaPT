@@ -107,8 +107,40 @@ class PathTracer(TracerBase):
                 self.__setattr__("ray_intersect", self.ray_intersect_bvh)
                 self.__setattr__("does_intersect", self.does_intersect_bvh)
 
+    def get_check_point(self):
+        """This is a simple checkpoint saver, which can be hacked.
+           I do not offer strict consistency checking since this is laborious
+        """
+        items_to_save = ["w", "h", "crop_x", "crop_y", "crop_rx", "crop_ry", "focal"]
+        items_to_save += ["num_objects", "num_prims", "cam_orient", "src_num"]
+        check_point = {}
+        for item in items_to_save:
+            check_point[item] = getattr(self, item)
+        check_point["cam_t"] = self.cam_t.to_numpy()
+        check_point["accumulation"] = self.color.to_numpy()
+        check_point["counter"] = self.cnt[None]
+        return check_point
+    
+    def load_check_point(self, check_point: dict):
+        """ Compare some basic configs (for consistency), if passed
+            load the information into the current renderer
+        """
+        for key, val in check_point.items():
+            if key not in {"accumulation", "counter", "cam_t", "cam_orient"}:
+                if val == getattr(self, key): continue
+            elif key == "cam_t":
+                if np.abs(val - self.cam_t.to_numpy()).max() < 1e-4: continue
+            elif key == "cam_orient":
+                if np.abs(val - self.cam_orient).max() < 1e-4: continue
+            else: continue
+            CONSOLE.log(f"[bold red]:skull: Error: '{key}' from the checkpoint is different.")
+            exit(1)
+        CONSOLE.log(f"[bold green]Recovered from check-point, elapsed counter: {check_point['counter']}")
+        self.color.from_numpy(check_point["accumulation"])
+        self.cnt[None] = check_point["counter"]
+
     def read_store_texture(self):
-        
+        """TODO: this will be v1.2.2"""
         pass
 
     def prepare_for_bvh(self, objects: List[ObjDescriptor]):

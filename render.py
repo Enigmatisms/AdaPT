@@ -4,6 +4,7 @@
     @date: 2023.2.7
 """
 import os
+import pickle
 import numpy as np
 import taichi as ti
 import taichi.ui as tui
@@ -22,7 +23,7 @@ from parsers.xml_parser import mitsuba_parsing
 from parsers.opts import get_options, mapped_arch
 
 from utils.rich_utils import ItersPerSecColumn
-from rich.progress import (BarColumn, Progress, TaskProgressColumn, TextColumn, SpinnerColumn, 
+from rich.progress import (BarColumn, Progress, MofNCompleteColumn, TextColumn, SpinnerColumn, 
                            TimeElapsedColumn, TimeRemainingColumn)
 from rich.console import Console
 
@@ -55,6 +56,11 @@ def export_transient_profile(
         CONSOLE.log(f":minidisc: Analyzing time domain information... :minidisc:")
         time_domain_curve(all_files, name = out_name, viz = False)
 
+def save_check_point(chkpt: dict, opts):
+    chkpt_path = os.path.join(folder_path(opts.chkpt_path), f"{opts.img_name}-{opts.name[:-4]}-{opts.type}.pkl")
+    with open(chkpt_path, 'wb') as file:
+        pickle.dump(chkpt, file, protocol = pickle.HIGHEST_PROTOCOL)
+
 if __name__ == "__main__":
     opts = get_options()
     cache_path = folder_path(f"./cached/{opts.scene}", f"Cache path for scene {opts.scene} not found. JIT compilation might take some time (~30s)...")
@@ -71,6 +77,7 @@ if __name__ == "__main__":
         CONSOLE.log("[bold yellow] Transient rendering is only supported in BDPT renderer.")
 
     max_iter_num = opts.iter_num if opts.iter_num > 0 else configs.get('iter_num', 2000)
+    max_iter_num += 1                                   # we start from 1
     iter_cnt = 0
     
     eye_start = configs.get('start_t', 1)
@@ -85,38 +92,60 @@ if __name__ == "__main__":
     else:
         CONSOLE.log(f"{name_mapping[opts.type]}Path Tracing with {max_bounce} bounce(s)")
 
+    if opts.load:
+        chkpt_path = os.path.join(folder_path(opts.chkpt_path), f"{opts.img_name}-{opts.name[:-4]}-{opts.type}.pkl")
+        with open(chkpt_path, 'rb') as file:
+            chkpt = pickle.load(file) 
+        rdr.load_check_point(chkpt)
+
+    CONSOLE.rule()
+    progress = Progress(
+        TextColumn(":movie_camera: Rendering :movie_camera:"),
+        SpinnerColumn(),
+        BarColumn(),
+        MofNCompleteColumn(),
+        ItersPerSecColumn(suffix="fps"),
+        TextColumn(" | ETA: "),
+        TimeRemainingColumn(elapsed_when_finished=True),
+        TextColumn(" | elasped: "),
+        TimeElapsedColumn()
+    )
+
     if opts.no_gui:
         try:
-            for iter_cnt in tqdm(range(max_iter_num)):
-                rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)
+            with progress:
+                for iter_cnt in progress.track(range(max_iter_num), description=""):
+                    if opts.save_iter > 0 and (iter_cnt % opts.save_iter == 0):
+                        chkpt = rdr.save_check_point()
+                        save_check_point(chkpt, opts)
+                    rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)
         except KeyboardInterrupt:
+            if opts.save_iter > 0:
+                chkpt = rdr.save_check_point()
+                save_check_point(chkpt, opts)
             CONSOLE.log(":ok: Quit on Keyboard interruptions")
     else:
-        window   = tui.Window(f"{name_mapping[opts.type]}Path Tracing", res = (rdr.w, rdr.h))
+        window = tui.Window(f"{name_mapping[opts.type]}Path Tracing", res = (rdr.w, rdr.h))
         canvas = window.get_canvas()
         gui = window.get_gui()
-        CONSOLE.rule()
-        progress = Progress(
-            TextColumn(":movie_camera: Rendering :movie_camera:"),
-            SpinnerColumn(),
-            BarColumn(),
-            TaskProgressColumn(show_speed=True),
-            ItersPerSecColumn(suffix="fps"),
-            TextColumn(" | ETA: "),
-            TimeRemainingColumn(elapsed_when_finished=True),
-            TextColumn(" | elasped: "),
-            TimeElapsedColumn()
-        )
+
         with progress:
-            for iter_cnt in progress.track(range(max_iter_num), description=""):
+            for iter_cnt in progress.track(range(1, max_iter_num), description=""):
                 rdr.reset()
                 for e in window.get_events(tui.PRESS):
                     if e.key == tui.ESCAPE:
                         window.running = False
                 rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)
+                if opts.save_iter > 0 and (iter_cnt % opts.save_iter == 0):
+                    chkpt = rdr.get_check_point()
+                    save_check_point(chkpt, opts)
                 canvas.set_image(rdr.pixels)
                 window.show()
-                if window.running == False: break
+                if window.running == False: 
+                    if opts.save_iter > 0:
+                        chkpt = rdr.get_check_point()
+                        save_check_point(chkpt, opts)
+                    break
                 if output_freq > 0 and iter_cnt % output_freq == 0:
                     image = rdr.pixels.to_numpy()
                     ti.tools.imwrite(image, f"{output_folder}img_{iter_cnt:05d}.{opts.img_ext}")

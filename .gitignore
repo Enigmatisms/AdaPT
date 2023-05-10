@@ -8,4 +8,5 @@ ti_tests/**
 **/__pycache__
 .vscode/bookmarks.json
 
+checkpoint/*
 !assets/*.png

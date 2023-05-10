@@ -84,6 +84,10 @@ class TracerBase:
         self.obj_info  = ti.field(int, (self.num_objects, 3))
         self.cnt       = ti.field(int, ())                          # useful in path tracer (sample counter)
 
+    def get_check_point(self):
+        """Only offered in PathTracer"""
+        raise NotImplementedError("Checkpoint saver is not implemented in TracerBase.")
+
     def __repr__(self):
         """
             For debug purpose
