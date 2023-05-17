@@ -17,7 +17,7 @@ from typing import List
 from la.cam_transform import *
 
 from parsers.obj_desc import ObjDescriptor
-from parsers.xml_parser import mitsuba_parsing
+from parsers.xml_parser import scene_parsing
 from renderer.constants import INV_PI, INV_2PI
 
 __eps__ = 1e-4
@@ -73,12 +73,16 @@ class TracerBase:
         self.aabbs      = ti.Vector.field(3, float, (self.num_objects, 2))
         self.normals    = ti.Vector.field(3, float)
         self.prims      = ti.Vector.field(3, float)                             # leveraging SSDS, shape (N, mesh_num, 3) - vector3d
+        self.uv_coords  = ti.Vector.field(2, float)                             # uv coordinates
         self.precom_vec = ti.Vector.field(3, float)
         self.pixels     = ti.Vector.field(3, float, (self.w, self.h))           # output: color
 
         self.dense_nodes = ti.root.dense(ti.i, self.num_prims)
         self.dense_nodes.place(self.normals)
-        self.dense_nodes.dense(ti.j, 3).place(self.prims, self.precom_vec)      # for simple shapes, this would be efficient
+
+        self.prim_handle = self.dense_nodes.dense(ti.j, 3)
+        self.prim_handle.place(self.prims, self.precom_vec)      # for simple shapes, this would be efficient
+        self.prim_handle.place(self.uv_coords)
 
         # pos0: start_idx, pos1: number of primitives, pos2: obj_id (being triangle / sphere? Others to be added, like cylinder, etc.)
         self.obj_info  = ti.field(int, (self.num_objects, 3))
@@ -238,5 +242,5 @@ class TracerBase:
     
 if __name__ == "__main__":
     ti.init()
-    _, _, meshes, configs = mitsuba_parsing("../scene/test/", "test.xml")
+    _, meshes, configs = scene_parsing("../scene/test/", "test.xml")
     base = TracerBase(meshes, configs)

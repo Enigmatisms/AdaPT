@@ -16,6 +16,9 @@ from numpy import ndarray as Arr
 
 from bxdf.brdf import BRDF_np
 from bxdf.bsdf import BSDF_np
+from bxdf.texture import Texture_np
+
+from texture_packing import image_packer
 
 from parsers.obj_loader import *
 from parsers.world import World_np
@@ -76,7 +79,9 @@ def parse_emitters(em_elem: list):
             raise ValueError(f"Source [{emitter_type}] is not implemented.")
     return sources, source_id_dict
 
-def parse_wavefront(directory: str, obj_list: List[xet.Element], bsdf_dict: dict, emitter_dict: dict) -> List[Arr]:
+def parse_wavefront(
+    directory: str, obj_list: List[xet.Element], 
+    bsdf_dict: dict, emitter_dict: dict, texture_dict: List[Texture_np]) -> List[Arr]:
     """
         Parsing wavefront obj file (filename) from list of xml nodes    
     """
@@ -85,12 +90,11 @@ def parse_wavefront(directory: str, obj_list: List[xet.Element], bsdf_dict: dict
     # We need to calculate surface area of the object mesh first (asuming each triangle has similar area)
     attached_area_dict = {}
     for elem in obj_list:
-        trans_r, trans_t = None, None                           # transform
+        uvs, trans_r, trans_t = None, None, None                           # uv_coordinates and transform
         obj_type = 0
         if elem.get("type") == "obj":
-            # TODO: UV coordinates to be added
             filepath_child       = elem.find("string")
-            meshes, normals, _uv = extract_obj_info(os.path.join(directory, filepath_child.get("value")))
+            meshes, normals, uvs = extract_obj_info(os.path.join(directory, filepath_child.get("value")))
             transform_child      = elem.find("transform")
             if transform_child is not None:
                 trans_r, trans_t    = transform_parse(transform_child)
@@ -98,19 +102,24 @@ def parse_wavefront(directory: str, obj_list: List[xet.Element], bsdf_dict: dict
         else:                   # CURRENTLY, only sphere is supported
             meshes, normals = parse_sphere_element(elem)
             obj_type = 1
-        ref_childs     = elem.findall("ref")        
-        bsdf_item      = None
-        emitter_ref_id = -1
+        ref_childs   = elem.findall("ref")        
+        bsdf_item    = None
+        texture      = None
+        emit_ref_id  = -1
         for ref_child in ref_childs:
             ref_type = ref_child.get("type")
+            ref_id = ref_child.get("id")
             if ref_type == "material":
-                bsdf_item = bsdf_dict[ref_child.get("id")]
+                bsdf_item = bsdf_dict[ref_id]
             elif ref_type == "emitter":
-                emitter_ref_id = emitter_dict[ref_child.get("id")]
-                attached_area_dict[emitter_ref_id] = calculate_surface_area(meshes, obj_type)
+                emit_ref_id = emitter_dict[ref_id]
+                attached_area_dict[emit_ref_id] = calculate_surface_area(meshes, obj_type)
+            elif ref_type == "texture":
+                texture = texture_dict[ref_id]
+            
         if bsdf_item is None:
             raise ValueError("Object should be attached with a BSDF for now since no default one implemented yet.")
-        all_objs.append(ObjDescriptor(meshes, normals, bsdf_item, trans_r, trans_t, emit_id = emitter_ref_id, _type = obj_type))
+        all_objs.append(ObjDescriptor(meshes, normals, bsdf_item, uvs, texture, trans_r, trans_t, emit_ref_id, obj_type))
     return all_objs, attached_area_dict
 
 def parse_bxdf(bxdf_list: List[xet.Element]):
@@ -130,6 +139,18 @@ def parse_bxdf(bxdf_list: List[xet.Element]):
             CONSOLE.log(f"[yellow]Warning: BXDF[/yellow] {bxdf_id} [bold yellow]re-defined[/bold yellow] in XML file. Overwriting the existing BXDF.")
         results[bxdf_id] = bxdf
     return results
+
+def parse_texture(texture_list: List[xet.Element]):
+    """ Parsing Textures
+        return List of Texture_np
+    """
+    if len(texture_list) == 0:
+        return None, None
+    textures = []
+    for texture in texture_list:
+        textures.append(Texture_np(texture))
+    # Do texture packing
+    return image_packer(textures)
 
 def parse_world(world_elem: xet.Element):
     world = World_np(world_elem)
@@ -160,7 +181,7 @@ def parse_global_sensor(sensor_elem: xet.Element):
     return sensor_config
 
 @timing()
-def mitsuba_parsing(directory: str, file: str):
+def scene_parsing(directory: str, file: str):
     xml_file = os.path.join(directory, file)
     CONSOLE.log(f":fax: Parsing XML file from '{xml_file}'")
     node_tree = xet.parse(xml_file)
@@ -170,6 +191,7 @@ def mitsuba_parsing(directory: str, file: str):
         raise ValueError(f"Unsupported version {version_tag}. Only '{__VERSION__}' is supported right now.")  
     # Export list of dict for emitters / dict for other secen settings and film settings / list for obj files
     bxdf_nodes       = root_node.findall("bsdf") + root_node.findall("brdf")
+    texture_nodes    = root_node.findall("texture")
     emitter_nodes    = root_node.findall("emitter")
     shape_nodes      = root_node.findall("shape")
     sensor_node      = root_node.find("sensor")
@@ -178,12 +200,14 @@ def mitsuba_parsing(directory: str, file: str):
     emitter_configs, \
     emitter_dict     = parse_emitters(emitter_nodes)
     bsdf_dict        = parse_bxdf(bxdf_nodes)
-    meshes, area_lut = parse_wavefront(directory, shape_nodes, bsdf_dict, emitter_dict)
+    teximg, textures = parse_texture(texture_nodes)
+    meshes, area_lut = parse_wavefront(directory, shape_nodes, bsdf_dict, emitter_dict, textures)
     configs          = parse_global_sensor(sensor_node)
     configs['world'] = parse_world(world_node)
+    configs['packed_texture'] = teximg
     emitter_configs  = update_emitter_config(emitter_configs, area_lut)
-    return emitter_configs, bsdf_dict, meshes, configs
+    return emitter_configs, meshes, configs
 
 if __name__ == "__main__":
-    emitter_configs, bsdf_configs, meshes, configs = mitsuba_parsing("../scenes/", "cbox/complex.xml")
-    print(emitter_configs, bsdf_configs, meshes, configs)
+    emitter_configs, meshes, configs = scene_parsing("../scenes/", "cbox/complex.xml")
+    print(emitter_configs, meshes, configs)

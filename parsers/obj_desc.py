@@ -26,7 +26,10 @@ def get_aabb(meshes: Arr, _type: int = 0) -> Arr:
 
 
 class ObjDescriptor:
-    def __init__(self, meshes, normals, bsdf, R = None, t = None, emit_id = -1, _type = 0):
+    def __init__(
+        self, meshes, normals, bsdf, uv_coords = None,
+        texture = None, R = None, t = None, emit_id = -1, _type = 0
+    ):
         """
             Inputs are objects on which transformations have been applied already
             - emit_id: if not zero: meaning that this object has an attached emitter
@@ -34,10 +37,13 @@ class ObjDescriptor:
         """
         self.tri_num = meshes.shape[0]
         self.meshes = meshes
+        self.uv_coords = uv_coords
         self.normals = normals
+        # TODO: maybe we should work on shading normals in the future
         self.R = R
         self.t = t
         self.bsdf = bsdf                           # object can have BSDF (BRDF + BTDF)
+        self.texture = texture
         self.aabb = get_aabb(meshes, _type)        # of shape (2, 3)
         self.emitter_ref_id = emit_id
         self.type = _type

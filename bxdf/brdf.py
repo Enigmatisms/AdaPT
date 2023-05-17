@@ -19,6 +19,9 @@ from sampler.general_sampling import *
 from parsers.general_parser import rgb_parse
 from renderer.constants import INV_PI, ZERO_V3
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 __all__ = ['BRDF_np', 'BRDF']
 
 EPS = 1e-7
@@ -51,10 +54,16 @@ class BRDF_np:
         self.ka_default = True
         self.uv_coords = None
 
+        texture_nodes = elem.findall("texture")
+        if len(texture_nodes) > 1:
+            CONSOLE.log(f":warning: Warning: Only one texture is supported in a BR(S)DF. Some textures might be shadowed for <{self.id}>.")
         rgb_nodes = elem.findall("rgb")
+        if not rgb_node and not texture_nodes:
+            CONSOLE.log(f":warning: Warning: BSDF <{self.id}> has no surface color / textures defined.")
         for rgb_node in rgb_nodes:
             name = rgb_node.get("name")
-            if name is None: raise ValueError(f"RGB node in Blinn-phong BRDF <{elem.get('id')}> has empty name.")
+            if name is None: 
+                raise ValueError(f"RGB node in BR(S)DF <{elem.get('id')}> has empty name.")
             if name in BRDF_np.__all_albedo_name:
                 self.k_d = rgb_parse(rgb_node)
                 self.kd_default = False

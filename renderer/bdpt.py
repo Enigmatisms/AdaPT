@@ -229,7 +229,7 @@ class BDPT(VolumeRenderer):
 
         while True:
             # Step 1: ray intersection
-            obj_id, normal, min_depth, _u, _v = self.ray_intersect(ray_d, ray_o)
+            obj_id, normal, min_depth, _p, _u, _v = self.ray_intersect(ray_d, ray_o)
 
             if obj_id < 0:     
                 if not self.world_scattering: break     # nothing is hit, break

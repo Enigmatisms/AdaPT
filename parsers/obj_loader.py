@@ -7,7 +7,6 @@ __all__ = ['extract_obj_info', 'apply_transform', 'calculate_surface_area']
 
 import numpy as np
 import pywavefront as pwf
-import xml.etree.ElementTree as xet
 
 from numpy import ndarray as Arr
 

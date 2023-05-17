@@ -18,7 +18,7 @@ from emitters.point import PointSource
 from tracer.tracer_base import TracerBase
 
 from parsers.obj_desc import ObjDescriptor
-from parsers.xml_parser import mitsuba_parsing
+from parsers.xml_parser import scene_parsing
 
 REDENDER_DEPTH = True
 
@@ -72,7 +72,7 @@ class BlinnPhongTracer(TracerBase):
     def render(self, emit_pos: vec3):
         for i, j in self.pixels:
             ray = self.pix2ray(i, j)
-            obj_id, normal, min_depth, _u, _v = self.ray_intersect(ray, self.cam_t)
+            obj_id, normal, min_depth, _p, _u, _v = self.ray_intersect(ray, self.cam_t)
             # Iterate through all the meshes and find the minimum depth
             if obj_id >= 0:
                 if ti.static(REDENDER_DEPTH):
@@ -99,7 +99,7 @@ class BlinnPhongTracer(TracerBase):
 if __name__ == "__main__":
     profiling = False
     ti.init(arch = ti.cuda, kernel_profiler = profiling)
-    emitter_configs, _, meshes, configs = mitsuba_parsing("../scenes/cbox/", "cbox-point.xml")
+    emitter_configs, meshes, configs = scene_parsing("../scenes/cbox/", "cbox-point.xml")
     emitter = emitter_configs[0]
     emitter_pos = vec3(emitter.pos)
     bpt = BlinnPhongTracer(emitter, meshes, configs)

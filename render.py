@@ -19,7 +19,7 @@ from la.cam_transform import *
 from utils.tools import folder_path
 from utils.watermark import apply_watermark
 from utils.tdom_analyze import time_domain_curve
-from parsers.xml_parser import mitsuba_parsing
+from parsers.xml_parser import scene_parsing
 from parsers.opts import get_options, mapped_arch
 
 from utils.rich_utils import ItersPerSecColumn
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     ti.init(arch = mapped_arch(opts.arch), kernel_profiler = opts.profile, device_memory_fraction = 0.8, offline_cache = not opts.no_cache, \
             default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path, debug = opts.debug)
     input_folder = os.path.join(opts.input_path, opts.scene)
-    emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, opts.name)  # complex_cornell
+    emitter_configs, meshes, configs = scene_parsing(input_folder, opts.name)  # complex_cornell
     output_folder = f"{folder_path(opts.output_path)}"
     output_freq = opts.output_freq
     if output_freq > 0:

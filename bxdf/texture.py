@@ -13,13 +13,14 @@ import cv2 as cv
 import numpy as np
 import taichi as ti
 import taichi.math as tm
-import taichi.types as ttype
+import xml.etree.ElementTree as xet
+
+from parsers.general_parser import rgb_parse, get
 from taichi.math import vec3
 from rich.console import Console
+from renderer.constants import ZERO_V3
 CONSOLE = Console(width = 128)
 
-MODE_IMAGE = 0
-MODE_CHECKER = 1
 
 """
     FIXME: to be deleted. This is for simple design consideration
@@ -29,46 +30,82 @@ MODE_CHECKER = 1
 """
 
 class Texture_np:
-    def __init__(self, path: str, max_size = 1024) -> None:
-        if not os.path.exists(path):
-            CONSOLE.log(f"[yellow]:warning: Warning: texture from '{path}' does not exist. Returing None")
-        if path is None:
-            self.mode = MODE_CHECKER
-            with open(path, 'r', encoding = 'utf-8') as file:
-                self.json_data = json.load(file)
+    MODE_IMAGE = 0
+    MODE_CHECKER = 1
+    def __init__(self, elem: xet.Element, max_size = 1024) -> None:
+        self.max_size = max_size
+        self.id = elem.get("id")
+        self.type = elem.get("type")
+        self.c1 = np.zeros(3)
+        self.c2 = np.ones(3)
+        self.scale_u = 1.
+        self.scale_v = 1.
+        self.off_x = 0
+        self.off_y = 0
+        self.img_id = -1
+        if self.type == "checkerboard":
+            self.mode = Texture_np.MODE_CHECKER
+            # load checkboard config from xml
+            rgb_nodes = elem.findall("rgb")
+            num_rgb = len(rgb_nodes)
+            if num_rgb > 0:
+                self.c1 = rgb_parse(rgb_nodes[0])
+                if num_rgb > 1:
+                    self.c2 = rgb_parse(rgb_nodes[1])
         else:
-            self.mode = MODE_IMAGE
-            self.texture_path = path
-            self.texture_img  = None
-            texture_img = cv.imread(path)
-            texture_img = cv.cvtColor(texture_img, cv.COLOR_BGR2RGB)
-            self.h, self.w, _ = texture_img.shape
+            self.mode = Texture_np.MODE_IMAGE
+            file_path = elem.find("string").get("filepath")
+            if not os.path.exists(file_path):
+                raise ValueError(f"Texture image input path '{file_path}' does not exist.")
+            else:
+                self.texture_path = file_path
+                self.texture_img  = None
+                texture_img = cv.imread(file_path)
+                texture_img = cv.cvtColor(texture_img, cv.COLOR_BGR2RGB)
+                self.h, self.w, _ = texture_img.shape
 
-            if self.h > max_size or self.w > max_size:
-                self.w = min(self.w, max_size)
-                self.h = min(self.h, max_size)
-                texture_img = cv.resize(texture_img, (self.w, self.h))
-            self.texture_img = texture_img
+                if self.h > max_size or self.w > max_size:
+                    self.w = min(self.w, max_size)
+                    self.h = min(self.h, max_size)
+                    texture_img = cv.resize(texture_img, (self.w, self.h))
+                self.texture_img = texture_img
+        float_nodes = elem.findall("float")
+        for float_n in float_nodes:
+            name = float_n.get("name")
+            if name in {"scale_u", "scale_v"}:
+                self.__setattr__(name, get(float_n, name))
+            else:
+                CONSOLE.log(f"[yellow]:warning: Warning: <{name}> not used in loading textures")
 
     def export(self):
-        pass
+        return Texture(type = self.type, off_x = self.off_x, off_y = self.off_y, w = self.w, h = self.h,
+            scale_u = self.scale_u, scale_v = self.scale_v, color1 = self.c1, color2 = self.c2
+        )
+    
+    @staticmethod
+    def default():
+        return Texture(type = -255, off_x = 0, off_y = 0, w = 0, h = 0,
+            scale_u = 1, scale_v = 1, color1 = ZERO_V3, color2 = ZERO_V3
+        )
 
 @ti.dataclass
 class Texture:
-    id: int         # id to field represented texture, -1 means checker board
-    w: float        # query will be scaled (bilerped) to (w, h)
-    h: float
-    scale_u: float  # scale factor for u axis: the uv coordinates of a vertex will be multiplied by this
-    scale_v: float  # scale factor for v axis
-    color1: vec3    # for checker board
-    color2: vec3
+    img_id:     int     # id to field represented texture, -1 means checker board -255 means invalid
+    off_x:      int     # offset for x axis (in the packed texture image)
+    off_y:      int     # offset for y axis (in the packed texture image)
+    w:          int     # query will be scaled (bilerped) to (w, h)
+    h:          int
+    scale_u:    float   # scale factor for u axis: the uv coordinates of a vertex will be multiplied by this
+    scale_v:    float   # scale factor for v axis
+    color1:     vec3    # for checker board
+    color2:     vec3
 
     @ti.func
     def query(self, textures: ti.template, obj_id: int, u: float, v: float):
         """ u, v is uv_coordinates, which might be fetched by triangle barycentric coords (lerp)
             TODO: maybe I should use (pointer) + (dynamic) field here to represent texture with different shape 
         """
-        img = textures[obj_id]
+        
         scaled_u = (u * self.scale_u).__mod__(self.w - 1.)
         scaled_v = (v * self.scale_v).__mod__(self.h - 1.)
         floor_u = tm.floor(scaled_u, float)

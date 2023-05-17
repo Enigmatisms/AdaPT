@@ -12,7 +12,7 @@ sys.path.append("..")
 import numpy as np
 import taichi as ti
 import taichi.math as tm
-from taichi.math import vec3
+from taichi.math import vec2, vec3
 
 from typing import List
 from la.cam_transform import *
@@ -21,9 +21,10 @@ from emitters.abtract_source import LightSource, TaichiSource
 
 from bxdf.brdf import BRDF
 from bxdf.bsdf import BSDF, BSDF_np
+from bxdf.texture import Texture, Texture_np
 from parsers.opts import get_options
 from parsers.obj_desc import ObjDescriptor
-from parsers.xml_parser import mitsuba_parsing
+from parsers.xml_parser import scene_parsing
 from renderer.constants import TRANSPORT_UNI, INV_2PI, INV_PI
 
 from sampler.general_sampling import *
@@ -63,10 +64,21 @@ class PathTracer(TracerBase):
         self.src_field  = TaichiSource.field()
         self.brdf_field = BRDF.field()
         self.bsdf_field = BSDF.field()
+        self.textures   = Texture.field()
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
         self.brdf_nodes = ti.root.bitmasked(ti.i, self.num_objects)
         self.brdf_nodes.place(self.brdf_field)                              # BRDF Taichi storage
         ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
+        ti.root.bitmasked(ti.i, self.num_objects).place(self.textures)
+
+        if prop["packed_texture"] is None:
+            self.texture_img = ti.ndarray(vec3, (1, 1))
+        else:
+            image = prop["packed_texture"]
+            tex_h, tex_w, _  = image.shape
+            self.texture_img = ti.ndarray(vec3, (tex_w, tex_h))
+            self.texture_img.from_numpy(image)
+            CONSOLE.log(f"Packed texture images loaded: ({tex_w}, {tex_h})")
 
         CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
         self.initialze(emitters, objects)
@@ -139,10 +151,6 @@ class PathTracer(TracerBase):
         self.color.from_numpy(check_point["accumulation"])
         self.cnt[None] = check_point["counter"]
 
-    def read_store_texture(self):
-        """TODO: this will be v1.2.2"""
-        pass
-
     def prepare_for_bvh(self, objects: List[ObjDescriptor]):
         primitives = []
         obj_info = np.zeros((2, len(objects)), dtype = np.int32)        
@@ -159,6 +167,7 @@ class PathTracer(TracerBase):
         return primitives, obj_info
 
     def initialze(self, emitters: List[LightSource], objects: List[ObjDescriptor]):
+        self.uv_coords.fill(0)
         for i, emitter in enumerate(emitters):
             self.src_field[i] = emitter.export()
             self.src_field[i].obj_ref_id = -1
@@ -178,6 +187,13 @@ class PathTracer(TracerBase):
                     self.precom_vec[cur_id, 0] = self.prims[cur_id, 0]
                     self.precom_vec[cur_id, 1] = self.prims[cur_id, 1]           
                 self.normals[cur_id] = vec3(normal) 
+            if obj.uv_coords:
+                for j, uv_coord in enumerate(obj.uv_coords):
+                    cur_id = acc_prim_num + j
+                    self.uv_coords[cur_id, 0] = vec2[uv_coord[0]]
+                    self.uv_coords[cur_id, 1] = vec2[uv_coord[1]]
+                    self.uv_coords[cur_id, 2] = vec2[uv_coord[2]]
+
             self.obj_info[i, 0] = acc_prim_num
             self.obj_info[i, 1] = obj.tri_num
             self.obj_info[i, 2] = obj.type
@@ -187,12 +203,24 @@ class PathTracer(TracerBase):
                 self.bsdf_field[i]  = obj.bsdf.export()
             else:
                 self.brdf_field[i]  = obj.bsdf.export()
+            if obj.texture is None:
+                self.textures[i] = Texture_np.default()
+            else:
+                self.textures[i] = obj.texture.export()
             self.aabbs[i, 0]    = vec3(obj.aabb[0])        # unrolled
             self.aabbs[i, 1]    = vec3(obj.aabb[1])
             emitter_ref_id      = obj.emitter_ref_id
             self.emitter_id[i]  = emitter_ref_id
             if emitter_ref_id  >= 0:
                 self.src_field[emitter_ref_id].obj_ref_id = i
+
+    @ti.func
+    def get_uv(self, obj_id: int, prim_id: int, u: float, v: float):
+        is_sphere = self.obj_info[obj_id, 2]
+        if is_sphere == 0:
+            u, v = self.uv_coords[prim_id, 1] * u + self.uv_coords[prim_id, 2] * v + \
+                self.uv_coords[prim_id, 0] * (1. - u - v)
+        return u, v
 
     @ti.func
     def bvh_intersect(self, bvh_id, ray, start_p):
@@ -222,7 +250,7 @@ class PathTracer(TracerBase):
             if u >= 0 and v >= 0 and u + v <= 1.0:
                 ray_t = t
         return ray_t, obj_idx, prim_idx, is_sphere, u, v
-
+    
     @ti.func
     def ray_intersect_bvh(self, ray: vec3, start_p, min_depth = -1.0):
         # FIXME: major revision should be made. In order to properly use texture
@@ -269,7 +297,8 @@ class PathTracer(TracerBase):
                 coord_v = tm.acos(normal[2]) * INV_PI
             else:
                 normal = self.normals[prim_id]
-        return (obj_id, normal, min_depth, coord_u, coord_v)
+        # The returned coord_u and coord_v is not the actual uv coords (but for one specific primitive)
+        return (obj_id, normal, min_depth, prim_id, coord_u, coord_v)
     
     @ti.func
     def does_intersect_bvh(self, ray, start_p, min_depth = -1.0):
@@ -416,5 +445,5 @@ if __name__ == "__main__":
     options = get_options()
     ti.init(arch = ti.vulkan, kernel_profiler = options.profile, default_ip = ti.int32, default_fp = ti.f32)
     input_folder = os.path.join(options.input_path, options.scene)
-    emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, options.name)  # complex_cornell
+    emitter_configs, meshes, configs = scene_parsing(input_folder, options.name)  # complex_cornell
     pt = PathTracer(emitter_configs, meshes, configs)
