@@ -25,7 +25,7 @@ from bxdf.texture import Texture, Texture_np
 from parsers.opts import get_options
 from parsers.obj_desc import ObjDescriptor
 from parsers.xml_parser import scene_parsing
-from renderer.constants import TRANSPORT_UNI, INV_2PI, INV_PI
+from renderer.constants import TRANSPORT_UNI, INV_2PI, INV_PI, INVALID
 
 from sampler.general_sampling import *
 from utils.tools import TicToc
@@ -33,6 +33,15 @@ from tracer.ti_bvh import LinearBVH, LinearNode, export_python_bvh
 
 from rich.console import Console
 CONSOLE = Console(width = 128)
+
+"""
+    2023-5-18: There is actually tremendous amount of work to do
+    1. BRDF/BSDF should incorporate Texture, there is a way to by-pass this
+        1. Pass the UV-queried color into the functions (could be painful)
+        2. store the uv_color in the vertex (for evaluation during BDPT)
+        This is by-far the simplest solution
+    TODO: many APIs should be modified
+"""
 
 @ti.data_oriented
 class PathTracer(TracerBase):
@@ -215,15 +224,21 @@ class PathTracer(TracerBase):
                 self.src_field[emitter_ref_id].obj_ref_id = i
 
     @ti.func
-    def get_uv(self, obj_id: int, prim_id: int, u: float, v: float):
-        is_sphere = self.obj_info[obj_id, 2]
-        if is_sphere == 0:
-            u, v = self.uv_coords[prim_id, 1] * u + self.uv_coords[prim_id, 2] * v + \
-                self.uv_coords[prim_id, 0] * (1. - u - v)
-        return u, v
+    def get_uv_color(self, obj_id: int, prim_id: int, u: float, v: float):
+        """ Convert primitive local UV to the global UV coord for an object """
+        has_texture = self.textures[obj_id].img_id > -255
+        color = INVALID
+        if has_texture:
+            is_sphere = self.obj_info[obj_id, 2]
+            if is_sphere == 0:          # not a sphere
+                u, v = self.uv_coords[prim_id, 1] * u + self.uv_coords[prim_id, 2] * v + \
+                    self.uv_coords[prim_id, 0] * (1. - u - v)
+            color = self.textures[obj_id].query(self.texture_img, u, v)
+        return color
 
     @ti.func
     def bvh_intersect(self, bvh_id, ray, start_p):
+        """ Intersect Ray with a BVH node """
         obj_idx, prim_idx = self.lin_bvhs[bvh_id].get_info()
         is_sphere = self.obj_info[obj_idx, 2]
         ray_t = -1.

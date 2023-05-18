@@ -27,6 +27,8 @@ CONSOLE = Console(width = 128)
     (1) textures can be loaded from images or use a checkerboard
     (2) detailed settings like scale and checker colors can be done in xml file
     (3) query is based on bilinear interpolation
+
+    FIXME: texture should be part of the BRDF
 """
 
 class Texture_np:
@@ -101,18 +103,25 @@ class Texture:
     color2:     vec3
 
     @ti.func
-    def query(self, textures: ti.template, obj_id: int, u: float, v: float):
+    def query(self, textures: ti.template, u: float, v: float):
         """ u, v is uv_coordinates, which might be fetched by triangle barycentric coords (lerp)
-            TODO: maybe I should use (pointer) + (dynamic) field here to represent texture with different shape 
         """
-        
         scaled_u = (u * self.scale_u).__mod__(self.w - 1.)
         scaled_v = (v * self.scale_v).__mod__(self.h - 1.)
         floor_u = tm.floor(scaled_u, float)
         floor_v = tm.floor(scaled_v, float)
+        ratio_u = scaled_u - floor_u
+        ratio_v = scaled_v - floor_v
+        comp_ratio_u = 1. - ratio_u
+        comp_ratio_v = 1. - ratio_v
+
+        floor_u += self.off_x
+        floor_v += self.off_y
         ceil_u  = floor_u + 1.
         ceil_v  = floor_v + 1.
-
-        pass
+        # lerp
+        color = textures[floor_u, floor_v] * comp_ratio_u * comp_ratio_v + textures[ceil_u, floor_v] * ratio_u * comp_ratio_u + \
+            textures[floor_u, ceil_v] * comp_ratio_u * ratio_v + textures[ceil_u, ceil_v] * ratio_u * ratio_v
+        return color
 
 
