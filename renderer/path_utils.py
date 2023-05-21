@@ -16,7 +16,7 @@ def remap_pdf(x: float) -> float:
 @ti.dataclass
 class Vertex:
     """
-        A 64-Byte Path Vertex
+        A (64 + 12)-Byte Path Vertex
     """
     _type:      ti.i8       # 0 for surface, 1 for medium, 2 for light, 3 for camera
     obj_id:     ti.i8       # hit object (BSDF) id
@@ -33,6 +33,7 @@ class Vertex:
     pos:        vec3        # hit pos
     ray_in:     vec3        # incident ray direction (towards pos)
     beta:       vec3        # path throughput
+    tex:        vec3        # texture color (used to calculate color during BDPT connection)
 
     @ti.func
     def set_pdf_bwd(self, pdf: float, next_point: vec3):

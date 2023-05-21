@@ -229,7 +229,7 @@ class BDPT(VolumeRenderer):
 
         while True:
             # Step 1: ray intersection
-            obj_id, normal, min_depth, _p, _u, _v = self.ray_intersect(ray_d, ray_o)
+            obj_id, normal, min_depth, prim_id, u_coord, v_coord = self.ray_intersect(ray_d, ray_o)
 
             if obj_id < 0:     
                 if not self.world_scattering: break     # nothing is hit, break
@@ -263,9 +263,10 @@ class BDPT(VolumeRenderer):
             is_delta = (not is_mi) and self.is_delta(obj_id)
             bool_bits = BDPT.get_bool(d_delta = is_delta, is_area = (hit_light >= 0), in_fspace = in_free_space, is_delta = is_delta)
             
+            tex = self.get_uv_color(obj_id, prim_id, u_coord, v_coord)
             vertex_args = {"_type": ti.select(is_mi, VERTEX_MEDIUM, VERTEX_SURFACE), "obj_id": obj_id, "emit_id": hit_light, 
                 "bool_bits": bool_bits, "pdf_fwd": pdf_fwd, "time": acc_time, "pos": hit_point,
-                "normal": ti.select(is_mi, ZERO_V3, normal), "ray_in": ray_d, "beta": throughput                
+                "normal": ti.select(is_mi, ZERO_V3, normal), "ray_in": ray_d, "beta": throughput, "tex": tex            
             }
             vertex_num += 1
             if transport_mode == TRANSPORT_IMP:         # Camera path
@@ -282,7 +283,7 @@ class BDPT(VolumeRenderer):
 
             # Step 5: sample new ray. This should distinguish between surface and medium interactions
             old_ray_d = ray_d
-            ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, old_ray_d, normal, is_mi, in_free_space, transport_mode)
+            ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, old_ray_d, normal, is_mi, in_free_space, transport_mode, tex)
             ray_o = hit_point
             pdf_bwd = ray_pdf
             if not is_mi:
@@ -293,7 +294,7 @@ class BDPT(VolumeRenderer):
                     pdf_bwd = 0.
                 else:
                     # Step 6: re-evaluate backward PDF
-                    pdf_bwd = self.surface_pdf(obj_id, -old_ray_d, normal, -ray_d)
+                    pdf_bwd = self.surface_pdf(obj_id, -old_ray_d, normal, -ray_d, tex)
 
             # ray_o is the position of the current vertex, which is used in prev vertex pdf_bwd
             if transport_mode == TRANSPORT_IMP:         # Camera transport mode
@@ -329,11 +330,12 @@ class BDPT(VolumeRenderer):
                 track_pos      = vertex.pos
                 # camera importance is valid / visible / radiance transferable
                 if cam_pdf > 0:
-                    fr2cam = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_IMP)
+                    fr2cam = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, 
+                            vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_IMP, vertex.tex)
                     bool_bits = BDPT.get_bool(True, in_fspace = self.free_space_cam)
                     sampled_v = Vertex(_type = VERTEX_CAMERA, obj_id = -1, emit_id = -1, 
-                        bool_bits = bool_bits, time = vertex.time + depth, 
-                        normal = self.cam_normal, pos = self.cam_t, ray_in = ZERO_V3, beta = we / cam_pdf
+                        bool_bits = bool_bits, time = vertex.time + depth, normal = self.cam_normal,
+                        pos = self.cam_t, ray_in = ZERO_V3, beta = we / cam_pdf, tex = INVALID
                     )
                     vertex_sampled = True
                     calc_transmittance = fr2cam.max() > 0
@@ -353,10 +355,13 @@ class BDPT(VolumeRenderer):
                 in_free_space = vertex.is_in_free_space()
                 # emitter should have non-zero emission / visible / transferable
                 if emit_int.max() > 0:
-                    fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_RAD)
+                    fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, 
+                            vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_RAD, vertex.tex)
+                    # We should apply texture on the emitter, so get color should be computed here
+                    # Sample hit should also return uv coords
                     sampled_v   = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(emit_id), emit_id = emit_id, 
                         bool_bits = emitter.bool_bits, time = emitter.emit_time, pdf_fwd = emitter.area_pdf() / float(self.src_num),
-                        normal  = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf
+                        normal  = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf, tex = INVALID
                     )
                     vertex_sampled = True
                     calc_transmittance = fr2light.max() > 0
@@ -373,8 +378,10 @@ class BDPT(VolumeRenderer):
                 cam_in_fspace = cam_v.is_in_free_space()
                 lit_in_fspace = lit_v.is_in_free_space()
                 if depth > 0.:           # if not occluded
-                    fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, connect_dir, cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_RAD)
-                    fr_lit = self.eval(int(lit_v.obj_id), lit_v.ray_in, -connect_dir, lit_v.normal, lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP)
+                    fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, connect_dir, 
+                            cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_RAD, vertex.tex)
+                    fr_lit = self.eval(int(lit_v.obj_id), lit_v.ray_in, -connect_dir, 
+                            lit_v.normal, lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP, vertex.tex)
                     # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                     calc_transmittance = fr_cam.max() > 0 and fr_lit.max() > 0
                     le = cam_v.beta * fr_cam * fr_lit * lit_v.beta / (depth * depth)
@@ -552,7 +559,7 @@ class BDPT(VolumeRenderer):
             if ray_out_norm > 0.:
                 normed_ray_out = ray_out / ray_out_norm
                 # FIXME: emitter can be inside the Medium (not in the free space), therefore `is_mi` can not only be `cur._type == VERTEX_MEDIUM`
-                pdf_sa = self.get_pdf(int(cur.obj_id), ray_in, normed_ray_out, cur.normal, cur._type == VERTEX_MEDIUM, is_in_fspace)
+                pdf_sa = self.get_pdf(int(cur.obj_id), ray_in, normed_ray_out, cur.normal, cur._type == VERTEX_MEDIUM, is_in_fspace, cur.tex)
         if cur._type != VERTEX_EMITTER:
             # convert to area measure for the next node
             pdf_area = next.get_pdf_bwd(pdf_sa, cur.pos)

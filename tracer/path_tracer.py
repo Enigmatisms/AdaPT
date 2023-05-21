@@ -343,12 +343,17 @@ class PathTracer(TracerBase):
             node_idx += 1
         return hit_flag
 
+    # TODO: some profiling is needed, passing by reference or by value, which one is faster?
     @ti.func
-    def sample_new_ray(self, idx: int, incid: vec3, normal: vec3, is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI):
+    def sample_new_ray(self, 
+        idx: int, incid: vec3, normal: vec3, is_mi: int, 
+        in_free_space: int, mode: int = TRANSPORT_UNI, tex: vec3 = INVALID
+    ):
         """ Mode is for cosine term calculation: \\
             For camera path, cosine term is computed against (ray_out and normal), \\
             while for light path, cosine term is computed against ray_in and normal \\
             This only affects surface interaction since medium interaction produce no cosine term
+            Note 2023.5.21: Actually, passing color vec3 from the outside makes me feel sick...
         """
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
@@ -360,13 +365,14 @@ class PathTracer(TracerBase):
                 ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].medium.sample_new_rays(incid)
         else:                       # surface sampling
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                ret_dir, ret_spec, ret_pdf = self.brdf_field[idx].sample_new_rays(incid, normal)
+                ret_dir, ret_spec, ret_pdf = self.brdf_field[idx].sample_new_rays(incid, normal, tex)
             else:                                       # directly sample surface
                 ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].sample_surf_rays(incid, normal, self.world.medium, mode)
         return ret_dir, ret_spec, ret_pdf
 
     @ti.func
-    def eval(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI) -> vec3:
+    def eval(self, idx: int, incid: vec3, out: vec3, normal: vec3, 
+        is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI, tex: vec3 = INVALID) -> vec3:
         ret_spec = vec3([1, 1, 1])
         if is_mi:
             # FIXME: eval_phase and phase function currently return a float
@@ -376,23 +382,23 @@ class PathTracer(TracerBase):
                 ret_spec.fill(self.bsdf_field[idx].medium.eval(incid, out))
         else:                       # surface interaction
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                ret_spec = self.brdf_field[idx].eval(incid, out, normal)
+                ret_spec = self.brdf_field[idx].eval(incid, out, normal, tex)
             else:                                       # directly evaluate surface
-                ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium, mode)
+                ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium, mode, tex)
         return ret_spec
     
     @ti.func
-    def surface_pdf(self, idx: int, outdir: vec3, normal: vec3, incid: vec3):
+    def surface_pdf(self, idx: int, outdir: vec3, normal: vec3, incid: vec3, tex: vec3 = INVALID):
         """ Outdir: actual incident ray direction, incid: ray (from camera) """
         pdf = 0.
         if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-            pdf = self.brdf_field[idx].get_pdf(outdir, normal, incid)
+            pdf = self.brdf_field[idx].get_pdf(outdir, normal, incid, tex)
         else:
             pdf = self.bsdf_field[idx].get_pdf(outdir, normal, incid, self.world.medium)
         return pdf
     
     @ti.func
-    def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int):
+    def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int, tex: vec3 = INVALID):
         pdf = 0.
         if is_mi:   # evaluate phase function
             if in_free_space:
@@ -400,11 +406,12 @@ class PathTracer(TracerBase):
             else:
                 pdf = self.bsdf_field[idx].medium.eval(incid, out)
         else:
-            pdf = self.surface_pdf(idx, out, normal, incid)
+            pdf = self.surface_pdf(idx, out, normal, incid, tex)
         return pdf
     
     @ti.func
     def get_ior(self, idx: int, in_free_space: int):
+        # REAL FUNC
         ior = 1.
         if in_free_space: ior = self.world.medium.ior
         else: 
@@ -413,6 +420,7 @@ class PathTracer(TracerBase):
     
     @ti.func
     def is_delta(self, idx: int):
+        # REAL FUNC
         is_delta = False
         if idx >= 0:
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
@@ -424,6 +432,7 @@ class PathTracer(TracerBase):
     @ti.func
     def is_scattering(self, idx: int):           # check if the object with index idx is a scattering medium
         # FIXME: if sigma_t is too small, set the scattering medium to det-refract
+        # REAL FUNC
         is_scattering = False
         if idx >= 0 and not ti.is_active(self.brdf_nodes, idx):
             is_scattering = self.bsdf_field[idx].medium.is_scattering()

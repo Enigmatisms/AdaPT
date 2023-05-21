@@ -104,7 +104,7 @@ class Texture:
 
     @ti.func
     def query(self, textures: ti.template, u: float, v: float):
-        """ u, v is uv_coordinates, which might be fetched by triangle barycentric coords (lerp)
+        """ u, v is uv_coordinates, which might be fetched by triangle barycentric coords (bi-linear interpolation)
         """
         scaled_u = (u * self.scale_u).__mod__(self.w - 1.)
         scaled_v = (v * self.scale_v).__mod__(self.h - 1.)
