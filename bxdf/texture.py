@@ -32,7 +32,7 @@ CONSOLE = Console(width = 128)
 """
 
 class Texture_np:
-    MODE_IMAGE = 0
+    MODE_IMAGE   = 0
     MODE_CHECKER = 1
     def __init__(self, elem: xet.Element, max_size = 1024) -> None:
         self.max_size = max_size
@@ -44,7 +44,6 @@ class Texture_np:
         self.scale_v = 1.
         self.off_x = 0
         self.off_y = 0
-        self.img_id = -1
         if self.type == "checkerboard":
             self.mode = Texture_np.MODE_CHECKER
             # load checkboard config from xml
@@ -90,9 +89,10 @@ class Texture_np:
             scale_u = 1, scale_v = 1, color1 = ZERO_V3, color2 = ZERO_V3
         )
 
+# TODO: checkboard UV is not implemented
 @ti.dataclass
 class Texture:
-    img_id:     int     # id to field represented texture, -1 means checker board -255 means invalid
+    type:       int     # id to field represented texture, -1 means checker board -255 means invalid
     off_x:      int     # offset for x axis (in the packed texture image)
     off_y:      int     # offset for y axis (in the packed texture image)
     w:          int     # query will be scaled (bilerped) to (w, h)
@@ -112,16 +112,17 @@ class Texture:
         floor_v = tm.floor(scaled_v, float)
         ratio_u = scaled_u - floor_u
         ratio_v = scaled_v - floor_v
-        comp_ratio_u = 1. - ratio_u
-        comp_ratio_v = 1. - ratio_v
 
-        floor_u += self.off_x
-        floor_v += self.off_y
-        ceil_u  = floor_u + 1.
-        ceil_v  = floor_v + 1.
+        floor_u = int(floor_u + self.off_x)
+        floor_v = int(floor_v + self.off_y)
+        ceil_u  = floor_u + 1
+        ceil_v  = floor_v + 1
+
         # lerp
-        color = textures[floor_u, floor_v] * comp_ratio_u * comp_ratio_v + textures[ceil_u, floor_v] * ratio_u * comp_ratio_u + \
-            textures[floor_u, ceil_v] * comp_ratio_u * ratio_v + textures[ceil_u, ceil_v] * ratio_u * ratio_v
-        return color
-
-
+        q_ff = textures[floor_u, floor_v]
+        q_cf = textures[ceil_u, floor_v]
+        q_fc = textures[floor_u, ceil_v]
+        q_cc = textures[ceil_u, ceil_v]
+        mix_1 = tm.mix(q_ff, q_cf, ratio_u)
+        mix_2 = tm.mix(q_fc, q_cc, ratio_u)
+        return tm.mix(mix_1, mix_2, ratio_v)

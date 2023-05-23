@@ -45,7 +45,6 @@ def image_packer(textures: List[Texture_np]) -> Tuple[np.ndarray, List[Texture_n
         elif max_size > 400:
             starting_point = 2
         total_size += h * w
-        texture.img_id = len(rects)             # image index does not need to count checkboard texture
         rects.append((w, h, idx))               # but rect_id does
     total_size = np.sqrt(total_size) * 1.1      # 1.1 is for redundancy
     final_size = 1024
@@ -76,7 +75,7 @@ def image_packer(textures: List[Texture_np]) -> Tuple[np.ndarray, List[Texture_n
 def get_packed_rects(rects: List[Tuple[int, int]], max_size: int = 1024):
     packer = rtp.newPacker(rotation = False)
     packer.add_bin(max_size, max_size)
-    for i, rect in enumerate(rects):
+    for rect in rects:
         packer.add_rect(*rect)
     packer.pack()
     success = len(packer[0]) == len(rects)

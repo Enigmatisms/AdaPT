@@ -137,7 +137,7 @@ class VolumeRenderer(PathTracer):
                     if ti.random(float) > max_value: break
                     else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
                     # Step 2: ray intersection
-                    obj_id, normal, min_depth, _p, _u, _v = self.ray_intersect(ray_d, ray_o)
+                    obj_id, normal, min_depth, prim_id, u_coord, v_coord = self.ray_intersect(ray_d, ray_o)
                     if obj_id < 0:     
                         if not self.world_scattering: break     # nothing is hit, break
                         else:                                   # the world is filled with scattering medium
@@ -162,6 +162,7 @@ class VolumeRenderer(PathTracer):
                     shadow_int  = vec3([0, 0, 0])
                     direct_int  = vec3([0, 0, 0])
                     direct_spec = vec3([1, 1, 1])
+                    tex = self.get_uv_color(obj_id, prim_id, u_coord, v_coord)
                     for _j in range(self.num_shadow_ray):    # more shadow ray samples
                         emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
                         light_dir = vec3([0, 0, 0])
@@ -174,7 +175,7 @@ class VolumeRenderer(PathTracer):
                             light_dir   = to_emitter / emitter_d
                             tr, _ = self.track_ray(light_dir, hit_point, emitter_d)
                             shadow_int *= tr
-                            direct_spec = self.eval(obj_id, ray_d, light_dir, normal, is_mi, in_free_space)
+                            direct_spec = self.eval(obj_id, ray_d, light_dir, normal, is_mi, in_free_space, tex = tex)
                         else:       # the only situation for being invalid, is when there is only one source and the ray hit the source
                             break_flag = True
                             break
@@ -187,7 +188,7 @@ class VolumeRenderer(PathTracer):
                         emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, normal)
 
                     # Step 6: sample new ray. This should distinguish between surface and medium interactions
-                    ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, is_mi, in_free_space)
+                    ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, is_mi, in_free_space, tex = tex)
                     ray_o = hit_point
                     color += (direct_int + emit_int) * throughput
                     if not is_mi:

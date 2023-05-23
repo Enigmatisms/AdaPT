@@ -226,8 +226,8 @@ class PathTracer(TracerBase):
     @ti.func
     def get_uv_color(self, obj_id: int, prim_id: int, u: float, v: float):
         """ Convert primitive local UV to the global UV coord for an object """
-        has_texture = self.textures[obj_id].img_id > -255
         color = INVALID
+        has_texture = self.textures[obj_id].type > -255
         if has_texture:
             is_sphere = self.obj_info[obj_id, 2]
             if is_sphere == 0:          # not a sphere
