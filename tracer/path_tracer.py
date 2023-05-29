@@ -9,6 +9,7 @@ import os
 import sys
 sys.path.append("..")
 
+import matplotlib.pyplot as plt
 import numpy as np
 import taichi as ti
 import taichi.math as tm
@@ -81,11 +82,11 @@ class PathTracer(TracerBase):
         ti.root.bitmasked(ti.i, self.num_objects).place(self.textures)
 
         if prop["packed_texture"] is None:
-            self.texture_img = ti.ndarray(vec3, (1, 1))
+            self.texture_img = ti.Vector.field(3, float, (1, 1))
         else:
             image = prop["packed_texture"]
             tex_h, tex_w, _  = image.shape
-            self.texture_img = ti.ndarray(vec3, (tex_w, tex_h))
+            self.texture_img = ti.Vector.field(3, float, (tex_w, tex_h))
             self.texture_img.from_numpy(image)
             CONSOLE.log(f"Packed texture images loaded: ({tex_w}, {tex_h})")
 
@@ -196,13 +197,12 @@ class PathTracer(TracerBase):
                     self.precom_vec[cur_id, 0] = self.prims[cur_id, 0]
                     self.precom_vec[cur_id, 1] = self.prims[cur_id, 1]           
                 self.normals[cur_id] = vec3(normal) 
-            if obj.uv_coords:
+            if obj.uv_coords is not None:
                 for j, uv_coord in enumerate(obj.uv_coords):
                     cur_id = acc_prim_num + j
-                    self.uv_coords[cur_id, 0] = vec2[uv_coord[0]]
-                    self.uv_coords[cur_id, 1] = vec2[uv_coord[1]]
-                    self.uv_coords[cur_id, 2] = vec2[uv_coord[2]]
-
+                    self.uv_coords[cur_id, 0] = vec2(uv_coord[0])
+                    self.uv_coords[cur_id, 1] = vec2(uv_coord[1])
+                    self.uv_coords[cur_id, 2] = vec2(uv_coord[2])
             self.obj_info[i, 0] = acc_prim_num
             self.obj_info[i, 1] = obj.tri_num
             self.obj_info[i, 2] = obj.type
@@ -335,7 +335,7 @@ class PathTracer(TracerBase):
                 for bvh_i in range(begin_i, end_i):
                     aabb_intersect, t_near = self.lin_bvhs[bvh_i].aabb_test(inv_ray, start_p)
                     if aabb_intersect == False or t_near > min_depth: continue
-                    ray_t, _i, _p, _o = self.bvh_intersect(bvh_i, ray, start_p)
+                    ray_t, _i, _p, _o, _u, _v = self.bvh_intersect(bvh_i, ray, start_p)
                     if ray_t > 1e-4 and ray_t < min_depth:
                         hit_flag = True
                         break

@@ -379,9 +379,9 @@ class BDPT(VolumeRenderer):
                 lit_in_fspace = lit_v.is_in_free_space()
                 if depth > 0.:           # if not occluded
                     fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, connect_dir, 
-                            cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_RAD, vertex.tex)
+                            cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_RAD, cam_v.tex)
                     fr_lit = self.eval(int(lit_v.obj_id), lit_v.ray_in, -connect_dir, 
-                            lit_v.normal, lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP, vertex.tex)
+                            lit_v.normal, lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP, lit_v.tex)
                     # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                     calc_transmittance = fr_cam.max() > 0 and fr_lit.max() > 0
                     le = cam_v.beta * fr_cam * fr_lit * lit_v.beta / (depth * depth)

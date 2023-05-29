@@ -14,7 +14,6 @@
 import sys
 import time
 import random
-import cv2 as cv
 import numpy as np
 import rectpack as rtp
 import matplotlib.pyplot as plt
@@ -29,7 +28,7 @@ SIZE2USE = [4096, 3072, 2048, 1024]
 
 __all__ = ("image_packer")
 
-@timing
+@timing()
 def image_packer(textures: List[Texture_np]) -> Tuple[np.ndarray, List[Texture_np]]:
     starting_point = 3
     total_size = 0

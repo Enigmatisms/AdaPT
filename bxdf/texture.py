@@ -34,7 +34,7 @@ CONSOLE = Console(width = 128)
 class Texture_np:
     MODE_IMAGE   = 0
     MODE_CHECKER = 1
-    def __init__(self, elem: xet.Element, max_size = 1024) -> None:
+    def __init__(self, elem: xet.Element, max_size = 2048) -> None:
         self.max_size = max_size
         self.id = elem.get("id")
         self.type = elem.get("type")
@@ -44,6 +44,7 @@ class Texture_np:
         self.scale_v = 1.
         self.off_x = 0
         self.off_y = 0
+        self.h, self.w = 0, 0
         if self.type == "checkerboard":
             self.mode = Texture_np.MODE_CHECKER
             # load checkboard config from xml
@@ -55,7 +56,7 @@ class Texture_np:
                     self.c2 = rgb_parse(rgb_nodes[1])
         else:
             self.mode = Texture_np.MODE_IMAGE
-            file_path = elem.find("string").get("filepath")
+            file_path = elem.find("string").get("value")
             if not os.path.exists(file_path):
                 raise ValueError(f"Texture image input path '{file_path}' does not exist.")
             else:
@@ -69,7 +70,7 @@ class Texture_np:
                     self.w = min(self.w, max_size)
                     self.h = min(self.h, max_size)
                     texture_img = cv.resize(texture_img, (self.w, self.h))
-                self.texture_img = texture_img
+                self.texture_img = texture_img.astype(np.float32) / 255.
         float_nodes = elem.findall("float")
         for float_n in float_nodes:
             name = float_n.get("name")
@@ -79,7 +80,8 @@ class Texture_np:
                 CONSOLE.log(f"[yellow]:warning: Warning: <{name}> not used in loading textures")
 
     def export(self):
-        return Texture(type = self.type, off_x = self.off_x, off_y = self.off_y, w = self.w, h = self.h,
+        _type = Texture_np.MODE_CHECKER if self.type == "checkerboard" else Texture_np.MODE_IMAGE
+        return Texture(type = _type, off_x = self.off_x, off_y = self.off_y, w = self.w, h = self.h,
             scale_u = self.scale_u, scale_v = self.scale_v, color1 = self.c1, color2 = self.c2
         )
     
@@ -88,6 +90,9 @@ class Texture_np:
         return Texture(type = -255, off_x = 0, off_y = 0, w = 0, h = 0,
             scale_u = 1, scale_v = 1, color1 = ZERO_V3, color2 = ZERO_V3
         )
+
+    def __repr__(self) -> str:
+        return f"<Texture '{self.id}': {self.off_x}, {self.off_y}, {self.w}, {self.h}>"
 
 # TODO: checkboard UV is not implemented
 @ti.dataclass
@@ -103,26 +108,28 @@ class Texture:
     color2:     vec3
 
     @ti.func
-    def query(self, textures: ti.template, u: float, v: float):
+    def query(self, textures: ti.template(), u: float, v: float):
         """ u, v is uv_coordinates, which might be fetched by triangle barycentric coords (bi-linear interpolation)
         """
-        scaled_u = (u * self.scale_u).__mod__(self.w - 1.)
-        scaled_v = (v * self.scale_v).__mod__(self.h - 1.)
+        scaled_u = (u * self.scale_u * self.w).__mod__(self.w - 1.)
+        scaled_v = (v * self.scale_v * self.h).__mod__(self.h - 1.)
         floor_u = tm.floor(scaled_u, float)
         floor_v = tm.floor(scaled_v, float)
         ratio_u = scaled_u - floor_u
         ratio_v = scaled_v - floor_v
 
-        floor_u = int(floor_u + self.off_x)
-        floor_v = int(floor_v + self.off_y)
-        ceil_u  = floor_u + 1
-        ceil_v  = floor_v + 1
+        floor_u = floor_u + self.off_x
+        floor_v = floor_v + self.off_y
+        floor_ui = int(floor_u)
+        floor_vi = int(floor_v)
+        ceil_ui  = floor_ui + 1
+        ceil_vi  = floor_vi + 1
 
         # lerp
-        q_ff = textures[floor_u, floor_v]
-        q_cf = textures[ceil_u, floor_v]
-        q_fc = textures[floor_u, ceil_v]
-        q_cc = textures[ceil_u, ceil_v]
+        q_ff = textures[floor_vi, floor_ui]
+        q_cf = textures[floor_vi, ceil_ui]
+        q_fc = textures[ceil_vi, floor_ui]
+        q_cc = textures[ceil_vi, ceil_ui]
         mix_1 = tm.mix(q_ff, q_cf, ratio_u)
         mix_2 = tm.mix(q_fc, q_cc, ratio_u)
         return tm.mix(mix_1, mix_2, ratio_v)

@@ -18,11 +18,11 @@ from bxdf.brdf import BRDF_np
 from bxdf.bsdf import BSDF_np
 from bxdf.texture import Texture_np
 
-from texture_packing import image_packer
 
 from parsers.obj_loader import *
 from parsers.world import World_np
 from parsers.obj_desc import ObjDescriptor
+from parsers.texture_packing import image_packer
 from parsers.general_parser import get, transform_parse, parse_sphere_element
 
 # import emitters

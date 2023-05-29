@@ -92,18 +92,10 @@
 		<float name="half-angle" value="15.0"/>
 	</emitter>
 
-	<!-- <shape type="obj">
-		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
-		<transform name="toWorld">
-			<translate x="0" y="-0.001" z="0"/>
-		</transform>
-		<ref type="material" id="light"/>
-		<ref type="emitter" id="area"/>
-	</shape> -->
-
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
 		<ref type="material" id="white"/>
+		<ref type="texture" id="mat"/>
 		<transform name="toWorld">
 			<translate x="0" y="0.0" z="0"/>
 		</transform>
@@ -140,36 +132,48 @@
 		</medium>
 	</bsdf>
 
-	<bsdf type="det-refraction" id="glass2">
+	<brdf type="lambertian" id="lava_base">
 		<rgb name="k_d" value="#FFFFFF"/>
-		<medium type="transparent">
-			<rgb name="u_a" value="0.0"/>
-			<rgb name="u_s" value="0.0"/>
-			<rgb name="par" value="0.0"/>
-			<float name="ior" value="1.333"/>
-		</medium>
-	</bsdf>
-
-	<brdf type="specular" id="mirror">
-		<rgb name="k_d" value="#EFEFEF"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
+	<brdf type="fresnel-blend" id="fresnel">
+		<rgb name="k_d" value="#CACACA"/>
+		<!-- <rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/> -->
+		<rgb name="k_s" value="#333333"/>
+		<rgb name="k_g" r="10" g="1000"/>
+	</brdf>
+	
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/bunny_full1.obj"/>
-		<ref type="material" id="glass1"/>
+		<ref type="material" id="lava_base"/>
+		<ref type="texture" id="lava"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/bunny_full2.obj"/>
-		<ref type="material" id="mirror"/>
+		<ref type="material" id="glass1"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/bunny_full3.obj"/>
-		<ref type="material" id="glass2"/>
+		<ref type="material" id="fresnel"/>
+		<ref type="texture" id="crystal"/>
 	</shape>
+
+	<texture id="lava" type="image">
+		<string name="filename" value="./scenes/meshes/textures/lava.jpeg"/>
+	</texture>
+
+	<texture id="crystal" type="image">
+		<string name="filename" value="./scenes/meshes/textures/crystal.jpg"/>
+	</texture>
+
+	<texture id="mat" type="image">
+		<string name="filename" value="./scenes/meshes/textures/mat.jpeg"/>
+	</texture>
 
 	<world name="yes!">
 		<rgb name="skybox" value="0.0"/>
