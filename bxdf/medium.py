@@ -16,6 +16,9 @@ from la.cam_transform import delocalize_rotate
 from parsers.general_parser import get, rgb_parse
 from sampler.general_sampling import random_rgb
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 __all__ = ['Medium', 'Medium_np']
 
 class Medium_np:
@@ -48,7 +51,7 @@ class Medium_np:
                         self.__setattr__(name, query_func(tag_elem))
         else:
             if not is_world:
-                print("[Warning] default initialization yields <transparent>, which is a trivial medium.")
+                CONSOLE.log("[yellow]:warning: Warning: default initialization yields <transparent>, which is a trivial medium.")
         self.u_e = self.u_a + self.u_s
     
     def export(self):

@@ -20,7 +20,7 @@ from scipy.spatial.transform import Rotation as Rot
 from tracer.tracer_base import TracerBase
 
 from parsers.obj_desc import ObjDescriptor
-from parsers.xml_parser import mitsuba_parsing
+from parsers.xml_parser import scene_parsing
 from parsers.opts import get_options
 from utils.tools import folder_path
 
@@ -129,7 +129,7 @@ class Visualizer(TracerBase):
     def render(self):
         for i, j in self.pixels:
             ray = self.pix2ray(i, j)
-            obj_id, normal, _ = self.ray_intersect(ray, self.cam_t[None])
+            obj_id, normal, _d, _u, _v = self.ray_intersect(ray, self.cam_t[None])
             if obj_id >= 0:
                 self.pixels[i, j].fill(ti.max(-tm.dot(ray, normal), 0.))
             else:
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     ti.init(arch = ti.vulkan, default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path)
     vertex_field = ti.Vector.field(3, float, 8)
     input_folder = os.path.join(options.input_path, options.scene)
-    _, _, meshes, configs = mitsuba_parsing(input_folder, options.name)  # complex_cornell
+    _, meshes, configs = scene_parsing(input_folder, options.name)  # complex_cornell
 
     viz = Visualizer(meshes, configs)
     init_R = Rot.from_matrix(viz.cam_r[None].to_numpy()).as_euler('zxy', degrees = True)
@@ -177,6 +177,7 @@ if __name__ == "__main__":
     fov      = gui.slider_float('FoV', configs['fov'], 20., 80.)
     trans_r  = get_rotation(gui, *init_R)
     reset_bt = gui.button('Reset')
+    show_pose = gui.button('Show pose')
 
     last_fov   = fov
     last_w     = width
@@ -189,6 +190,11 @@ if __name__ == "__main__":
             width    = configs['film']['width']
             height   = configs['film']['height']
             fov      = configs['fov']
+        
+        if gui.button('Show pose'):
+            forward_axis = viz.cam_r[None] @ vec3([0, 0, 1])
+            print("Position: viz.cam_t = ", viz.cam_t[None])
+            print("Lookat: ", viz.cam_t[None] + forward_axis)
            
         width   = gui.slider_int('Width', width, 32, 1024)
         height  = gui.slider_int('Height', height, 32, 1024)

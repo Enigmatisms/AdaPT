@@ -22,7 +22,7 @@ from la.cam_transform import *
 from sampler.general_sampling import *
 from bxdf.brdf import BRDF_np
 from bxdf.medium import Medium, Medium_np
-from renderer.constants import TRANSPORT_RAD, INV_PI
+from renderer.constants import TRANSPORT_RAD, INVALID
 
 __all__ = ['BSDF_np', 'BSDF']
 
@@ -51,7 +51,7 @@ class BSDF_np(BRDF_np):
     def export(self):
         return BSDF(
             _type = self.type_id, is_delta = self.is_delta, k_d = vec3(self.k_d), 
-            k_s = vec3(self.k_s), k_g = vec3(self.k_g), k_a = vec3(self.k_a), medium = self.medium.export()
+            k_s = vec3(self.k_s), k_g = vec3(self.k_g), medium = self.medium.export()
         )
         
     def __repr__(self) -> str:
@@ -70,7 +70,6 @@ class BSDF:
     k_d:        vec3            # diffusive coefficient (albedo)
     k_s:        vec3            # specular coefficient
     k_g:        vec3            # glossiness coefficient
-    k_a:        vec3            # absorption coefficient
     medium:     Medium          # attached medium
 
     # ========================= Deterministic Refraction =========================
@@ -105,17 +104,18 @@ class BSDF:
         return ret_dir, ret_int * ret_pdf, ret_pdf
     
     @ti.func
-    def eval_det_refraction(self, ray_in: vec3, ray_out: vec3, normal: vec3, medium, mode):
+    def eval_det_refraction(self, ray_in: vec3, ray_out: vec3, normal: vec3, medium, mode, tex = INVALID):
         dot_out = tm.dot(ray_out, normal)
         entering_this = dot_out < 0
         # notice that eval uses ray_out while sampling uses ray_in, therefore nr & ni have different order
         ni = ti.select(entering_this, medium.ior, self.medium.ior)
         nr = ti.select(entering_this, self.medium.ior, medium.ior)
         ret_int = vec3([0, 0, 0])
+        diffuse_color = ti.select(tex[0] < 0, self.k_d, tex)
         if is_total_reflection(dot_out, ni, nr):
             ref_dir = (ray_out - 2 * normal * dot_out).normalized()
             if tm.dot(ref_dir, ray_in) > 1 - 5e-5:
-                ret_int = self.k_d
+                ret_int = diffuse_color
         else:
             # in sampling: ray_in points to the intersection, here ray_out points away from the intersection
             ref_dir = (ray_out - 2 * normal * dot_out).normalized()
@@ -123,14 +123,14 @@ class BSDF:
             if valid_ref:
                 reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, normal)))
                 if tm.dot(refra_vec, ray_in) > 1 - 5e-5:            # ray_in close to refracted dir
-                    ret_int = self.k_d * (1. - reflect_ratio)
+                    ret_int = diffuse_color * (1. - reflect_ratio)
                     if mode == TRANSPORT_RAD:    # consider non-symmetric effect due to different transport mode
                         ret_int *= (ni * ni) / (nr * nr)
                 elif tm.dot(ref_dir, ray_in) > 1 - 5e-5:            # ray_in close to reflected dir
-                    ret_int = self.k_d * reflect_ratio
+                    ret_int = diffuse_color * reflect_ratio
             else:
                 if tm.dot(ref_dir, ray_in) > 1 - 5e-5:            # ray_in close to reflected dir
-                    ret_int = self.k_d
+                    ret_int = diffuse_color
         return ret_int
     # ========================= General operations =========================
 
@@ -164,10 +164,10 @@ class BSDF:
     
     # ========================= Surface interactions ============================
     @ti.func
-    def eval_surf(self, incid: vec3, out: vec3, normal: vec3, medium, mode) -> vec3:
+    def eval_surf(self, incid: vec3, out: vec3, normal: vec3, medium, mode, tex = INVALID) -> vec3:
         ret_spec = vec3([0, 0, 0])
         if self._type == 0:
-            ret_spec = self.eval_det_refraction(incid, out, normal, medium, mode)
+            ret_spec = self.eval_det_refraction(incid, out, normal, medium, mode, tex)
         return ret_spec
     
     @ti.func

@@ -43,7 +43,9 @@ def np_rotation_between(fixed: Arr, target: Arr) -> Arr:
         # Not in-line, cross product is valid
         axis /= np.linalg.norm(axis)
         axis *= np.arccos(dot)
-        return Rot.from_rotvec(axis).as_matrix()
+        euler_vec = Rot.from_rotvec(axis).as_euler('zxy')
+        euler_vec[0] = 0                                                # eliminate roll angle
+        return Rot.from_euler('zxy', euler_vec).as_matrix()
 
 @ti.func
 def rotation_between(fixed: vec3, target: vec3) -> mat3:

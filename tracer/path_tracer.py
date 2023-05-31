@@ -9,10 +9,11 @@ import os
 import sys
 sys.path.append("..")
 
+import matplotlib.pyplot as plt
 import numpy as np
 import taichi as ti
 import taichi.math as tm
-from taichi.math import vec3
+from taichi.math import vec2, vec3
 
 from typing import List
 from la.cam_transform import *
@@ -21,14 +22,27 @@ from emitters.abtract_source import LightSource, TaichiSource
 
 from bxdf.brdf import BRDF
 from bxdf.bsdf import BSDF, BSDF_np
+from bxdf.texture import Texture, Texture_np
 from parsers.opts import get_options
 from parsers.obj_desc import ObjDescriptor
-from parsers.xml_parser import mitsuba_parsing
-from renderer.constants import TRANSPORT_UNI
+from parsers.xml_parser import scene_parsing
+from renderer.constants import TRANSPORT_UNI, INV_2PI, INV_PI, INVALID
 
 from sampler.general_sampling import *
 from utils.tools import TicToc
 from tracer.ti_bvh import LinearBVH, LinearNode, export_python_bvh
+
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
+"""
+    2023-5-18: There is actually tremendous amount of work to do
+    1. BRDF/BSDF should incorporate Texture, there is a way to by-pass this
+        1. Pass the UV-queried color into the functions (could be painful)
+        2. store the uv_color in the vertex (for evaluation during BDPT)
+        This is by-far the simplest solution
+    TODO: many APIs should be modified
+"""
 
 @ti.data_oriented
 class PathTracer(TracerBase):
@@ -60,14 +74,25 @@ class PathTracer(TracerBase):
         self.src_field  = TaichiSource.field()
         self.brdf_field = BRDF.field()
         self.bsdf_field = BSDF.field()
+        self.textures   = Texture.field()
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
         self.brdf_nodes = ti.root.bitmasked(ti.i, self.num_objects)
         self.brdf_nodes.place(self.brdf_field)                              # BRDF Taichi storage
         ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
+        ti.root.bitmasked(ti.i, self.num_objects).place(self.textures)
 
-        print(f"[INFO] Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
+        if prop["packed_texture"] is None:
+            self.texture_img = ti.Vector.field(3, float, (1, 1))
+        else:
+            image = prop["packed_texture"]
+            tex_h, tex_w, _  = image.shape
+            self.texture_img = ti.Vector.field(3, float, (tex_w, tex_h))
+            self.texture_img.from_numpy(image)
+            CONSOLE.log(f"Packed texture images loaded: ({tex_w}, {tex_h})")
+
+        CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
         self.initialze(emitters, objects)
-        print(f"[INFO] Path tracer initialization in {self.clock.toc(True):.3f} ms")
+        CONSOLE.log(f"Path tracer initialization in {self.clock.toc(True):.3f} ms")
 
         min_val = vec3([1e3, 1e3, 1e3])
         max_val = vec3([-1e3, -1e3, -1e3])
@@ -83,14 +108,14 @@ class PathTracer(TracerBase):
             try:
                 from bvh_cpp import bvh_build
             except ImportError:
-                print("[Warning] pybind11 BVH cpp is not built. Please check whether you have compiled bvh_cpp module.")
-                print("[INFO] Fall back to brute force primitive traversal.")
+                CONSOLE.log(":warning: Warning: [bold green]pybind11 BVH cpp[/bold green] is not built. Please check whether you have compiled bvh_cpp module.")
+                CONSOLE.log("[yellow]:warning: Warning: Fall back to brute force primitive traversal.")
             else:
-                print("[INFO] Using SAH-BVH tree accelerator.")
+                CONSOLE.log(":rocket: Using SAH-BVH tree accelerator.")
                 primitives, obj_info = self.prepare_for_bvh(objects)
                 self.clock.tic()
                 py_nodes, py_bvhs = bvh_build(primitives, obj_info, self.w_aabb_min.to_numpy(), self.w_aabb_max.to_numpy())
-                print(f"[INFO] BVH construction finished in {self.clock.toc_tic(True):.3f} ms")
+                CONSOLE.log(f":rocket: BVH construction finished in {self.clock.toc_tic(True):.3f} ms")
 
                 self.node_num = len(py_nodes)
                 self.bvh_num = len(py_bvhs)
@@ -100,9 +125,41 @@ class PathTracer(TracerBase):
                 ti.root.dense(ti.i, self.node_num).place(self.lin_nodes)
                 ti.root.dense(ti.i, self.bvh_num).place(self.lin_bvhs)
                 export_python_bvh(self.lin_nodes, self.lin_bvhs, py_nodes, py_bvhs)
-                print(f"[INFO] {self.node_num } nodes and {self.bvh_num} bvh primitives are loaded.")
+                CONSOLE.log(f"{self.node_num } nodes and {self.bvh_num} bvh primitives are loaded.")
                 self.__setattr__("ray_intersect", self.ray_intersect_bvh)
                 self.__setattr__("does_intersect", self.does_intersect_bvh)
+
+    def get_check_point(self):
+        """This is a simple checkpoint saver, which can be hacked.
+           I do not offer strict consistency checking since this is laborious
+        """
+        items_to_save = ["w", "h", "crop_x", "crop_y", "crop_rx", "crop_ry", "focal"]
+        items_to_save += ["num_objects", "num_prims", "cam_orient", "src_num"]
+        check_point = {}
+        for item in items_to_save:
+            check_point[item] = getattr(self, item)
+        check_point["cam_t"] = self.cam_t.to_numpy()
+        check_point["accumulation"] = self.color.to_numpy()
+        check_point["counter"] = self.cnt[None]
+        return check_point
+    
+    def load_check_point(self, check_point: dict):
+        """ Compare some basic configs (for consistency), if passed
+            load the information into the current renderer
+        """
+        for key, val in check_point.items():
+            if key not in {"accumulation", "counter", "cam_t", "cam_orient"}:
+                if val == getattr(self, key): continue
+            elif key == "cam_t":
+                if np.abs(val - self.cam_t.to_numpy()).max() < 1e-4: continue
+            elif key == "cam_orient":
+                if np.abs(val - self.cam_orient).max() < 1e-4: continue
+            else: continue
+            CONSOLE.log(f"[bold red]:skull: Error: '{key}' from the checkpoint is different.")
+            exit(1)
+        CONSOLE.log(f"[bold green]Recovered from check-point, elapsed counter: {check_point['counter']}")
+        self.color.from_numpy(check_point["accumulation"])
+        self.cnt[None] = check_point["counter"]
 
     def prepare_for_bvh(self, objects: List[ObjDescriptor]):
         primitives = []
@@ -120,6 +177,7 @@ class PathTracer(TracerBase):
         return primitives, obj_info
 
     def initialze(self, emitters: List[LightSource], objects: List[ObjDescriptor]):
+        self.uv_coords.fill(0)
         for i, emitter in enumerate(emitters):
             self.src_field[i] = emitter.export()
             self.src_field[i].obj_ref_id = -1
@@ -139,6 +197,12 @@ class PathTracer(TracerBase):
                     self.precom_vec[cur_id, 0] = self.prims[cur_id, 0]
                     self.precom_vec[cur_id, 1] = self.prims[cur_id, 1]           
                 self.normals[cur_id] = vec3(normal) 
+            if obj.uv_coords is not None:
+                for j, uv_coord in enumerate(obj.uv_coords):
+                    cur_id = acc_prim_num + j
+                    self.uv_coords[cur_id, 0] = vec2(uv_coord[0])
+                    self.uv_coords[cur_id, 1] = vec2(uv_coord[1])
+                    self.uv_coords[cur_id, 2] = vec2(uv_coord[2])
             self.obj_info[i, 0] = acc_prim_num
             self.obj_info[i, 1] = obj.tri_num
             self.obj_info[i, 2] = obj.type
@@ -148,6 +212,10 @@ class PathTracer(TracerBase):
                 self.bsdf_field[i]  = obj.bsdf.export()
             else:
                 self.brdf_field[i]  = obj.bsdf.export()
+            if obj.texture is None:
+                self.textures[i] = Texture_np.default()
+            else:
+                self.textures[i] = obj.texture.export()
             self.aabbs[i, 0]    = vec3(obj.aabb[0])        # unrolled
             self.aabbs[i, 1]    = vec3(obj.aabb[1])
             emitter_ref_id      = obj.emitter_ref_id
@@ -156,10 +224,26 @@ class PathTracer(TracerBase):
                 self.src_field[emitter_ref_id].obj_ref_id = i
 
     @ti.func
+    def get_uv_color(self, obj_id: int, prim_id: int, u: float, v: float):
+        """ Convert primitive local UV to the global UV coord for an object """
+        color = INVALID
+        has_texture = self.textures[obj_id].type > -255
+        if has_texture:
+            is_sphere = self.obj_info[obj_id, 2]
+            if is_sphere == 0:          # not a sphere
+                u, v = self.uv_coords[prim_id, 1] * u + self.uv_coords[prim_id, 2] * v + \
+                    self.uv_coords[prim_id, 0] * (1. - u - v)
+            color = self.textures[obj_id].query(self.texture_img, u, v)
+        return color
+
+    @ti.func
     def bvh_intersect(self, bvh_id, ray, start_p):
+        """ Intersect Ray with a BVH node """
         obj_idx, prim_idx = self.lin_bvhs[bvh_id].get_info()
         is_sphere = self.obj_info[obj_idx, 2]
         ray_t = -1.
+        u = 0.
+        v = 0.
         if is_sphere > 0:
             center  = self.prims[prim_idx, 0]
             radius2 = self.prims[prim_idx, 1][0] ** 2
@@ -177,12 +261,16 @@ class PathTracer(TracerBase):
             vec2 = self.precom_vec[prim_idx, 1]
             mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
             u, v, t = mat @ (start_p - p1)
+            # u, v as barycentric coordinates should be returned
             if u >= 0 and v >= 0 and u + v <= 1.0:
                 ray_t = t
-        return ray_t, obj_idx, prim_idx, is_sphere
-
+        return ray_t, obj_idx, prim_idx, is_sphere, u, v
+    
     @ti.func
     def ray_intersect_bvh(self, ray: vec3, start_p, min_depth = -1.0):
+        # FIXME: major revision should be made. In order to properly use texture
+        # We need to return the intersection barycentric coordinates / sphere coordinates
+        # This is going to be a laborious job
         """ Ray intersection with BVH, to prune unnecessary computation """
         obj_id  = -1
         prim_id = -1
@@ -190,6 +278,8 @@ class PathTracer(TracerBase):
         min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
         node_idx = 0
         inv_ray = 1. / ray
+        coord_u = 0.
+        coord_v = 0.
         while node_idx < self.node_num:
             aabb_intersect, t_near = self.lin_nodes[node_idx].aabb_test(inv_ray, start_p)
             if aabb_intersect == False or t_near > min_depth: 
@@ -204,21 +294,26 @@ class PathTracer(TracerBase):
                     aabb_intersect, t_near = self.lin_bvhs[bvh_i].aabb_test(inv_ray, start_p)
                     if aabb_intersect == False or t_near > min_depth: 
                         continue
-                    ray_t, obj_idx, prim_idx, obj_type = self.bvh_intersect(bvh_i, ray, start_p)
+                    ray_t, obj_idx, prim_idx, obj_type, u, v = self.bvh_intersect(bvh_i, ray, start_p)
                     if ray_t > 1e-4 and ray_t < min_depth:
                         min_depth   = ray_t
                         obj_id      = obj_idx
                         prim_id     = prim_idx
                         sphere_flag = obj_type
+                        coord_u     = u
+                        coord_v     = v
             node_idx += 1
         normal = vec3([1, 0, 0])
         if obj_id >= 0:
             if sphere_flag:
                 center = self.prims[prim_id, 0]
                 normal = (start_p + min_depth * ray - center).normalized() 
+                coord_u = (tm.atan2(normal[1], normal[0]) + tm.pi) * INV_2PI
+                coord_v = tm.acos(normal[2]) * INV_PI
             else:
                 normal = self.normals[prim_id]
-        return (obj_id, normal, min_depth)
+        # The returned coord_u and coord_v is not the actual uv coords (but for one specific primitive)
+        return (obj_id, normal, min_depth, prim_id, coord_u, coord_v)
     
     @ti.func
     def does_intersect_bvh(self, ray, start_p, min_depth = -1.0):
@@ -240,7 +335,7 @@ class PathTracer(TracerBase):
                 for bvh_i in range(begin_i, end_i):
                     aabb_intersect, t_near = self.lin_bvhs[bvh_i].aabb_test(inv_ray, start_p)
                     if aabb_intersect == False or t_near > min_depth: continue
-                    ray_t, _i, _p, _o = self.bvh_intersect(bvh_i, ray, start_p)
+                    ray_t, _i, _p, _o, _u, _v = self.bvh_intersect(bvh_i, ray, start_p)
                     if ray_t > 1e-4 and ray_t < min_depth:
                         hit_flag = True
                         break
@@ -248,12 +343,17 @@ class PathTracer(TracerBase):
             node_idx += 1
         return hit_flag
 
+    # TODO: some profiling is needed, passing by reference or by value, which one is faster?
     @ti.func
-    def sample_new_ray(self, idx: int, incid: vec3, normal: vec3, is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI):
+    def sample_new_ray(self, 
+        idx: int, incid: vec3, normal: vec3, is_mi: int, 
+        in_free_space: int, mode: int = TRANSPORT_UNI, tex: vec3 = INVALID
+    ):
         """ Mode is for cosine term calculation: \\
             For camera path, cosine term is computed against (ray_out and normal), \\
             while for light path, cosine term is computed against ray_in and normal \\
             This only affects surface interaction since medium interaction produce no cosine term
+            Note 2023.5.21: Actually, passing color vec3 from the outside makes me feel sick...
         """
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
@@ -265,13 +365,14 @@ class PathTracer(TracerBase):
                 ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].medium.sample_new_rays(incid)
         else:                       # surface sampling
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                ret_dir, ret_spec, ret_pdf = self.brdf_field[idx].sample_new_rays(incid, normal)
+                ret_dir, ret_spec, ret_pdf = self.brdf_field[idx].sample_new_rays(incid, normal, tex)
             else:                                       # directly sample surface
                 ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].sample_surf_rays(incid, normal, self.world.medium, mode)
         return ret_dir, ret_spec, ret_pdf
 
     @ti.func
-    def eval(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI) -> vec3:
+    def eval(self, idx: int, incid: vec3, out: vec3, normal: vec3, 
+        is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI, tex: vec3 = INVALID) -> vec3:
         ret_spec = vec3([1, 1, 1])
         if is_mi:
             # FIXME: eval_phase and phase function currently return a float
@@ -281,23 +382,23 @@ class PathTracer(TracerBase):
                 ret_spec.fill(self.bsdf_field[idx].medium.eval(incid, out))
         else:                       # surface interaction
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                ret_spec = self.brdf_field[idx].eval(incid, out, normal)
+                ret_spec = self.brdf_field[idx].eval(incid, out, normal, tex)
             else:                                       # directly evaluate surface
-                ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium, mode)
+                ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium, mode, tex)
         return ret_spec
     
     @ti.func
-    def surface_pdf(self, idx: int, outdir: vec3, normal: vec3, incid: vec3):
+    def surface_pdf(self, idx: int, outdir: vec3, normal: vec3, incid: vec3, tex: vec3 = INVALID):
         """ Outdir: actual incident ray direction, incid: ray (from camera) """
         pdf = 0.
         if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-            pdf = self.brdf_field[idx].get_pdf(outdir, normal, incid)
+            pdf = self.brdf_field[idx].get_pdf(outdir, normal, incid, tex)
         else:
             pdf = self.bsdf_field[idx].get_pdf(outdir, normal, incid, self.world.medium)
         return pdf
     
     @ti.func
-    def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int):
+    def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int, tex: vec3 = INVALID):
         pdf = 0.
         if is_mi:   # evaluate phase function
             if in_free_space:
@@ -305,11 +406,12 @@ class PathTracer(TracerBase):
             else:
                 pdf = self.bsdf_field[idx].medium.eval(incid, out)
         else:
-            pdf = self.surface_pdf(idx, out, normal, incid)
+            pdf = self.surface_pdf(idx, out, normal, incid, tex)
         return pdf
     
     @ti.func
     def get_ior(self, idx: int, in_free_space: int):
+        # REAL FUNC
         ior = 1.
         if in_free_space: ior = self.world.medium.ior
         else: 
@@ -318,6 +420,7 @@ class PathTracer(TracerBase):
     
     @ti.func
     def is_delta(self, idx: int):
+        # REAL FUNC
         is_delta = False
         if idx >= 0:
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
@@ -329,6 +432,7 @@ class PathTracer(TracerBase):
     @ti.func
     def is_scattering(self, idx: int):           # check if the object with index idx is a scattering medium
         # FIXME: if sigma_t is too small, set the scattering medium to det-refract
+        # REAL FUNC
         is_scattering = False
         if idx >= 0 and not ti.is_active(self.brdf_nodes, idx):
             is_scattering = self.bsdf_field[idx].medium.is_scattering()
@@ -356,10 +460,14 @@ class PathTracer(TracerBase):
     @ti.func
     def get_associated_obj(self, emit_id: int):
         return self.src_field[emit_id].obj_ref_id
+    
+    def summary(self):
+        CONSOLE.rule()
+        CONSOLE.print("[bold blue]:tada: :tada: :tada: Rendering Finished :tada: :tada: :tada:", justify="center")
 
 if __name__ == "__main__":
     options = get_options()
     ti.init(arch = ti.vulkan, kernel_profiler = options.profile, default_ip = ti.int32, default_fp = ti.f32)
     input_folder = os.path.join(options.input_path, options.scene)
-    emitter_configs, _, meshes, configs = mitsuba_parsing(input_folder, options.name)  # complex_cornell
+    emitter_configs, meshes, configs = scene_parsing(input_folder, options.name)  # complex_cornell
     pt = PathTracer(emitter_configs, meshes, configs)

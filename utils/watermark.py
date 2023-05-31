@@ -4,6 +4,9 @@
 
 import numpy as np
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 __all__ = ['apply_watermark']
 
 # RENDERED WITH AdaPT
@@ -21,7 +24,7 @@ def apply_watermark(rdr, normalize = 0., verbose = False, add_watermark = True):
     if rdr.do_crop == True:         # Do not apply watermark when cropping
         img = img[rdr.start_y:rdr.end_y, rdr.start_x:rdr.end_x, :]
     if verbose:
-        print(f"[INFO] pixel max value = {img.max():.3f}")
+        CONSOLE.log(f"Pixel max value = {img.max():.3f}")
     if normalize > 0.9:
         img /= np.quantile(img, normalize)
     if not rdr.do_crop and add_watermark:

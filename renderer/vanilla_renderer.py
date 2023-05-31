@@ -14,6 +14,9 @@ from emitters.abtract_source import LightSource
 from parsers.obj_desc import ObjDescriptor
 from sampler.general_sampling import balance_heuristic
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 @ti.data_oriented
 class Renderer(PathTracer):
     """
@@ -30,7 +33,7 @@ class Renderer(PathTracer):
             if not self.do_crop or in_crop_range:
                 ray_d = self.pix2ray(i, j)
                 ray_o = self.cam_t
-                obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
+                obj_id, normal, min_depth, prim_id, u_coord, v_coord = self.ray_intersect(ray_d, ray_o)
                 hit_light       = self.emitter_id[ti.max(obj_id, 0)]   # id for hit emitter, if nothing is hit, this value will be -1
                 color           = vec3([0, 0, 0])
                 contribution    = vec3([1, 1, 1])
@@ -52,6 +55,7 @@ class Renderer(PathTracer):
                     shadow_int  = vec3([0, 0, 0])
                     direct_int  = vec3([0, 0, 0])
                     direct_spec = vec3([1, 1, 1])
+                    tex = self.get_uv_color(obj_id, prim_id, u_coord, v_coord)
                     for _j in range(self.num_shadow_ray):    # more shadow ray samples
                         emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
                         light_dir = vec3([0, 0, 0])
@@ -67,7 +71,7 @@ class Renderer(PathTracer):
                             if self.does_intersect(light_dir, hit_point, emitter_d):        # shadow ray 
                                 shadow_int.fill(0.0)
                             else:
-                                direct_spec = self.eval(obj_id, ray_d, light_dir, normal, False, False)
+                                direct_spec = self.eval(obj_id, ray_d, light_dir, normal, False, False, tex = tex)
                         else:       # the only situation for being invalid, is when there is only one source and the ray hit the source
                             break_flag = True
                             break
@@ -75,7 +79,7 @@ class Renderer(PathTracer):
                         if ti.static(self.use_mis):
                             mis_w = 1.0
                             if not emitter.is_delta_pos():
-                                bsdf_pdf = self.surface_pdf(obj_id, light_dir, normal, ray_d)
+                                bsdf_pdf = self.surface_pdf(obj_id, light_dir, normal, ray_d, tex = tex)
                                 mis_w    = balance_heuristic(light_pdf, bsdf_pdf)
                             direct_int  += direct_spec * shadow_int * mis_w / emitter_pdf
                         else:
@@ -88,12 +92,12 @@ class Renderer(PathTracer):
                         emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, normal)
 
                     # indirect component requires sampling 
-                    ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, False, False)
+                    ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, False, False, tex = tex)
                     ray_o = hit_point
                     color += (direct_int + emit_int * emission_weight) * contribution
                     # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)
                     contribution *= indirect_spec / ray_pdf
-                    obj_id, normal, min_depth = self.ray_intersect(ray_d, ray_o)
+                    obj_id, normal, min_depth, prim_id, u_coord, v_coord = self.ray_intersect(ray_d, ray_o)
 
                     if obj_id >= 0:
                         hit_light = self.emitter_id[obj_id]
@@ -107,4 +111,5 @@ class Renderer(PathTracer):
                 self.pixels[i, j] = self.color[i, j] / self.cnt[None]
     
     def summary(self):
-        print(f"[INFO] PT Finished rendering. SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s")
+        super().summary()
+        CONSOLE.print(f"PT SPP = {self.cnt[None]}. Rendering time: {self.clock.toc():.3f} s", justify="center")

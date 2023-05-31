@@ -9,6 +9,9 @@ from time import time
 
 __all__ = ['TicToc', 'timing', 'show_global_config', 'folder_path']
 
+from rich.console import Console
+CONSOLE = Console(width = 128)
+
 on_off = lambda x: "[ON]" if x else "[OFF]"
 
 class TicToc:
@@ -29,19 +32,19 @@ def timing(verbose = True):
             start_time = time()
             ret_val = func(*args, **kwargs)
             if verbose:
-                print(f"[INFO] Function <{func.__name__}> takes {(time() - start_time) * 1e3:.4f} ms")
+                CONSOLE.log(f":hourglass_flowing_sand: Function <{func.__name__}> takes {(time() - start_time) * 1e3:.4f} ms")
             return ret_val
         return inner_wrapper
     return outter_wrapper
 
 def show_global_config(config: dict):
-    print(f"[INFO] Image to render: (w, h) = ({config['film']['width']}, \
+    CONSOLE.log(f"Image to render: (w, h) = ({config['film']['width']}, \
           {config['film']['height']}) with {config['max_bounce']} max bounces")
-    print(f"[INFO] FOV: {config['fov']:.4f}°. RR: {on_off(config['use_rr'])}.\
+    CONSOLE.log(f"FOV: {config['fov']:.4f}°. RR: {on_off(config['use_rr'])}.\
           MIS: {on_off(config['use_mis'])}. Shadow rays: {config['shadow_rays']}")
 
 def folder_path(path: str, comment: str = ""):
     if not os.path.exists(path):
-        if comment: print(comment)
+        if comment: CONSOLE.log(comment)
         os.makedirs(path)
     return path

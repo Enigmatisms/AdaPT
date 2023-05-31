@@ -1,1 +1,3 @@
 test/*.py
+*.obj
+*.mtl
