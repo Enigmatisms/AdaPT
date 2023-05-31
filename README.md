@@ -8,13 +8,24 @@ This renderer is implemented based on **MY OWN** understanding of path tracing a
 
 ##### Steady state rendering
 
+Bunny scenes are not uploaded in the repo (90k+ primitives).
+
 | "Spotlight Foggy Bunnies" | "Three Bunnies" |
 | ------------------------- | --------------- |
-|                           |                 |
+|  ![pbr-bunny-bdpt-textured](https://github.com/Enigmatisms/AdaPT/assets/46109954/07f0b226-f94b-4862-8c8e-a9511b5eceeb)            |      ![pbr-bunny-pt](https://github.com/Enigmatisms/AdaPT/assets/46109954/6caee802-8933-4c96-8ca4-281065fe5cfe)           |
 
 |         "The cornell spheres"          |         "The cornell boxes"         | "Fresnel Blend" |
 | :------------------------------------: | :---------------------------------: | :------------------------------------: |
 | ![](./assets/adapt-cornell-sphere.png) | ![](./assets/adapt-cornell-box.png) | ![pbr-big-bdpt](https://user-images.githubusercontent.com/126778364/225679926-f75aab9f-0f47-4f45-ab4a-3ea7eaf34055.png)|
+
+
+##### Console output
+
+Powered by rich console. Note that there is a speed bottle-neck for loading scene objects (see PR #16)
+
+![Screenshot from 2023-05-31 12-36-59](https://github.com/Enigmatisms/AdaPT/assets/46109954/963448af-da1b-422d-bcf7-e44aa4808973)
+
+
 
 ##### Transient state rendering
 
