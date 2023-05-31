@@ -1,13 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
-<!-- A test file for mitsuba-like scene xml file parser -->
-<!-- Author: Qianyue He / Original credit goes to Wenzel Jakob -->
-<!-- Only Steady state rendering are supported -->
-<!-- Only RGB or rgb spectrums are supported -->
+<!-- Kitchen scene demo -->
+<!-- seat-feet / glass closet -->
 <scene version="1.1">
 	<sensor type="perspective">
 		<float name="near_clip" value="0.001"/>
 		<float name="far_clip" value="2000"/>
-		<float name="fov" value="39.3077"/>
+		<float name="fov" value="47.8"/>
         <integer name="sample_count" value="128"/>
         <integer name="max_bounce" value="10"/>
         <integer name="max_depth" value="12"/>
@@ -25,11 +23,11 @@
         <float name="interval" value="0.05"/>				<!-- Width of a time bin -->			
 		
 		<transform name="toWorld">
-			<lookat target="2.78, 2.73, -7.99" origin="2.78, 2.73, -8.00" up="0, 1, 0"/>
+			<lookat target="5.60087836, 3.40507047, 2.79503098" origin="6.47278309, 3.60797739, 3.2406888" up="0, 1, 0"/>
 		</transform>
 
 		<film type="film">
-			<integer name="width" value="800"/>
+			<integer name="width" value="1024"/>
 			<integer name="height" value="800"/>
 			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
 			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
@@ -68,61 +66,7 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<emitter type="spot" id="source1">
-		<rgb name="emission" value="6.0, 4.0, 4.0"/>
-		<rgb name="scaler" value="245.0"/>
-		<point name="pos" x="3.779" y="5.2" z="2.745"/>
-		<point name="dir" x="-0.2" y="-1.5" z="-0.3"/>
-		<float name="half-angle" value="20.0"/>
-	</emitter>
-
-	<emitter type="spot" id="source2">
-		<rgb name="emission" value="6.0, 6.0, 4.0"/>
-		<rgb name="scaler" value="200.0"/>
-		<point name="pos" x="1.2" y="4.8" z="3.2"/>
-		<point name="dir" x="0.6" y="-1.5" z="-0.05"/>
-		<float name="half-angle" value="15.0"/>
-	</emitter>
-
-	<emitter type="spot" id="source3">
-		<rgb name="emission" value="4.0, 4.0, 6.0"/>
-		<rgb name="scaler" value="200.0"/>
-		<point name="pos" x="4.9" y="2.5" z="3.8"/>
-		<point name="dir" x="-1.6" y="-0.6" z="-0.4"/>
-		<float name="half-angle" value="15.0"/>
-	</emitter>
-
-	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
-		<ref type="material" id="white"/>
-		<ref type="texture" id="mat"/>
-		<transform name="toWorld">
-			<translate x="0" y="0.0" z="0"/>
-		</transform>
-	</shape>
-
-	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/cbox_ceiling.obj"/>
-		<ref type="material" id="white"/>
-	</shape>
-
-	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/cbox_back.obj"/>
-		<ref type="material" id="white"/>
-	</shape>
-
-	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/cbox_greenwall.obj"/>
-		<ref type="material" id="right_wall"/>
-	</shape>
-
-	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/cbox_redwall.obj"/>
-
-		<ref type="material" id="left_wall"/>
-	</shape>
-
-	<bsdf type="det-refraction" id="glass1">
+    <bsdf type="det-refraction" id="glass1">
 		<rgb name="k_d" value="#FFFFFF"/>
 		<medium type="transparent">
 			<rgb name="u_a" value="0.0"/>
@@ -145,45 +89,49 @@
 		<rgb name="k_s" value="#333333"/>
 		<rgb name="k_g" r="10" g="1000"/>
 	</brdf>
-	
-	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/bunny_full1.obj"/>
-		<ref type="material" id="lava_base"/>
-		<ref type="texture" id="lava"/>
-	</shape>
+
+    <!-- ================== Shapes & objects begin ================== -->
 
 	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/bunny_full2.obj"/>
-		<ref type="material" id="glass1"/>
+		<string name="filename" value="../meshes/kitchen/wooden.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="mat"/>
+		<transform name="toWorld">
+			<translate x="0" y="0.0" z="0"/>
+		</transform>
 	</shape>
 
-	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/bunny_body.obj"/>
-		<ref type="material" id="fresnel"/>
-		<ref type="texture" id="crystal"/>
+    <shape type="obj">
+		<string name="filename" value="../meshes/kitchen/whites.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="mat"/>
+		<transform name="toWorld">
+			<translate x="0" y="0.0" z="0"/>
+		</transform>
 	</shape>
 
-	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/bunny_head.obj"/>
-		<ref type="material" id="glass1"/>
-	</shape>
+    <!-- ================== Emitters begin ================== -->
 
-	<texture id="lava" type="image">
-		<string name="filename" value="./scenes/meshes/textures/lava.jpeg"/>
-	</texture>
+    <emitter type="spot" id="source1">
+		<rgb name="emission" value="6.0, 4.0, 4.0"/>
+		<rgb name="scaler" value="245.0"/>
+		<point name="pos" x="3.779" y="5.2" z="2.745"/>
+		<point name="dir" x="-0.2" y="-1.5" z="-0.3"/>
+		<float name="half-angle" value="20.0"/>
+	</emitter>
 
-	<texture id="crystal" type="image">
-		<string name="filename" value="./scenes/meshes/textures/crystal.jpg"/>
-	</texture>
+    <!-- ================== Textures begin ================== -->
 
 	<texture id="mat" type="image">
-		<string name="filename" value="./scenes/meshes/textures/mat.jpeg"/>
+		<string name="filename" value="./scenes/meshes/kitchen_textures/walnut.jpg"/>
 	</texture>
+
+    <!-- ================== World media begin ================== -->
 
 	<world name="yes!">
 		<rgb name="skybox" value="0.0"/>
 		<rgb name="ambient" value="0.0"/>
-		<medium type="hg">
+		<medium type="transparent">
 			<rgb name="u_a" value="0.0"/>
 			<rgb name="u_s" value="0.25"/>
 			<rgb name="par" value="0.2"/>

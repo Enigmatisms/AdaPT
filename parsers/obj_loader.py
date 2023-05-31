@@ -15,7 +15,7 @@ CONSOLE = Console(width = 128)
 
 # supported_rot_type = ("euler", "quaternion", "angle-axis")
 
-def extract_obj_info(path: str, verbose = True, auto_scale_uv = True, vn_check = True):
+def extract_obj_info(path: str, verbose = True, auto_scale_uv = False):
     """ Extract uv coordinates from wavefront object file
         result in UV coordinates not exactly within [0, 1], therefore we might want
         to scale it to make the subsequent processing easier.
@@ -23,7 +23,7 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = True, vn_check =
         Since in my Taichi implementation, primitives are stored in ti.vec3.field (shape (N, 3))
         I reorder the UV vertices into (N, 3)
 
-        auto_scale_uv is True: by default, since the spherical projection might
+        auto_scale_uv is False: by default, though there will be u,vs which are out of [0, 1]
         vn_check: we can load precomputed normals from obj file, but they are actually vertex normals
         What we need are surface normals, so we need to check them before exporting 
     """
@@ -44,7 +44,6 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = True, vn_check =
         mesh_faces = None
         uv_coords = None
         normals = None
-        has_vn = False
         for part in all_parts:
             if part.startswith("T"):
                 uv_coords = all_data[:, start_dim:start_dim+2]
@@ -53,9 +52,6 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = True, vn_check =
                     result_max = uv_coords.max()
                     uv_coords = (uv_coords - result_min) / (result_max - result_min)
                 uv_coords = uv_coords.reshape(-1, 3, 2)
-            elif part.startswith("N"):
-                has_vn = True
-                normals = np.float32(all_data[:, start_dim:start_dim+3]).reshape(-1, 3, 3)
             elif part.startswith("V"):
                 mesh_faces = np.float32(all_data[:, start_dim:start_dim+3]).reshape(-1, 3, 3)
             start_dim += int(part[1:])
@@ -66,15 +62,6 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = True, vn_check =
         # so uv-coordinates are ordered too
         # vertices shape: (N_faces, 3, 3), uv_coords shape: (N_faces, 3, 2)
 
-        if has_vn and vn_check:         # check 20% vns
-            num_vn = normals.shape[0]
-            for i in range(0, num_vn, 5):
-                if abs(np.linalg.det(normals[i])) > 1e-4:       # determinant check
-                    if verbose:
-                        CONSOLE.log("Vertex normals are used, loaded from .obj file.")
-                    break
-            else:
-                normals = None
         if normals is None:                 # normal is not computed in obj
             dp1 = mesh_faces[:, 1, :] - mesh_faces[:, 0, :]
             dp2 = mesh_faces[:, 2, :] - mesh_faces[:, 1, :]
