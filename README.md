@@ -8,6 +8,14 @@ This renderer is implemented based on **MY OWN** understanding of path tracing a
 
 ##### Steady state rendering
 
+Kitchen scene (100k+ primitives):
+
+<p align="center"><img src="https://github.com/Enigmatisms/AdaPT/assets/46109954/4c891d25-70ce-4239-9c48-ddf72c72ad4d"/></p>
+
+Stuff scene:
+
+<p align="center"><img src="https://github.com/Enigmatisms/AdaPT/assets/46109954/d91b93e4-3084-419d-a310-a5dbb11d77ea"/></p>
+
 Bunny scenes are not uploaded in the repo (90k+ primitives).
 
 | "Spotlight Foggy Bunnies" | "Three Bunnies" |
