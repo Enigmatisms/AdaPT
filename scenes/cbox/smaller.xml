@@ -1,0 +1,152 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- Kitchen scene demo -->
+<!-- seat-feet / glass closet -->
+<scene version="1.1">
+	<sensor type="perspective">
+		<float name="near_clip" value="0.001"/>
+		<float name="far_clip" value="2000"/>
+		<float name="fov" value="47.073"/>
+        <integer name="sample_count" value="128"/>
+        <integer name="max_bounce" value="18"/>
+        <integer name="max_depth" value="18"/>
+        <integer name="num_shadow_ray" value="2"/>       
+
+        <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
+        <boolean name="anti_alias" value="true"/>       	
+        <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
+        <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
+        <boolean name="brdf_two_sides" value="true"/>	    <!-- Whether to use two-sided BRDF -->
+
+        <string name="accelerator" value="bvh"/>       
+		<string name="decomposition" value="none"/>	<!-- Decomposition mode -->				
+        <integer name="sample_count" value="400"/>			<!-- Number of bins -->
+        <float name="min_time" value="0.0"/>					<!-- Starting time for camera -->				
+        <float name="interval" value="0.05"/>				<!-- Width of a time bin -->			
+		
+		<transform name="toWorld">
+			<lookat target="-0.19775909, 1.64715385, -0.56128609" origin=" 0.282592, 2.30289674, -1.14374995" up="0, 1, 0"/>
+		</transform>
+
+		<film type="film">
+			<integer name="width" value="800"/>
+			<integer name="height" value="800"/>
+			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
+			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
+			<integer name="crop_rx" value="0"/>		<!-- Crop half radius for x-axis -->
+			<integer name="crop_ry" value="0"/>		<!-- Crop half radius for y-axis -->
+		</film>
+	</sensor>
+
+	<brdf type="lambertian" id="white">
+		<rgb name="k_d" value="#BDBDBD"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+    <bsdf type="det-refraction" id="glass">
+		<rgb name="k_d" value="#FFFFFF"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.5"/>
+		</medium>
+	</bsdf>
+
+	<bsdf type="det-refraction" id="water">
+		<rgb name="k_d" value="#F4F6F8"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.33"/>
+		</medium>
+	</bsdf>
+
+	<brdf type="blinn-phong" id="floor">
+		<rgb name="k_d" value="#A29785"/>
+		<rgb name="k_g" value="5.0"/>
+		<rgb name="k_s" value="#3C3C3C"/>
+	</brdf>
+
+	<brdf type="blinn-phong" id="tea-cup">
+		<rgb name="k_d" value="#A4C4A4"/>
+		<rgb name="k_g" value="15.0"/>
+		<rgb name="k_s" value="#322232"/>
+	</brdf>
+
+    <!-- ================== Shapes & objects begin ================== -->
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/smaller/area-light2.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="emitter" id="area"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/smaller/feet.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="feet"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/smaller/floor.obj"/>
+		<ref type="material" id="floor"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/smaller/glass-jug.obj"/>
+		<ref type="material" id="glass"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/smaller/seat-back.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/smaller/tea-glass.obj"/>
+		<ref type="material" id="tea-cup"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/smaller/water-inside.obj"/>
+		<ref type="material" id="water"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/smaller/cube.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="emitter" id="cube"/>
+	</shape>
+
+    <!-- ================== Emitters begin ================== -->
+
+    <emitter type="area" id="area">
+		<rgb name="emission" value="6.0, 5.5, 5.0"/>
+		<rgb name="scaler" value="25.0"/>
+	</emitter>
+
+	<emitter type="area" id="cube">
+		<rgb name="emission" value="1.0, 0.9, 0.8"/>
+	</emitter>
+
+    <!-- ================== Textures begin ================== -->
+
+	<texture id="feet" type="image">
+		<string name="filename" value="./scenes/meshes/kitchen_textures/wood.jpg"/>
+	</texture>
+
+    <!-- ================== World media begin ================== -->
+
+	<world name="yes!">
+		<rgb name="skybox" value="0.0"/>
+		<rgb name="ambient" value="0.0"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.25"/>
+			<rgb name="par" value="0.2"/>
+			<float name="ior" value="1.0"/>
+		</medium>
+	</world>
+</scene>

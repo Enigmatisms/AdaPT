@@ -122,7 +122,7 @@ class BRDF:
             half_way.fill(0.0)
         dot_clamp = ti.max(0.0, tm.dot(half_way, normal))
         glossy = tm.pow(dot_clamp, self.k_g)
-        cosine_term = tm.max(0.0, tm.dot(normal, ray_out))
+        cosine_term = ti.max(0.0, tm.dot(normal, ray_out))
         # A modified Phong model (k_d + k_s should be smaller than 1, otherwise not physically plausible)
         diffuse_color = ti.select(tex[0] < 0, self.k_d, tex)
         return (diffuse_color + self.k_s * (0.5 * (self.k_g + 2.0) * glossy)) * INV_PI * cosine_term

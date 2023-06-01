@@ -5,16 +5,17 @@
 	<sensor type="perspective">
 		<float name="near_clip" value="0.001"/>
 		<float name="far_clip" value="2000"/>
-		<float name="fov" value="47.8"/>
+		<float name="fov" value="47.073"/>
         <integer name="sample_count" value="128"/>
         <integer name="max_bounce" value="10"/>
-        <integer name="max_depth" value="12"/>
+        <integer name="max_depth" value="10"/>
         <integer name="num_shadow_ray" value="4"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
         <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
         <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
+        <boolean name="brdf_two_sides" value="true"/>	    <!-- Whether to use two-sided BRDF -->
 
         <string name="accelerator" value="bvh"/>       
 		<string name="decomposition" value="none"/>	<!-- Decomposition mode -->				
@@ -23,7 +24,7 @@
         <float name="interval" value="0.05"/>				<!-- Width of a time bin -->			
 		
 		<transform name="toWorld">
-			<lookat target="5.60087836, 3.40507047, 2.79503098" origin="6.47278309, 3.60797739, 3.2406888" up="0, 1, 0"/>
+			<lookat target="4.00791991, 2.33043269, 3.43428653" origin="4.802176, 2.27936912, 4.03972006" up="0, 1, 0"/>
 		</transform>
 
 		<film type="film">
@@ -36,38 +37,26 @@
 		</film>
 	</sensor>
 
-	<brdf type="lambertian" id="box">
-		<rgb name="k_d" value="#BCBCBC"/>
-		<rgb name="k_g" value="1.0"/>
-		<rgb name="k_s" value="0.0"/>
-	</brdf>
-
 	<brdf type="lambertian" id="white">
 		<rgb name="k_d" value="#BDBDBD"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="lambertian" id="left_wall">
-		<rgb name="k_d" value="#DD2525"/>
+	<brdf type="lambertian" id="thick-wall">
+		<rgb name="k_d" value="#898989"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="lambertian" id="right_wall">
-		<rgb name="k_d" value="#25DD25"/>
+	<brdf type="lambertian" id="lamp-cover">
+		<rgb name="k_d" value="#FAFAD2"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="lambertian" id="light">
-		<rgb name="k_d" value="#555555"/>
-		<rgb name="k_g" value="1.0"/>
-		<rgb name="k_s" value="0.0"/>
-	</brdf>
-
-    <bsdf type="det-refraction" id="glass1">
-		<rgb name="k_d" value="#FFFFFF"/>
+    <bsdf type="det-refraction" id="glass">
+		<rgb name="k_d" value="#EEEEEE"/>
 		<medium type="transparent">
 			<rgb name="u_a" value="0.0"/>
 			<rgb name="u_s" value="0.0"/>
@@ -76,54 +65,297 @@
 		</medium>
 	</bsdf>
 
-	<brdf type="lambertian" id="lava_base">
-		<rgb name="k_d" value="#FFFFFF"/>
+	<brdf type="blinn-phong" id="floor">
+		<rgb name="k_d" value="#111111"/>
+		<rgb name="k_g" value="3.0"/>
+		<rgb name="k_s" value="#161616"/>
+	</brdf>
+
+	<brdf type="blinn-phong" id="tea-cup">
+		<rgb name="k_d" value="#A4C4A4"/>
+		<rgb name="k_g" value="10.0"/>
+		<rgb name="k_s" value="#322232"/>
+	</brdf>
+
+	<brdf type="blinn-phong" id="door-frame">
+		<rgb name="k_d" value="#555555"/>
+		<rgb name="k_g" value="5.0"/>
+		<rgb name="k_s" value="#555555"/>
+	</brdf>
+
+	<brdf type="blinn-phong" id="oven-frame">
+		<rgb name="k_d" value="#222222"/>
+		<rgb name="k_g" value="5.0"/>
+		<rgb name="k_s" value="#555555"/>
+	</brdf>
+
+	<brdf type="blinn-phong" id="table">
+		<rgb name="k_d" value="#EEEEEE"/>
+		<rgb name="k_g" value="3.0"/>
+		<rgb name="k_s" value="#111111"/>
+	</brdf>
+
+	<brdf type="specular" id="mirror">
+		<rgb name="k_d" value="#666666"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="fresnel-blend" id="fresnel">
-		<rgb name="k_d" value="#CACACA"/>
-		<!-- <rgb name="k_g" value="1.0"/>
-		<rgb name="k_s" value="0.0"/> -->
-		<rgb name="k_s" value="#333333"/>
+	<brdf type="fresnel-blend" id="sink">
+		<rgb name="k_d" value="#777777"/>
+		<rgb name="k_s" value="#545454"/>
 		<rgb name="k_g" r="10" g="1000"/>
+	</brdf>
+
+	<brdf type="fresnel-blend" id="handle">
+		<rgb name="k_d" value="#999999"/>
+		<rgb name="k_s" value="#545454"/>
+		<rgb name="k_g" r="10" g="1000"/>
+	</brdf>
+
+	<brdf type="fresnel-blend" id="oven-top-iron">
+		<rgb name="k_d" value="#A5A5A5"/>
+		<rgb name="k_s" value="#545454"/>
+		<rgb name="k_g" r="10" g="1000"/>
+	</brdf>
+
+	<brdf type="fresnel-blend" id="lamp-frame">
+		<rgb name="k_d" value="#D4BF47"/>
+		<rgb name="k_s" value="#233333"/>
+		<rgb name="k_g" r="10" g="100"/>
 	</brdf>
 
     <!-- ================== Shapes & objects begin ================== -->
 
 	<shape type="obj">
-		<string name="filename" value="../meshes/kitchen/wooden.obj"/>
-		<ref type="material" id="white"/>
-		<ref type="texture" id="mat"/>
-		<transform name="toWorld">
-			<translate x="0" y="0.0" z="0"/>
-		</transform>
+		<string name="filename" value="../meshes/kitchen/back-wall.obj"/>
+		<ref type="material" id="thick-wall"/>
 	</shape>
 
-    <shape type="obj">
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/back-door.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="back-door"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/ceiling.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="ceiling"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/cup.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="cup"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/door.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/door-frame.obj"/>
+		<ref type="material" id="door-frame"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/doughnut-1.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="doughnut1"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/doughnut-2.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="doughnut2"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/doughnut-3.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="doughnut1"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/drawings.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="drawings"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/door-glass.obj"/>
+		<ref type="material" id="mirror"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/floor.obj"/>
+		<ref type="material" id="floor"/>
+		<ref type="texture" id="floor"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/floor-lamp-cover.obj"/>
+		<ref type="material" id="lamp-cover"/>
+		<ref type="emitter" id="lamp-cover"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/floor-lamp-frame.obj"/>
+		<ref type="material" id="lamp-frame"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/glass-closet.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/glass-jugs.obj"/>
+		<ref type="material" id="glass"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/handles.obj"/>
+		<ref type="material" id="handle"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/lights.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/light-bulbs.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="emitter" id="bulb"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/oven-bottom.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/oven-frame.obj"/>
+		<ref type="material" id="oven-frame"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/oven-top-iron.obj"/>
+		<ref type="material" id="oven-top-iron"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/round-table.obj"/>
+		<ref type="material" id="table"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/seat-backs.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+	
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/seat-feet.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="feet"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/silver-sink.obj"/>
+		<ref type="material" id="sink"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/tea-glass.obj"/>
+		<ref type="material" id="tea-cup"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/thick-wall.obj"/>
+		<ref type="material" id="thick-wall"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/thin-wall.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/white-closet.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
 		<string name="filename" value="../meshes/kitchen/whites.obj"/>
 		<ref type="material" id="white"/>
-		<ref type="texture" id="mat"/>
-		<transform name="toWorld">
-			<translate x="0" y="0.0" z="0"/>
-		</transform>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/wooden.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="wooden"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/kitchen/wood-plate.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="wood-plate"/>
 	</shape>
 
     <!-- ================== Emitters begin ================== -->
 
-    <emitter type="spot" id="source1">
-		<rgb name="emission" value="6.0, 4.0, 4.0"/>
-		<rgb name="scaler" value="245.0"/>
-		<point name="pos" x="3.779" y="5.2" z="2.745"/>
-		<point name="dir" x="-0.2" y="-1.5" z="-0.3"/>
-		<float name="half-angle" value="20.0"/>
+    <emitter type="area" id="bulb">
+		<rgb name="emission" value="6.0, 6.0, 6.0"/>
+		<rgb name="scaler" value="250.0"/>
+	</emitter>
+
+	<emitter type="area" id="lamp-cover">
+		<rgb name="emission" value="30, 25, 21"/>
 	</emitter>
 
     <!-- ================== Textures begin ================== -->
 
-	<texture id="mat" type="image">
+	<texture id="back-door" type="image">
+		<string name="filename" value="./scenes/meshes/kitchen_textures/wood.jpg"/>
+	</texture>
+
+	<texture id="wooden" type="image">
 		<string name="filename" value="./scenes/meshes/kitchen_textures/walnut.jpg"/>
+	</texture>
+
+	<texture id="doughnut1" type="image">
+		<string name="filename" value="./scenes/meshes/kitchen_textures/bagel_1.jpg"/>
+	</texture>
+
+	<texture id="doughnut2" type="image">
+		<string name="filename" value="./scenes/meshes/kitchen_textures/bagel_3.jpg"/>
+	</texture>
+
+	<texture id="drawings" type="image">
+		<string name="filename" value="./scenes/meshes/kitchen_textures/colorful-flipped.png"/>
+	</texture>
+
+	<texture id="floor" type="image">
+		<string name="filename" value="./scenes/meshes/kitchen_textures/smart-floor.jpg"/>
+	</texture>
+
+	<texture id="wood-plate" type="image">
+		<string name="filename" value="./scenes/meshes/kitchen_textures/bamboo.jpg"/>
+	</texture>
+
+	<texture id="ceiling" type="image">
+		<string name="filename" value="./scenes/meshes/kitchen_textures/ceiling.jpg"/>
+	</texture>
+
+	<texture id="cup" type="image">
+		<string name="filename" value="./scenes/meshes/kitchen_textures/cup.jpg"/>
+	</texture>
+
+	<texture id="feet" type="image">
+		<string name="filename" value="./scenes/meshes/kitchen_textures/wood.jpg"/>
 	</texture>
 
     <!-- ================== World media begin ================== -->
