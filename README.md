@@ -45,7 +45,7 @@ Note that the gifs presented here are made by compressed jpeg files and optimize
 
 [^foot]: 'Camera unwarped' means the transient profile shows the time when a position in the scene is *hit* by emitter ray. 'Camera warped' means the transient profile shows the total time of a position being hit by the emitter ray which should finally transmits to the camera. Starting from v1.2.1, the support for mode `transient_lit` (camera unwarped) is temporarily lifted, since there are still some problem with this mode. Any attempt to using this mode will fall back to `transient_cam` (camera warped) mode.
 
-Here are the features I currently implemented and supports:
+Here are the features I currently implemented and support:
 
 - A direct component renderer: a interactive visualizer for direct illumination visualization
 - A **unidirectional / bidirectional Monte-Carlo MIS path tracer**: supports as many bounce times as you wish, and the rendering process is based on Taichi Lang, therefore it can be very fast (not on the first run, the first run of a scene might take a long time due to taichi function inlining, especially for BDPT). The figures displayed above can be rendered within 15-20s (with cuda-backend, GPU supported). The rendering result is displayed incrementally, or maximum iteration number can be pre-set.
