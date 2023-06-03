@@ -8,6 +8,8 @@ This renderer is implemented based on **MY OWN** understanding of path tracing a
 
 ##### Steady state rendering
 
+For more example scenes, please refer to [Enigmatisms/AdaptiveGallery](https://github.com/Enigmatisms/AdaptiveGallery)
+
 Kitchen scene (100k+ primitives):
 
 <p align="center"><img src="https://github.com/Enigmatisms/AdaPT/assets/46109954/4c891d25-70ce-4239-9c48-ddf72c72ad4d"/></p>
