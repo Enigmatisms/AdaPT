@@ -4,9 +4,19 @@
 
 **Ada** **P**ath **T**racer is a simple Monte Carlo path tracing renderer based on [Taichi Lang](https://www.taichi-lang.org/), with which you can play easily. The name `AdaPT` is given by my GF and I think this name is brilliant. 
 
-This renderer is implemented based on **MY OWN** understanding of path tracing and other CG knowledge, therefore I **DO NOT** guarantee usability (also, I have done no verification experiments). The output results just... look decent:
+This renderer is implemented based on **MY OWN** understanding of path tracing and other CG knowledge, therefore I **DO NOT** guarantee usability. The output results look decent nevertheless:
 
 ##### Steady state rendering
+
+For more example scenes, please refer to [Enigmatisms/AdaptiveGallery](https://github.com/Enigmatisms/AdaptiveGallery)
+
+Kitchen scene (100k+ primitives):
+
+<p align="center"><img src="https://github.com/Enigmatisms/AdaPT/assets/46109954/4c891d25-70ce-4239-9c48-ddf72c72ad4d"/></p>
+
+Stuff scene:
+
+<p align="center"><img src="https://github.com/Enigmatisms/AdaPT/assets/46109954/d91b93e4-3084-419d-a310-a5dbb11d77ea"/></p>
 
 Bunny scenes are not uploaded in the repo (90k+ primitives).
 
@@ -37,7 +47,7 @@ Note that the gifs presented here are made by compressed jpeg files and optimize
 
 [^foot]: 'Camera unwarped' means the transient profile shows the time when a position in the scene is *hit* by emitter ray. 'Camera warped' means the transient profile shows the total time of a position being hit by the emitter ray which should finally transmits to the camera. Starting from v1.2.1, the support for mode `transient_lit` (camera unwarped) is temporarily lifted, since there are still some problem with this mode. Any attempt to using this mode will fall back to `transient_cam` (camera warped) mode.
 
-Here are the features I currently implemented and supports:
+Here are the features I currently implemented and support:
 
 - A direct component renderer: a interactive visualizer for direct illumination visualization
 - A **unidirectional / bidirectional Monte-Carlo MIS path tracer**: supports as many bounce times as you wish, and the rendering process is based on Taichi Lang, therefore it can be very fast (not on the first run, the first run of a scene might take a long time due to taichi function inlining, especially for BDPT). The figures displayed above can be rendered within 15-20s (with cuda-backend, GPU supported). The rendering result is displayed incrementally, or maximum iteration number can be pre-set.
