@@ -9,7 +9,7 @@ import os
 import sys
 sys.path.append("..")
 
-import matplotlib.pyplot as plt
+import tqdm
 import numpy as np
 import taichi as ti
 import taichi.math as tm
@@ -166,7 +166,7 @@ class PathTracer(TracerBase):
     def prepare_for_bvh(self, objects: List[ObjDescriptor]):
         primitives = []
         obj_info = np.zeros((2, len(objects)), dtype = np.int32)        
-        for i, obj in enumerate(objects):
+        for i, obj in tqdm.tqdm(enumerate(objects)):
             # for sphere, it would be (1, 2, 3), for others it would be (n, 3, 3)
             num_primitive = obj.meshes.shape[0]
             obj_info[0, i] = num_primitive
@@ -186,7 +186,7 @@ class PathTracer(TracerBase):
 
         acc_prim_num = 0
         for i, obj in enumerate(objects):
-            for j, (mesh, normal) in enumerate(zip(obj.meshes, obj.normals)):
+            for j, (mesh, normal) in tqdm.tqdm(enumerate(zip(obj.meshes, obj.normals))):
                 cur_id = acc_prim_num + j
                 self.prims[cur_id, 0] = vec3(mesh[0])
                 self.prims[cur_id, 1] = vec3(mesh[1])
@@ -200,7 +200,7 @@ class PathTracer(TracerBase):
                     self.precom_vec[cur_id, 1] = self.prims[cur_id, 1]           
                 self.normals[cur_id] = vec3(normal) 
             if obj.uv_coords is not None:
-                for j, uv_coord in enumerate(obj.uv_coords):
+                for j, uv_coord in tqdm.tqdm(enumerate(obj.uv_coords)):
                     cur_id = acc_prim_num + j
                     self.uv_coords[cur_id, 0] = vec2(uv_coord[0])
                     self.uv_coords[cur_id, 1] = vec2(uv_coord[1])

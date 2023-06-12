@@ -1,0 +1,90 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- A test file for mitsuba-like scene xml file parser -->
+<!-- Author: Qianyue He / Original credit goes to Wenzel Jakob -->
+<!-- Only Steady state rendering are supported -->
+<!-- Only RGB or rgb spectrums are supported -->
+<scene version="1.1">
+	<sensor type="perspective">
+		<float name="near_clip" value="0.001"/>
+		<float name="far_clip" value="2000"/>
+		<float name="fov" value="28.0"/>
+        <integer name="sample_count" value="128"/>
+        <integer name="max_bounce" value="8"/>
+        <integer name="num_shadow_ray" value="1"/>    
+        <boolean name="brdf_two_sides" value="true"/>	    <!-- Whether to use two-sided BRDF -->
+
+        <string name="accelerator" value="bvh"/>          
+        <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
+        <boolean name="anti_alias" value="true"/>       	
+        <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
+        <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
+		
+		<transform name="toWorld">
+			<lookat target="1.36452293, 32.68391782, 24.54819953" origin="1.36452293, 33.35872269, 25.28619576" up="0, 1, 0"/>
+		</transform>
+
+		<integer name="start_t" value="1"/>       
+        <integer name="end_t" value="100"/>       
+        <integer name="start_s" value="0"/>       
+        <integer name="end_s" value="100"/>   
+
+		<film type="film">
+			<integer name="width" value="665"/>
+			<integer name="height" value="915"/>
+			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
+			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
+			<integer name="crop_rx" value="0"/>		<!-- Crop half radius for x-axis -->
+			<integer name="crop_ry" value="0"/>		<!-- Crop half radius for y-axis -->
+		</film>
+	</sensor>
+
+	<brdf type="lambertian" id="box">
+		<rgb name="k_d" value="#BCBCBC"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="blinn-phong" id="white">
+		<rgb name="k_d" value="#AA9182"/>
+		<rgb name="k_g" value="20.0"/>
+		<rgb name="k_s" value="#535353"/>
+	</brdf>
+
+	<emitter type="spot" id="source3">
+		<rgb name="emission" value="6.0, 5.5, 5.0"/>
+		<rgb name="scaler" value="1300.0"/>
+		<point name="pos" x="16.672" y="41.4843" z="13.5678"/>
+		<point name="dir" x="-16.672" y="-30.0" z="-13.56"/>
+		<float name="half-angle" value="6.5"/>
+	</emitter>
+
+    <emitter type="point" id="point">
+		<rgb name="emission" value="6.0, 5.5, 5.0"/>
+		<point name="pos" x="16.672" y="41.4843" z="13.5678"/>
+		<rgb name="scaler" value="70.0"/>
+	</emitter>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/skeleton/floor.obj"/>
+		<ref type="material" id="box"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/skeleton/skeleton-full.obj"/>
+		<ref type="material" id="white"/>
+		<transform name="toWorld">
+			<translate x="0" y="0.0" z="0"/>
+		</transform>
+	</shape>
+
+	<world name="yes!">
+		<rgb name="skybox" value="0.0"/>
+		<rgb name="ambient" value="0.0"/>
+		<medium type="hg">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.03"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.0"/>
+		</medium>
+	</world>
+</scene>
