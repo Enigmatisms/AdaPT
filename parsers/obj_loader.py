@@ -34,6 +34,7 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = False):
         break
     if material is not None:
         vert_type = material.vertex_format
+        print(vert_type)
         if "T" not in vert_type:
             if verbose:
                 CONSOLE.log(f"[blue]Attention: Object contains no uv-coordinates for vtype '{vert_type}'")
@@ -41,9 +42,9 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = False):
         start_dim = 0
         dim_num = sum([int(part[1:]) for part in all_parts])
         all_data = np.float32(material.vertices).reshape(-1, dim_num)
-        mesh_faces = None
-        uv_coords = None
-        normals = None
+        mesh_faces  = None
+        vert_normal = None 
+        uv_coords   = None
         for part in all_parts:
             if part.startswith("T"):
                 uv_coords = all_data[:, start_dim:start_dim+2]
@@ -54,6 +55,8 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = False):
                 uv_coords = uv_coords.reshape(-1, 3, 2)
             elif part.startswith("V"):
                 mesh_faces = np.float32(all_data[:, start_dim:start_dim+3]).reshape(-1, 3, 3)
+            elif part.startswith("N"):
+                vert_normal = np.float32(all_data[:, start_dim:start_dim+3]).reshape(-1, 3, 3)
             start_dim += int(part[1:])
 
         assert mesh_faces is not None     # we directly use the vertices loaded, so this can not be empty
@@ -62,15 +65,15 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = False):
         # so uv-coordinates are ordered too
         # vertices shape: (N_faces, 3, 3), uv_coords shape: (N_faces, 3, 2)
 
-        if normals is None:                 # normal is not computed in obj
-            dp1 = mesh_faces[:, 1, :] - mesh_faces[:, 0, :]
-            dp2 = mesh_faces[:, 2, :] - mesh_faces[:, 1, :]
-            normals = np.cross(dp1, dp2)
-            normals /= np.linalg.norm(normals, axis = -1, keepdims = True)
+        # calculate geometrical normal
+        dp1 = mesh_faces[:, 1, :] - mesh_faces[:, 0, :]
+        dp2 = mesh_faces[:, 2, :] - mesh_faces[:, 1, :]
+        normals = np.cross(dp1, dp2)
+        normals /= np.linalg.norm(normals, axis = -1, keepdims = True)
         
         if verbose:
             CONSOLE.log(f"Mesh loaded from '{path}', output shape: [blue]{mesh_faces.shape}[/blue]")
-        return mesh_faces, normals, uv_coords
+        return mesh_faces, normals, vert_normal, uv_coords
     else:
         raise ValueError("This wavefront onject file has no material but it is required.")
 

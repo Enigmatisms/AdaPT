@@ -162,7 +162,7 @@ class VolumeRenderer(PathTracer):
                     shadow_int  = vec3([0, 0, 0])
                     direct_int  = vec3([0, 0, 0])
                     direct_spec = vec3([1, 1, 1])
-                    tex = self.get_uv_color(obj_id, prim_id, u_coord, v_coord)
+                    tex = self.get_uv_item(self.textures, self.texture_img, obj_id, prim_id, u_coord, v_coord)
                     for _j in range(self.num_shadow_ray):    # more shadow ray samples
                         emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
                         light_dir = vec3([0, 0, 0])

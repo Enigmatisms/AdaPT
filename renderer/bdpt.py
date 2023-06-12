@@ -263,7 +263,7 @@ class BDPT(VolumeRenderer):
             is_delta = (not is_mi) and self.is_delta(obj_id)
             bool_bits = BDPT.get_bool(d_delta = is_delta, is_area = (hit_light >= 0), in_fspace = in_free_space, is_delta = is_delta)
             
-            tex = self.get_uv_color(obj_id, prim_id, u_coord, v_coord)
+            tex = self.get_uv_item(self.textures, self.texture_img, obj_id, prim_id, u_coord, v_coord)
             vertex_args = {"_type": ti.select(is_mi, VERTEX_MEDIUM, VERTEX_SURFACE), "obj_id": obj_id, "emit_id": hit_light, 
                 "bool_bits": bool_bits, "pdf_fwd": pdf_fwd, "time": acc_time, "pos": hit_point,
                 "normal": ti.select(is_mi, ZERO_V3, normal), "ray_in": ray_d, "beta": throughput, "tex": tex            

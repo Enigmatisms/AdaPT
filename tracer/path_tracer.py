@@ -226,16 +226,16 @@ class PathTracer(TracerBase):
                 self.src_field[emitter_ref_id].obj_ref_id = i
 
     @ti.func
-    def get_uv_color(self, obj_id: int, prim_id: int, u: float, v: float):
+    def get_uv_item(self, textures: ti.template(), tex_img: ti.template(), obj_id: int, prim_id: int, u: float, v: float):
         """ Convert primitive local UV to the global UV coord for an object """
         color = INVALID
-        has_texture = self.textures[obj_id].type > -255
+        has_texture = textures[obj_id].type > -255
         if has_texture:
             is_sphere = self.obj_info[obj_id, 2]
             if is_sphere == 0:          # not a sphere
                 u, v = self.uv_coords[prim_id, 1] * u + self.uv_coords[prim_id, 2] * v + \
                     self.uv_coords[prim_id, 0] * (1. - u - v)
-            color = self.textures[obj_id].query(self.texture_img, u, v)
+            color = textures[obj_id].query(tex_img, u, v)
         return color
 
     @ti.func

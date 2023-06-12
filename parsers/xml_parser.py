@@ -90,11 +90,12 @@ def parse_wavefront(
     # We need to calculate surface area of the object mesh first (asuming each triangle has similar area)
     attached_area_dict = {}
     for elem in obj_list:
-        uvs, trans_r, trans_t = None, None, None                           # uv_coordinates and transform
+        vns, uvs, trans_r, trans_t = None, None, None, None                           # uv_coordinates and transform
         obj_type = 0
         if elem.get("type") == "obj":
             filepath_child       = elem.find("string")
-            meshes, normals, uvs = extract_obj_info(os.path.join(directory, filepath_child.get("value")))
+            # get mesh / geometrical normal / shading normal / uv coords for texture
+            meshes, normals, vns, uvs = extract_obj_info(os.path.join(directory, filepath_child.get("value")))
             transform_child      = elem.find("transform")
             if transform_child is not None:
                 trans_r, trans_t    = transform_parse(transform_child)
@@ -119,7 +120,7 @@ def parse_wavefront(
             
         if bsdf_item is None:
             raise ValueError("Object should be attached with a BSDF for now since no default one implemented yet.")
-        all_objs.append(ObjDescriptor(meshes, normals, bsdf_item, uvs, texture, trans_r, trans_t, emit_ref_id, obj_type))
+        all_objs.append(ObjDescriptor(meshes, normals, bsdf_item, vns, uvs, texture, trans_r, trans_t, emit_ref_id, obj_type))
     return all_objs, attached_area_dict
 
 def parse_bxdf(bxdf_list: List[xet.Element]):
@@ -201,6 +202,16 @@ def scene_parsing(directory: str, file: str):
     emitter_dict     = parse_emitters(emitter_nodes)
     bsdf_dict        = parse_bxdf(bxdf_nodes)
     teximg, textures = parse_texture(texture_nodes)
+    """ Texture mapping should be updateded (FIXME):
+    (1) <ref type = "texture".../>. Now for each object, there can only be one ref for each type of reference
+        But TODO: texture needs more that one (albedo map, normal map, bump map, roughness map), for other mappings
+        I do not want to implement them. Therefore, 1-to-many mapping should be correctly established
+    (2) Loading from python to Taichi (for different kinds of mapping)
+        Each mapping might needs a different packing, therefore we need different image packaging and texture info block
+        For normal mapping, non-bidirectional renderers will be simple but not for BDPT
+        roughness is of lower priority
+    (3) Speed up python->taichi conversion
+    """
     meshes, area_lut = parse_wavefront(directory, shape_nodes, bsdf_dict, emitter_dict, textures)
     configs          = parse_global_sensor(sensor_node)
     configs['world'] = parse_world(world_node)

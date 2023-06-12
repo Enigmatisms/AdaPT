@@ -189,7 +189,7 @@ class TracerBase:
                 coord_v = tm.acos(normal[2]) * INV_PI
             else:
                 normal = self.normals[prm_id]
-        return (obj_id, normal, min_depth, coord_u, coord_v)
+        return (obj_id, normal, min_depth, prm_id, coord_u, coord_v)
 
     @ti.func
     def does_intersect(self, ray, start_p, min_depth = -1.0):
