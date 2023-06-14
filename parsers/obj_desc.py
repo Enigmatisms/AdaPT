@@ -30,7 +30,7 @@ class ObjDescriptor:
         self, meshes, normals, bsdf, 
         vert_normal = None,
         uv_coords = None,
-        texture = None, 
+        texture_group = None, 
         R = None, t = None, 
         emit_id = -1, _type = 0
     ):
@@ -50,7 +50,7 @@ class ObjDescriptor:
         self.bsdf = bsdf                           # object can have BSDF (BRDF + BTDF)
 
         # Texture includes all texture mappings
-        self.texture = texture
+        self.texture_group = texture_group
         self.aabb = get_aabb(meshes, _type)        # of shape (2, 3)
         self.emitter_ref_id = emit_id
         self.type = _type

@@ -82,9 +82,7 @@ def parse_emitters(em_elem: list):
 def parse_wavefront(
     directory: str, obj_list: List[xet.Element], 
     bsdf_dict: dict, emitter_dict: dict, texture_dict: List[Texture_np]) -> List[Arr]:
-    """
-        Parsing wavefront obj file (filename) from list of xml nodes    
-    """
+    """ Parsing wavefront obj file (filename) from list of xml nodes """
     all_objs = []
     # Some emitters will be attached to objects, to sample the object-attached emitters
     # We need to calculate surface area of the object mesh first (asuming each triangle has similar area)
@@ -103,10 +101,13 @@ def parse_wavefront(
         else:                   # CURRENTLY, only sphere is supported
             meshes, normals = parse_sphere_element(elem)
             obj_type = 1
-        ref_childs   = elem.findall("ref")        
-        bsdf_item    = None
-        texture      = None
-        emit_ref_id  = -1
+        ref_childs    = elem.findall("ref")        
+        bsdf_item     = None
+        texture_group = {"albedo": None, "normal": None, "bump": None, "roughness": None}
+        emit_ref_id   = -1
+
+        # Currently, texture (groups) and object form bi-jection, since this way is simpler to implement
+        # and can avoid id look up (memory ops might be very slow) 
         for ref_child in ref_childs:
             ref_type = ref_child.get("type")
             ref_id = ref_child.get("id")
@@ -116,11 +117,21 @@ def parse_wavefront(
                 emit_ref_id = emitter_dict[ref_id]
                 attached_area_dict[emit_ref_id] = calculate_surface_area(meshes, obj_type)
             elif ref_type == "texture":
-                texture = texture_dict[ref_id]
+                ref_tag = ref_child.get("tag", None)
+                if ref_tag == None:
+                    ref_tag = "albedo"
+                    CONSOLE.log(f"[yellow]Warning: BXDF[/yellow] Texture ref_id {ref_id} has no tag. Set default as 'albedo'.")
+                elif ref_tag not in texture_group:
+                    ref_tag = "albedo"
+                    CONSOLE.log(f"[yellow]Warning: BXDF[/yellow] Texture ref_tag {ref_tag} not supported. Set default as 'albedo'.")
+                # make sure texture group has corresponding tag
+                if texture_dict[ref_tag] is None or ref_id not in texture_dict[ref_tag]:
+                    raise KeyError(f"Texture id '{ref_id}' does not have tag '{ref_tag}' mapping, check if it is from other groups.")
+                texture_group[ref_tag] = texture_dict[ref_tag][ref_id]
             
         if bsdf_item is None:
             raise ValueError("Object should be attached with a BSDF for now since no default one implemented yet.")
-        all_objs.append(ObjDescriptor(meshes, normals, bsdf_item, vns, uvs, texture, trans_r, trans_t, emit_ref_id, obj_type))
+        all_objs.append(ObjDescriptor(meshes, normals, bsdf_item, vns, uvs, texture_group, trans_r, trans_t, emit_ref_id, obj_type))
     return all_objs, attached_area_dict
 
 def parse_bxdf(bxdf_list: List[xet.Element]):
@@ -143,15 +154,25 @@ def parse_bxdf(bxdf_list: List[xet.Element]):
 
 def parse_texture(texture_list: List[xet.Element]):
     """ Parsing Textures
-        return List of Texture_np
+        return Dict of Texture_np, containing four different types of mapping
     """
     if len(texture_list) == 0:
         return None, None
-    textures = []
+    textures = {"albedo": [], "normal": [], "bump": [], "roughness": []}
     for texture in texture_list:
-        textures.append(Texture_np(texture))
+        map_type = texture.get("tag", "albedo")
+        textures[map_type].append(Texture_np(texture))
     # Do texture packing
-    return image_packer(textures)
+    packed_textures = {}
+    packed_imgs = {}
+    for key, value in textures.items():
+        if len(value) == 0:
+            tex_img, tex_info = None, None
+        else:
+            tex_img, tex_info = image_packer(value)
+        packed_imgs[key] = tex_img
+        packed_textures[key] = tex_info
+    return packed_imgs, packed_textures
 
 def parse_world(world_elem: xet.Element):
     world = World_np(world_elem)
@@ -201,7 +222,7 @@ def scene_parsing(directory: str, file: str):
     emitter_configs, \
     emitter_dict     = parse_emitters(emitter_nodes)
     bsdf_dict        = parse_bxdf(bxdf_nodes)
-    teximg, textures = parse_texture(texture_nodes)
+    teximgs, textures = parse_texture(texture_nodes)
     """ Texture mapping should be updateded (FIXME):
     (1) <ref type = "texture".../>. Now for each object, there can only be one ref for each type of reference
         But TODO: texture needs more that one (albedo map, normal map, bump map, roughness map), for other mappings
@@ -215,7 +236,7 @@ def scene_parsing(directory: str, file: str):
     meshes, area_lut = parse_wavefront(directory, shape_nodes, bsdf_dict, emitter_dict, textures)
     configs          = parse_global_sensor(sensor_node)
     configs['world'] = parse_world(world_node)
-    configs['packed_texture'] = teximg
+    configs['packed_textures'] = teximgs
     emitter_configs  = update_emitter_config(emitter_configs, area_lut)
     return emitter_configs, meshes, configs
 

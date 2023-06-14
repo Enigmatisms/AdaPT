@@ -76,21 +76,34 @@ class PathTracer(TracerBase):
         self.src_field  = TaichiSource.field()
         self.brdf_field = BRDF.field()
         self.bsdf_field = BSDF.field()
-        self.textures   = Texture.field()
+
+        # These four texture mappings might be accessed with the same pattern
+        self.albedo_map    = Texture.field()
+        self.normal_map    = Texture.field()
+        self.bump_map      = Texture.field()
+        self.roughness_map = Texture.field()                                # TODO: this is useless for now
+
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
         self.brdf_nodes = ti.root.bitmasked(ti.i, self.num_objects)
         self.brdf_nodes.place(self.brdf_field)                              # BRDF Taichi storage
         ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
-        ti.root.bitmasked(ti.i, self.num_objects).place(self.textures)
+        ti.root.bitmasked(ti.i, self.num_objects).place(self.albedo_map, self.normal_map, self.bump_map, self.roughness_map)
 
-        if prop["packed_texture"] is None:
-            self.texture_img = ti.Vector.field(3, float, (1, 1))
+        if prop["packed_textures"] is None:
+            self.albedo_img    = ti.Vector.field(3, float, (1, 1))
+            self.normal_img    = ti.Vector.field(3, float, (1, 1))
+            self.bump_img      = ti.Vector.field(3, float, (1, 1))
+            self.roughness_img = ti.Vector.field(3, float, (1, 1))
         else:
-            image = prop["packed_texture"]
-            tex_h, tex_w, _  = image.shape
-            self.texture_img = ti.Vector.field(3, float, (tex_w, tex_h))
-            self.texture_img.from_numpy(image)
-            CONSOLE.log(f"Packed texture images loaded: ({tex_w}, {tex_h})")
+            images = prop["packed_texture"]     # dict ('albedo': Optional(), 'normal': ...)
+            for key, image in images.item():
+                if image is None:               # no image means we don't have this kind of mapping
+                    self.__setattr__(f"{key}_img", ti.Vector.field(3, float, (1, 1)))
+                    continue
+                tex_h, tex_w, _  = image.shape
+                self.__setattr__(f"{key}_img", ti.Vector.field(3, float, (tex_w, tex_h)))
+                self.__getattribute__(f"{key}_img").from_numpy(image)
+                CONSOLE.log(f"Packed texture image tagged '{key}' loaded: ({tex_w}, {tex_h})")
 
         CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
         self.initialze(emitters, objects)
@@ -179,6 +192,7 @@ class PathTracer(TracerBase):
         return primitives, obj_info
 
     def initialze(self, emitters: List[LightSource], objects: List[ObjDescriptor]):
+        # FIXME: Path tracer initialization is too slow
         self.uv_coords.fill(0)
         for i, emitter in enumerate(emitters):
             self.src_field[i] = emitter.export()
@@ -214,10 +228,11 @@ class PathTracer(TracerBase):
                 self.bsdf_field[i]  = obj.bsdf.export()
             else:
                 self.brdf_field[i]  = obj.bsdf.export()
-            if obj.texture is None:
-                self.textures[i] = Texture_np.default()
-            else:
-                self.textures[i] = obj.texture.export()
+            
+            for key, value in obj.texture_group.items():        # exporting texture group
+                if value is not None:
+                    self.__getattribute__(f"{key}_map")[i] = value.export()
+                    
             self.aabbs[i, 0]    = vec3(obj.aabb[0])        # unrolled
             self.aabbs[i, 1]    = vec3(obj.aabb[1])
             emitter_ref_id      = obj.emitter_ref_id
@@ -229,8 +244,7 @@ class PathTracer(TracerBase):
     def get_uv_item(self, textures: ti.template(), tex_img: ti.template(), obj_id: int, prim_id: int, u: float, v: float):
         """ Convert primitive local UV to the global UV coord for an object """
         color = INVALID
-        has_texture = textures[obj_id].type > -255
-        if has_texture:
+        if ti.is_active(textures, obj_id):
             is_sphere = self.obj_info[obj_id, 2]
             if is_sphere == 0:          # not a sphere
                 u, v = self.uv_coords[prim_id, 1] * u + self.uv_coords[prim_id, 2] * v + \
@@ -270,9 +284,6 @@ class PathTracer(TracerBase):
     
     @ti.func
     def ray_intersect_bvh(self, ray: vec3, start_p, min_depth = -1.0):
-        # FIXME: major revision should be made. In order to properly use texture
-        # We need to return the intersection barycentric coordinates / sphere coordinates
-        # This is going to be a laborious job
         """ Ray intersection with BVH, to prune unnecessary computation """
         obj_id  = -1
         prim_id = -1
@@ -345,7 +356,6 @@ class PathTracer(TracerBase):
             node_idx += 1
         return hit_flag
 
-    # TODO: some profiling is needed, passing by reference or by value, which one is faster?
     @ti.func
     def sample_new_ray(self, 
         idx: int, incid: vec3, normal: vec3, is_mi: int, 
