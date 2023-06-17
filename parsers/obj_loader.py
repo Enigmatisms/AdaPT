@@ -43,7 +43,7 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = False):
         dim_num = sum([int(part[1:]) for part in all_parts])
         all_data = np.float32(material.vertices).reshape(-1, dim_num)
         mesh_faces  = None
-        vert_normal = None 
+        vert_normal = None      # note that vert_normal is of the same shape with mesh_faces (N, 3, 3)
         uv_coords   = None
         for part in all_parts:
             if part.startswith("T"):

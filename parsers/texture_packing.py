@@ -41,9 +41,9 @@ def image_packer(textures: List[Texture_np]) -> Tuple[np.ndarray, List[Texture_n
         if max_size > 1024:
             starting_point = 0
         elif max_size > 720:
-            starting_point = 1
+            starting_point = min(starting_point, 1)
         elif max_size > 400:
-            starting_point = 2
+            starting_point = min(starting_point, 2)
         total_size += h * w
         rects.append((w, h, idx))               # but rect_id does
     total_size = np.sqrt(total_size) * 1.1      # 1.1 is for redundancy

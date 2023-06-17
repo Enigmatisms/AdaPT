@@ -71,6 +71,8 @@ class TracerBase:
         
         # A more compact way to store the primitives
         self.aabbs      = ti.Vector.field(3, float, (self.num_objects, 2))
+
+        # geometric normal for surfaces
         self.normals    = ti.Vector.field(3, float)
         self.prims      = ti.Vector.field(3, float)                             # leveraging SSDS, shape (N, mesh_num, 3) - vector3d
         self.uv_coords  = ti.Vector.field(2, float)                             # uv coordinates

@@ -22,7 +22,7 @@ from emitters.abtract_source import LightSource, TaichiSource
 
 from bxdf.brdf import BRDF
 from bxdf.bsdf import BSDF, BSDF_np
-from bxdf.texture import Texture, Texture_np
+from bxdf.texture import Texture
 from parsers.opts import get_options
 from parsers.obj_desc import ObjDescriptor
 from parsers.xml_parser import scene_parsing
@@ -72,6 +72,7 @@ class PathTracer(TracerBase):
         self.emitter_id = ti.field(int, self.num_objects)   
                      
         self.src_num    = len(emitters)
+        self.v_normals  = ti.Vector.field(3, float)
         self.color      = ti.Vector.field(3, float, (self.w, self.h))       # color without normalization
         self.src_field  = TaichiSource.field()
         self.brdf_field = BRDF.field()
@@ -81,6 +82,9 @@ class PathTracer(TracerBase):
         self.albedo_map    = Texture.field()
         self.normal_map    = Texture.field()
         self.bump_map      = Texture.field()
+
+        # FIXME: I might need to dive deeper, this might not be appropriate
+        # maybe we should opt for environment map (env lighting)
         self.roughness_map = Texture.field()                                # TODO: this is useless for now
 
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
@@ -104,6 +108,13 @@ class PathTracer(TracerBase):
                 self.__setattr__(f"{key}_img", ti.Vector.field(3, float, (tex_w, tex_h)))
                 self.__getattribute__(f"{key}_img").from_numpy(image)
                 CONSOLE.log(f"Packed texture image tagged '{key}' loaded: ({tex_w}, {tex_h})")
+        
+        self.has_v_normal = prop["has_vertex_normal"]
+        if prop["has_vertex_normal"]:
+            CONSOLE.log(f"Vertex normals found. Allocating storage for v-normals.")
+            self.prim_handle.place(self.v_normals)                  # actual vertex normal storage
+        else:
+            ti.root.bitmasked(ti.i, 1).place(self.v_normals)        # A dummy place
 
         CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
         self.initialze(emitters, objects)
@@ -200,7 +211,8 @@ class PathTracer(TracerBase):
 
         acc_prim_num = 0
         for i, obj in enumerate(objects):
-            for j, (mesh, normal) in tqdm.tqdm(enumerate(zip(obj.meshes, obj.normals))):
+            prim_num = obj.meshes.shape[0]
+            for j, (mesh, normal) in tqdm.tqdm(enumerate(zip(obj.meshes, obj.normals)), total = prim_num):
                 cur_id = acc_prim_num + j
                 self.prims[cur_id, 0] = vec3(mesh[0])
                 self.prims[cur_id, 1] = vec3(mesh[1])
@@ -212,13 +224,20 @@ class PathTracer(TracerBase):
                 else:
                     self.precom_vec[cur_id, 0] = self.prims[cur_id, 0]
                     self.precom_vec[cur_id, 1] = self.prims[cur_id, 1]           
+                if obj.vns is not None:             # got vertex normal
+                    pass
                 self.normals[cur_id] = vec3(normal) 
-            if obj.uv_coords is not None:
-                for j, uv_coord in tqdm.tqdm(enumerate(obj.uv_coords)):
-                    cur_id = acc_prim_num + j
+                if obj.uv_coords is not None:
+                    uv_coord = obj.uv_coords[j]
                     self.uv_coords[cur_id, 0] = vec2(uv_coord[0])
                     self.uv_coords[cur_id, 1] = vec2(uv_coord[1])
                     self.uv_coords[cur_id, 2] = vec2(uv_coord[2])
+                if obj.vns is not None:
+                    vn = obj.vns[j]
+                    self.v_normals[cur_id, 0] = vec2(vn[0])
+                    self.v_normals[cur_id, 1] = vec2(vn[1])
+                    self.v_normals[cur_id, 2] = vec2(vn[2])
+
             self.obj_info[i, 0] = acc_prim_num
             self.obj_info[i, 1] = obj.tri_num
             self.obj_info[i, 2] = obj.type
