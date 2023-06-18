@@ -109,7 +109,7 @@ class BRDF:
     
     # ======================= Blinn-Phong ========================
     @ti.func
-    def eval_blinn_phong(self, ray_in: vec3, ray_out: vec3, normal: vec3, tex = INVALID):
+    def eval_blinn_phong(self, it:ti.template(), ray_in: vec3, ray_out: vec3):
         """
             Normally, ray in is along the opposite direction of normal
             Attention: ray_in (in backward tracing) is actually out-going direction (in forward tracing)
@@ -120,18 +120,18 @@ class BRDF:
             half_way = half_way.normalized()
         else:
             half_way.fill(0.0)
-        dot_clamp = ti.max(0.0, tm.dot(half_way, normal))
+        dot_clamp = ti.max(0.0, tm.dot(half_way, it.n_s))
         glossy = tm.pow(dot_clamp, self.k_g)
-        cosine_term = ti.max(0.0, tm.dot(normal, ray_out))
+        cosine_term = ti.max(0.0, tm.dot(it.n_s, ray_out))
         # A modified Phong model (k_d + k_s should be smaller than 1, otherwise not physically plausible)
-        diffuse_color = ti.select(tex[0] < 0, self.k_d, tex)
+        diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
         return (diffuse_color + self.k_s * (0.5 * (self.k_g + 2.0) * glossy)) * INV_PI * cosine_term
 
     @ti.func
-    def sample_blinn_phong(self, incid: vec3, normal: vec3, tex = INVALID):
+    def sample_blinn_phong(self, it:ti.template(), incid: vec3):
         local_new_dir, pdf = cosine_hemisphere()
-        ray_out_d, _ = delocalize_rotate(normal, local_new_dir)
-        spec = self.eval_blinn_phong(incid, ray_out_d, normal, tex)
+        ray_out_d, _ = delocalize_rotate(it.n_s, local_new_dir)
+        spec = self.eval_blinn_phong(it, incid, ray_out_d)
         return ray_out_d, spec, pdf
 
     # ======================  Modified Phong =======================
@@ -229,16 +229,16 @@ class BRDF:
     
     # ======================= Lambertian ========================
     @ti.func
-    def eval_lambertian(self, ray_out: vec3, normal: vec3, tex = INVALID):
-        cosine_term = tm.max(0.0, tm.dot(normal, ray_out))
-        diffuse_color = ti.select(tex[0] < 0, self.k_d, tex)
+    def eval_lambertian(self, it: ti.template(), ray_out: vec3):
+        cosine_term = tm.max(0.0, tm.dot(ti.n_s, ray_out))
+        diffuse_color = ti.select(tex[0] < 0, self.k_d, ti.tex)
         return diffuse_color * INV_PI * cosine_term
 
     @ti.func
-    def sample_lambertian(self, normal: vec3, tex = INVALID):
+    def sample_lambertian(self, it: ti.template()):
         local_new_dir, pdf = cosine_hemisphere()
-        ray_out_d, _ = delocalize_rotate(normal, local_new_dir)
-        spec = self.eval_lambertian(ray_out_d, normal, tex)
+        ray_out_d, _ = delocalize_rotate(it.n_s, local_new_dir)
+        spec = self.eval_lambertian(ray_out_d, it., tex)
         return ray_out_d, spec, pdf
 
     # ======================= Mirror-Specular ========================
@@ -250,13 +250,13 @@ class BRDF:
     # ================================================================
 
     @ti.func
-    def eval(self, incid: vec3, out: vec3, normal: vec3, tex = INVALID) -> vec3:
+    def eval(self, it: ti.template(), incid: vec3, out: vec3) -> vec3:
         """ Direct component reflectance
             Every evaluation function does not output cosine weighted BSDF now
         """
         ret_spec = vec3([0, 0, 0])
         # For reflection, incident (in reverse direction) & outdir should be in the same hemisphere defined by the normal 
-        if tm.dot(incid, normal) * tm.dot(out, normal) < 0:
+        if tm.dot(incid, it.n_g) * tm.dot(out, it.n_g) < 0:
             if self._type == 0:         # Blinn-Phong
                 ret_spec = self.eval_blinn_phong(incid, out, normal, tex)
             elif self._type == 1:       # Lambertian
@@ -269,7 +269,7 @@ class BRDF:
         return ret_spec
     
     @ti.func
-    def sample_new_rays(self, incid: vec3, normal: vec3, tex = INVALID):
+    def sample_new_rays(self, it:ti.template(), incid: vec3):
         """
             All the sampling function will return: (1) new ray (direction) \\
             (2) rendering equation transfer term (BRDF * cos term) (3) PDF
@@ -281,7 +281,7 @@ class BRDF:
         ret_spec = vec3([1, 1, 1])
         pdf      = 1.0
         if self._type == 0:         # Blinn-Phong
-            ret_dir, ret_spec, pdf = self.sample_blinn_phong(incid, normal, tex)
+            ret_dir, ret_spec, pdf = self.sample_blinn_phong(it, incid)
         elif self._type == 1:       # Lambertian
             ret_dir, ret_spec, pdf = self.sample_lambertian(normal, tex)
         elif self._type == 2:       # Specular - specular has no cosine attenuation
@@ -292,6 +292,8 @@ class BRDF:
             ret_dir, ret_spec, pdf = self.sample_fresnel_blend(incid, normal, tex)
         else:
             print(f"Warnning: unknown or unsupported BRDF type: {self._type} during sampling.")
+        ret_dot = tm.dot(ret_dir, it.n_g)
+        ret_spec = ti.select(ret_dot > 0, ret_spec, 0.)
         return ret_dir, ret_spec, pdf
 
     @ti.func

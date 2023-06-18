@@ -9,6 +9,7 @@ from taichi.math import vec3
 from typing import List
 from la.cam_transform import *
 from tracer.path_tracer import PathTracer
+from tracer.interaction import Interaction
 from emitters.abtract_source import LightSource
 
 from parsers.obj_desc import ObjDescriptor
@@ -33,13 +34,14 @@ class Renderer(PathTracer):
             if not self.do_crop or in_crop_range:
                 ray_d = self.pix2ray(i, j)
                 ray_o = self.cam_t
-                obj_id, normal, min_depth, prim_id, u_coord, v_coord = self.ray_intersect(ray_d, ray_o)
-                hit_light       = self.emitter_id[ti.max(obj_id, 0)]   # id for hit emitter, if nothing is hit, this value will be -1
+                it = self.ray_intersect(ray_d, ray_o)
+                # obj_id, normal, min_depth, prim_id, u_coord, v_coord 
+                hit_light       = self.emitter_id[ti.max(it.obj_id, 0)]   # id for hit emitter, if nothing is hit, this value will be -1
                 color           = vec3([0, 0, 0])
                 contribution    = vec3([1, 1, 1])
                 emission_weight = 1.0
                 for _i in range(self.max_bounce):
-                    if obj_id < 0: break                    # nothing is hit, break
+                    if it.is_ray_not_hit() < 0: break                    # nothing is hit, break
                     if ti.static(self.use_rr):
                         # Simple Russian Roullete ray termination
                         max_value = contribution.max()
@@ -47,7 +49,7 @@ class Renderer(PathTracer):
                         else: contribution *= 1. / (max_value + 1e-7)    # unbiased calculation
                     else:
                         if contribution.max() < 1e-4: break     # contribution too small, break
-                    hit_point   = ray_d * min_depth + ray_o
+                    hit_point   = ray_d * it.min_depth + ray_o
 
                     direct_pdf  = 1.0
                     emitter_pdf = 1.0
@@ -55,7 +57,7 @@ class Renderer(PathTracer):
                     shadow_int  = vec3([0, 0, 0])
                     direct_int  = vec3([0, 0, 0])
                     direct_spec = vec3([1, 1, 1])
-                    tex = self.get_uv_item(self.albedo_map, self.albedo_img, obj_id, prim_id, u_coord, v_coord)
+                    it.tex = self.get_uv_item(self.albedo_map, self.albedo_img, it)
                     for _j in range(self.num_shadow_ray):    # more shadow ray samples
                         emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
                         light_dir = vec3([0, 0, 0])
@@ -97,7 +99,7 @@ class Renderer(PathTracer):
                     color += (direct_int + emit_int * emission_weight) * contribution
                     # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)
                     contribution *= indirect_spec / ray_pdf
-                    obj_id, normal, min_depth, prim_id, u_coord, v_coord = self.ray_intersect(ray_d, ray_o)
+                    it = self.ray_intersect(ray_d, ray_o)
 
                     if obj_id >= 0:
                         hit_light = self.emitter_id[obj_id]

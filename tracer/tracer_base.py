@@ -17,6 +17,7 @@ from typing import List
 from la.cam_transform import *
 
 from parsers.obj_desc import ObjDescriptor
+from tracer.interaction import Interaction
 from parsers.xml_parser import scene_parsing
 from renderer.constants import INV_PI, INV_2PI
 
@@ -85,6 +86,7 @@ class TracerBase:
         self.prim_handle = self.dense_nodes.dense(ti.j, 3)
         self.prim_handle.place(self.prims, self.precom_vec)      # for simple shapes, this would be efficient
         self.prim_handle.place(self.uv_coords)
+        self.has_v_normal = False
 
         # pos0: start_idx, pos1: number of primitives, pos2: obj_id (being triangle / sphere? Others to be added, like cylinder, etc.)
         self.obj_info  = ti.field(int, (self.num_objects, 3))
@@ -182,16 +184,20 @@ class TracerBase:
                             coord_u = u
                             coord_v = v
                             sphere_flag = False
-        normal = vec3([1, 0, 0])
+        n_g = vec3([1, 0, 0])
         if obj_id >= 0:
             if sphere_flag:
                 center = self.prims[prm_id, 0]
-                normal = (start_p + min_depth * ray - center).normalized() 
-                coord_u = (tm.atan2(normal[1], normal[0]) + tm.pi) * INV_2PI
-                coord_v = tm.acos(normal[2]) * INV_PI
+                n_g = (start_p + min_depth * ray - center).normalized() 
+                coord_u = (tm.atan2(n_g[1], n_g[0]) + tm.pi) * INV_2PI
+                coord_v = tm.acos(n_g[2]) * INV_PI
             else:
-                normal = self.normals[prm_id]
-        return (obj_id, normal, min_depth, prm_id, coord_u, coord_v)
+                n_g = self.normals[prm_id]
+        # We should calculate global uv and n_s outside
+        return Interaction(
+            obj_id = obj_id, prim_id = prm_id, n_g = n_g, n_s = n_g,
+            uv = vec2(coord_u, coord_v), min_depth = min_depth
+        )
 
     @ti.func
     def does_intersect(self, ray, start_p, min_depth = -1.0):

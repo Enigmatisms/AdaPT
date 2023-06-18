@@ -30,6 +30,7 @@ from renderer.constants import TRANSPORT_UNI, INV_2PI, INV_PI, INVALID
 
 from sampler.general_sampling import *
 from utils.tools import TicToc
+from tracer.interaction import Interaction
 from tracer.ti_bvh import LinearBVH, LinearNode, export_python_bvh
 
 from rich.console import Console
@@ -260,16 +261,15 @@ class PathTracer(TracerBase):
                 self.src_field[emitter_ref_id].obj_ref_id = i
 
     @ti.func
-    def get_uv_item(self, textures: ti.template(), tex_img: ti.template(), obj_id: int, prim_id: int, u: float, v: float):
+    def get_uv_item(self, textures: ti.template(), tex_img: ti.template(), it: ti.template()):
         """ Convert primitive local UV to the global UV coord for an object """
-        color = INVALID
-        if ti.is_active(textures, obj_id):
-            is_sphere = self.obj_info[obj_id, 2]
+        it.tex = INVALID
+        if ti.is_active(textures, it.obj_id):
+            is_sphere = self.obj_info[it.obj_id, 2]
             if is_sphere == 0:          # not a sphere
-                u, v = self.uv_coords[prim_id, 1] * u + self.uv_coords[prim_id, 2] * v + \
-                    self.uv_coords[prim_id, 0] * (1. - u - v)
-            color = textures[obj_id].query(tex_img, u, v)
-        return color
+                u, v = self.uv_coords[it.prim_id, 1] * u + self.uv_coords[it.prim_id, 2] * v + \
+                    self.uv_coords[it.prim_id, 0] * (1. - u - v)
+            it.tex = textures[it.obj_id].query(tex_img, u, v)
 
     @ti.func
     def bvh_intersect(self, bvh_id, ray, start_p):
@@ -335,17 +335,20 @@ class PathTracer(TracerBase):
                         coord_u     = u
                         coord_v     = v
             node_idx += 1
-        normal = vec3([1, 0, 0])
+        n_g = vec3([1, 0, 0])
         if obj_id >= 0:
             if sphere_flag:
                 center = self.prims[prim_id, 0]
-                normal = (start_p + min_depth * ray - center).normalized() 
-                coord_u = (tm.atan2(normal[1], normal[0]) + tm.pi) * INV_2PI
-                coord_v = tm.acos(normal[2]) * INV_PI
+                n_g = (start_p + min_depth * ray - center).normalized() 
+                coord_u = (tm.atan2(n_g[1], n_g[0]) + tm.pi) * INV_2PI
+                coord_v = tm.acos(n_g[2]) * INV_PI
             else:
-                normal = self.normals[prim_id]
+                n_g = self.normals[prim_id]
         # The returned coord_u and coord_v is not the actual uv coords (but for one specific primitive)
-        return (obj_id, normal, min_depth, prim_id, coord_u, coord_v)
+        return Interaction(
+            obj_id = obj_id, prim_id = prim_id, n_g = n_g, n_s = n_g,
+            uv = vec2(coord_u, coord_v), min_depth = min_depth
+        )
     
     @ti.func
     def does_intersect_bvh(self, ray, start_p, min_depth = -1.0):
@@ -406,24 +409,24 @@ class PathTracer(TracerBase):
         return ret_dir, ret_spec, ret_pdf
 
     @ti.func
-    def eval(self, idx: int, incid: vec3, out: vec3, normal: vec3, 
-        is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI, tex: vec3 = INVALID) -> vec3:
+    def eval(self, it: ti.template(), incid: vec3, out: vec3, is_mi: int, 
+             in_free_space: int, mode: int = TRANSPORT_UNI) -> vec3:
         ret_spec = vec3([1, 1, 1])
         if is_mi:
             # FIXME: eval_phase and phase function currently return a float
             if in_free_space:       # evaluate world medium
                 ret_spec.fill(self.world.medium.eval(incid, out))
             else:                   # is_mi implys is_scattering = True
-                ret_spec.fill(self.bsdf_field[idx].medium.eval(incid, out))
+                ret_spec.fill(self.bsdf_field[it.obj_id].medium.eval(incid, out))
         else:                       # surface interaction
-            if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
+            if ti.is_active(self.brdf_nodes, it.obj_id):      # active means the object is attached to BRDF
                 if ti.static(self.brdf_two_sides):
                     dot_res = tm.dot(incid, normal)
                     if dot_res > 0.:                    # two sides
                         normal *= -1
-                ret_spec = self.brdf_field[idx].eval(incid, out, normal, tex)
+                ret_spec = self.brdf_field[it.obj_id].eval(incid, out, normal, tex)
             else:                                       # directly evaluate surface
-                ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium, mode, tex)
+                ret_spec = self.bsdf_field[it.obj_id].eval_surf(incid, out, normal, self.world.medium, mode, tex)
         return ret_spec
     
     @ti.func

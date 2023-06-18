@@ -18,22 +18,30 @@ class Vertex:
     """
         A (64 + 12)-Byte Path Vertex
     """
-    _type:      ti.i8       # 0 for surface, 1 for medium, 2 for light, 3 for camera
-    obj_id:     ti.i8       # hit object (BSDF) id
-    emit_id:    ti.i8       # if the vertex is on a area emitter, just store the emitter info
-
-    # Bool bits: [0 pos delta, 1 dir delta, 2 is area, 3 is inifite, 4 is in free space, 5 is specular delta, others reserved]
+    _type:      ti.i8
+    """ 0 for surface, 1 for medium, 2 for light, 3 for camera """
+    obj_id:     ti.i8       
+    """ hit object (BSDF) id """
+    emit_id:    ti.i8       
+    """ if the vertex is on a area emitter, just store the emitter info """
     bool_bits:  ti.i8
-
-    pdf_fwd:    float      # forward pdf
-    pdf_bwd:    float      # backward pdf
-    time:       float      # hit time (reserved for future uses)
-
-    normal:     vec3        # hit normal
-    pos:        vec3        # hit pos
-    ray_in:     vec3        # incident ray direction (towards pos)
-    beta:       vec3        # path throughput
-    tex:        vec3        # texture color (used to calculate color during BDPT connection)
+    """ Bool bits: [0 pos delta, 1 dir delta, 2 is area, 3 is inifite, 4 is in free space, 5 is specular delta, others reserved] """
+    pdf_fwd:    float      
+    """ forward pdf """
+    pdf_bwd:    float      
+    """ backward pdf """
+    time:       float      
+    """ hit time (reserved for future uses) """
+    normal:     vec3        
+    """ hit normal """
+    pos:        vec3        
+    """ hit pos """
+    ray_in:     vec3        
+    """ incident ray direction (towards pos) """
+    beta:       vec3        
+    """ path throughput """
+    tex:        vec3        
+    """ texture color (used to calculate color during BDPT connection) """
 
     @ti.func
     def set_pdf_bwd(self, pdf: float, next_point: vec3):
