@@ -22,6 +22,7 @@ from la.cam_transform import *
 from sampler.general_sampling import *
 from bxdf.brdf import BRDF_np
 from bxdf.medium import Medium, Medium_np
+from tracer.interaction import Interaction
 from renderer.constants import TRANSPORT_RAD, INVALID
 
 __all__ = ['BSDF_np', 'BSDF']
@@ -74,13 +75,13 @@ class BSDF:
 
     # ========================= Deterministic Refraction =========================
     @ti.func
-    def sample_det_refraction(self, incid: vec3, normal: vec3, medium, mode):
+    def sample_det_refraction(self, it: ti.template(), incid: vec3, medium, mode):
         """ 
             Deterministic refraction sampling - Surface reflection is pure mirror specular \\ 
             other (Medium) could be incident medium or refraction medium, depending on \\
             whether the ray is entering or exiting the current BSDF
         """
-        dot_normal = tm.dot(incid, normal)
+        dot_normal = tm.dot(incid, it.n_s)
         entering_this = dot_normal < 0
         ni = ti.select(entering_this, medium.ior, self.medium.ior)
         nr = ti.select(entering_this, self.medium.ior, medium.ior)
@@ -91,37 +92,38 @@ class BSDF:
             # ret_dir = (incid - 2 * normal * dot_normal).normalized()      # we can account for total reflection... or not
             ret_int.fill(0.)
         else:
-            refra_vec, _v = snell_refraction(incid, normal, dot_normal, ni, nr)
-            reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_normal), ti.abs(tm.dot(refra_vec, normal)))
+            refra_vec, _v = snell_refraction(incid, it.n_s, dot_normal, ni, nr)
+            reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_normal), ti.abs(tm.dot(refra_vec, it.n_s)))
             if ti.random(float) > reflect_ratio:        # refraction
                 ret_pdf = 1. - reflect_ratio
                 ret_dir = refra_vec
                 if mode == TRANSPORT_RAD:       # non-symmetry effect
                     ret_int *= (ni * ni) / (nr * nr)
             else:                                       # reflection
-                ret_dir = (incid - 2 * normal * dot_normal).normalized()
+                ret_dir = (incid - 2 * it.n_s * dot_normal).normalized()
                 ret_pdf = reflect_ratio
         return ret_dir, ret_int * ret_pdf, ret_pdf
     
     @ti.func
-    def eval_det_refraction(self, ray_in: vec3, ray_out: vec3, normal: vec3, medium, mode, tex = INVALID):
-        dot_out = tm.dot(ray_out, normal)
+    def eval_det_refraction(self, it: ti.template(), ray_in: vec3, ray_out: vec3, medium, mode):
+        # I think this is counter-intuitive
+        dot_out = tm.dot(ray_out, it.n_s)
         entering_this = dot_out < 0
         # notice that eval uses ray_out while sampling uses ray_in, therefore nr & ni have different order
         ni = ti.select(entering_this, medium.ior, self.medium.ior)
         nr = ti.select(entering_this, self.medium.ior, medium.ior)
         ret_int = vec3([0, 0, 0])
-        diffuse_color = ti.select(tex[0] < 0, self.k_d, tex)
+        diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
         if is_total_reflection(dot_out, ni, nr):
-            ref_dir = (ray_out - 2 * normal * dot_out).normalized()
+            ref_dir = (ray_out - 2 * it.n_s * dot_out).normalized()
             if tm.dot(ref_dir, ray_in) > 1 - 5e-5:
                 ret_int = diffuse_color
         else:
             # in sampling: ray_in points to the intersection, here ray_out points away from the intersection
-            ref_dir = (ray_out - 2 * normal * dot_out).normalized()
-            refra_vec, valid_ref = snell_refraction(ray_out, normal, dot_out, ni, nr)
+            ref_dir = (ray_out - 2 * it.n_s * dot_out).normalized()
+            refra_vec, valid_ref = snell_refraction(ray_out, it.n_s, dot_out, ni, nr)
             if valid_ref:
-                reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, normal)))
+                reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, it.n_s)))
                 if tm.dot(refra_vec, ray_in) > 1 - 5e-5:            # ray_in close to refracted dir
                     ret_int = diffuse_color * (1. - reflect_ratio)
                     if mode == TRANSPORT_RAD:    # consider non-symmetric effect due to different transport mode
@@ -135,20 +137,20 @@ class BSDF:
     # ========================= General operations =========================
 
     @ti.func
-    def get_pdf(self, outdir: vec3, normal: vec3, incid: vec3, medium):
+    def get_pdf(self, it: ti.template(), outdir: vec3, incid: vec3, medium):
         pdf = 0.
         if self._type == -1:
             pdf = ti.select(tm.dot(incid, outdir) > 1 - 5e-5, 1., 0.)
         elif self._type == 0:
-            dot_out = tm.dot(outdir, normal)
+            dot_out = tm.dot(outdir, it.n_s)
             entering_this = dot_out < 0
             # notice that eval uses ray_out while sampling uses ray_in, therefore nr & ni have different order
             ni = ti.select(entering_this, medium.ior, self.medium.ior)
             nr = ti.select(entering_this, self.medium.ior, medium.ior)
-            ref_dir = (outdir - 2 * normal * dot_out).normalized()
-            refra_vec, valid_refra = snell_refraction(outdir, normal, dot_out, ni, nr)
+            ref_dir = (outdir - 2 * it.n_s * dot_out).normalized()
+            refra_vec, valid_refra = snell_refraction(outdir, it.n_s, dot_out, ni, nr)
             if valid_refra:             # not total reflection, so there is not only one possible choice
-                reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, normal)))
+                reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, it.n_s)))
                 if tm.dot(refra_vec, incid) > 1 - 5e-5:            # ray_in close to refracted dir
                     pdf = 1. - reflect_ratio
                 elif tm.dot(ref_dir, incid) > 1 - 5e-5:            # ray_in close to reflected dir
@@ -164,10 +166,10 @@ class BSDF:
     
     # ========================= Surface interactions ============================
     @ti.func
-    def eval_surf(self, incid: vec3, out: vec3, normal: vec3, medium, mode, tex = INVALID) -> vec3:
+    def eval_surf(self, it: ti.template(), incid: vec3, out: vec3, medium, mode) -> vec3:
         ret_spec = vec3([0, 0, 0])
         if self._type == 0:
-            ret_spec = self.eval_det_refraction(incid, out, normal, medium, mode, tex)
+            ret_spec = self.eval_det_refraction(it, incid, out, medium, mode)
         return ret_spec
     
     @ti.func

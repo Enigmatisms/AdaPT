@@ -61,8 +61,7 @@ class PathTracer(TracerBase):
         self.stratified_sample  = prop['stratified_sampling']   # whether to use stratified sampling
         self.use_mis            = prop['use_mis']               # whether to use multiple importance sampling
         self.num_shadow_ray     = prop['num_shadow_ray']        # number of shadow samples to trace
-        # two sides BRDF (for some complex scene of which the normals might be incorrectly pointed)
-        self.brdf_two_sides     = prop.get('brdf_two_sides', False) 
+        
         if self.num_shadow_ray > 0:
             self.inv_num_shadow_ray = 1. / float(self.num_shadow_ray)
         else:
@@ -399,10 +398,6 @@ class PathTracer(TracerBase):
                 ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].medium.sample_new_rays(incid)
         else:                       # surface sampling
             if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                if ti.static(self.brdf_two_sides):
-                    dot_res = tm.dot(incid, normal)
-                    if dot_res > 0.:                    # two sides
-                        normal *= -1
                 ret_dir, ret_spec, ret_pdf = self.brdf_field[idx].sample_new_rays(incid, normal, tex)
             else:                                       # directly sample surface
                 ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].sample_surf_rays(incid, normal, self.world.medium, mode)
@@ -420,43 +415,31 @@ class PathTracer(TracerBase):
                 ret_spec.fill(self.bsdf_field[it.obj_id].medium.eval(incid, out))
         else:                       # surface interaction
             if ti.is_active(self.brdf_nodes, it.obj_id):      # active means the object is attached to BRDF
-                if ti.static(self.brdf_two_sides):
-                    dot_res = tm.dot(incid, normal)
-                    if dot_res > 0.:                    # two sides
-                        normal *= -1
-                ret_spec = self.brdf_field[it.obj_id].eval(incid, out, normal, tex)
+                ret_spec = self.brdf_field[it.obj_id].eval(it, incid, out)
             else:                                       # directly evaluate surface
                 ret_spec = self.bsdf_field[it.obj_id].eval_surf(incid, out, normal, self.world.medium, mode, tex)
         return ret_spec
     
     @ti.func
-    def surface_pdf(self, idx: int, outdir: vec3, normal: vec3, incid: vec3, tex: vec3 = INVALID):
+    def surface_pdf(self, it: ti.template(), outdir: vec3, incid: vec3):
         """ Outdir: actual incident ray direction, incid: ray (from camera) """
         pdf = 0.
-        if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-            if ti.static(self.brdf_two_sides):
-                dot_res = tm.dot(incid, normal)
-                if dot_res > 0.:                    # two sides
-                    normal *= -1
-            pdf = self.brdf_field[idx].get_pdf(outdir, normal, incid, tex)
+        if ti.is_active(self.brdf_nodes, it.obj_id):      # active means the object is attached to BRDF
+            pdf = self.brdf_field[it.obj_id].get_pdf(it, outdir, incid)
         else:
-            pdf = self.bsdf_field[idx].get_pdf(outdir, normal, incid, self.world.medium)
+            pdf = self.bsdf_field[it.obj_id].get_pdf(outdir, normal, incid, self.world.medium)
         return pdf
     
     @ti.func
-    def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int, tex: vec3 = INVALID):
+    def get_pdf(self, it: ti.template(), incid: vec3, out: vec3, is_mi: int, in_free_space: int):
         pdf = 0.
         if is_mi:   # evaluate phase function
             if in_free_space:
                 pdf = self.world.medium.eval(incid, out)
             else:
-                pdf = self.bsdf_field[idx].medium.eval(incid, out)
+                pdf = self.bsdf_field[it.obj_id].medium.eval(incid, out)
         else:
-            if ti.static(self.brdf_two_sides):
-                dot_res = tm.dot(incid, normal)
-                if dot_res > 0.:                    # two sides
-                    normal *= -1
-            pdf = self.surface_pdf(idx, out, normal, incid, tex)
+            pdf = self.surface_pdf(it, it.obj_id, out, incid)
         return pdf
     
     @ti.func

@@ -136,32 +136,31 @@ class BRDF:
 
     # ======================  Modified Phong =======================
     @ti.func
-    def eval_mod_phong(self, ray_in: vec3, ray_out: vec3, normal: vec3):
-        dot_normal = tm.dot(normal, ray_out)
+    def eval_mod_phong(self, it: ti.template(), ray_in: vec3, ray_out: vec3):
+        dot_normal = tm.dot(it.n_s, ray_out)
         spec = vec3([0, 0, 0])
         if dot_normal > 0.0:        # Phong model - specular part
-            reflect_d = (2 * normal * dot_normal - ray_out).normalized()
+            reflect_d = (2 * it.n_s * dot_normal - ray_out).normalized()
             dot_view = ti.max(0.0, -tm.dot(ray_in, reflect_d))      # ray_in is on the opposite dir of reflected dir
             glossy = tm.pow(dot_view, self.k_g) * self.k_s
             spec = 0.5 * (self.k_g + 2.) * glossy * INV_PI * dot_normal
         return spec 
 
     @ti.func
-    def sample_mod_phong(self, incid: vec3, normal: vec3, tex = INVALID):
+    def sample_mod_phong(self, it: ti.template(), incid: vec3):
         # Sampling is more complicated
         eps = ti.random(float)
         ray_out_d = vec3([0, 1, 0])
         spec = vec3([0, 0, 0])
-        diffuse_color = ti.select(tex[0] < 0, self.k_d, tex)
-        pdf = diffuse_color.max()
+        pdf = ti.select(it.is_tex_invalid(), self.k_d, it.tex).max()    # the max element of diffuse color is the pdf of sampling diffusive component
         if eps < pdf:                       # diffusive sampling
-            ray_out_d, spec, lmbt_pdf = self.sample_lambertian(normal, diffuse_color)   # we use "texture" anyway, since it is converted
+            ray_out_d, spec, lmbt_pdf = self.sample_lambertian(it)   # we use "texture" anyway, since it is converted
             pdf *= lmbt_pdf
         elif eps < pdf + self.k_s.max():    # specular sampling
             local_new_dir, pdf = mod_phong_hemisphere(self.mean[2])
-            reflect_view = (-2 * normal * tm.dot(incid, normal) + incid).normalized()
+            reflect_view = (-2 * it.n_s * tm.dot(incid, it.n_s) + incid).normalized()
             ray_out_d, _ = delocalize_rotate(reflect_view, local_new_dir)
-            spec = self.eval_mod_phong(incid, ray_out_d, normal)
+            spec = self.eval_mod_phong(incid, ray_out_d, it.n_s)
             pdf *= self.k_s.max()
         else:                               # zero contribution
             # it doesn't matter even we don't return a valid ray_out_d
@@ -192,23 +191,23 @@ class BRDF:
         return cos_phi2, 1. - cos_phi2
 
     @ti.func
-    def eval_fresnel_blend(self, ray_in: vec3, ray_out: vec3, normal: vec3, R: mat3, tex = INVALID):
+    def eval_fresnel_blend(self, it:ti.template(), ray_in: vec3, ray_out: vec3, R: mat3):
         # specular part, note that ray out is actually incident light in forward tracing
         half_vec = (ray_out - ray_in)
-        dot_out  = tm.dot(normal, ray_out)
+        dot_out  = tm.dot(it.n_s, ray_out)
         spec = vec3([0, 0, 0])
         if dot_out > 0. and ti.abs(half_vec).max() > 1e-4:  # ray_in and ray_out not on the exact opposite direction
             half_vec = half_vec.normalized()
-            dot_in   = -tm.dot(normal, ray_in)              # incident dot should always be positive (otherwise it won't hit this point)
-            dot_half = ti.abs(tm.dot(normal, half_vec))
+            dot_in   = -tm.dot(it.n_s, ray_in)              # incident dot should always be positive (otherwise it won't hit this point)
+            dot_half = ti.abs(tm.dot(it.n_s, half_vec))
             dot_hk   = ti.abs(tm.dot(half_vec, ray_out))
             fresnel  = schlick_fresnel(self.k_s, dot_hk)
-            cos_phi2, sin_phi2 = self.fresnel_cos2_sin2(half_vec, normal, R, dot_half)
+            cos_phi2, sin_phi2 = self.fresnel_cos2_sin2(half_vec, it.n_s, R, dot_half)
             # k_g[2] should store sqrt((n_u + 1)(n_v + 1)) / 8pi
             denom = dot_hk * tm.max(dot_in, dot_out)
             specular = self.k_g[2] * tm.pow(dot_half, self.k_g[0] * cos_phi2 + self.k_g[1] * sin_phi2) * fresnel / denom
             # diffusive part
-            diffuse_color = ti.select(tex[0] < 0, self.k_d, tex)
+            diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
             diffuse  = 28. / (23. * tm.pi) * diffuse_color * (1. - self.k_s)
             pow5_in  = tm.pow(1. - dot_in / 2., 5)
             pow5_out = tm.pow(1. - dot_out / 2., 5)
@@ -217,35 +216,35 @@ class BRDF:
         return spec
 
     @ti.func
-    def sample_fresnel_blend(self, incid: vec3, normal: vec3, tex = INVALID):
+    def sample_fresnel_blend(self, it: ti.template(), incid: vec3):
         local_new_dir, power_coeff = fresnel_hemisphere(self.k_g[0], self.k_g[1])
-        ray_half, R = delocalize_rotate(normal, local_new_dir)
-        ray_out_d, pdf, is_valid = self.fresnel_blend_dir(incid, ray_half, normal, power_coeff)
+        ray_half, R = delocalize_rotate(it.n_s, local_new_dir)
+        ray_out_d, pdf, is_valid = self.fresnel_blend_dir(incid, ray_half, it.n_s, power_coeff)
         if ti.random(float) > 0.5:
-            ray_out_d, _s, _p = self.sample_lambertian(normal, tex)
-        pdf = 0.5 * (pdf + ti.abs(tm.dot(ray_out_d, normal)) * INV_PI)
-        spec = ti.select(is_valid, self.eval_fresnel_blend(incid, ray_out_d, normal, R), ZERO_V3)
+            ray_out_d, _s, _p = self.sample_lambertian(it)
+        pdf = 0.5 * (pdf + ti.abs(tm.dot(ray_out_d, it.n_s)) * INV_PI)
+        spec = ti.select(is_valid, self.eval_fresnel_blend(it, incid, ray_out_d, R), ZERO_V3)
         return ray_out_d, spec, pdf
     
     # ======================= Lambertian ========================
     @ti.func
     def eval_lambertian(self, it: ti.template(), ray_out: vec3):
         cosine_term = tm.max(0.0, tm.dot(ti.n_s, ray_out))
-        diffuse_color = ti.select(tex[0] < 0, self.k_d, ti.tex)
+        diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, ti.tex)
         return diffuse_color * INV_PI * cosine_term
 
     @ti.func
     def sample_lambertian(self, it: ti.template()):
         local_new_dir, pdf = cosine_hemisphere()
         ray_out_d, _ = delocalize_rotate(it.n_s, local_new_dir)
-        spec = self.eval_lambertian(ray_out_d, it., tex)
+        spec = self.eval_lambertian(it, ray_out_d)
         return ray_out_d, spec, pdf
 
     # ======================= Mirror-Specular ========================
     @ti.func
-    def sample_specular(self, ray_in: vec3, normal: vec3, tex = INVALID):
-        ray_out_d, _ = inci_reflect_dir(ray_in, normal)
-        return ray_out_d, ti.select(tex[0] < 0, self.k_d, tex), 1.0
+    def sample_specular(self, it: ti.template(), ray_in: vec3):
+        ray_out_d, _ = inci_reflect_dir(ray_in, it.n_s)
+        return ray_out_d, ti.select(it.is_tex_invalid(), self.k_d, it.tex), 1.0
 
     # ================================================================
 
@@ -258,14 +257,14 @@ class BRDF:
         # For reflection, incident (in reverse direction) & outdir should be in the same hemisphere defined by the normal 
         if tm.dot(incid, it.n_g) * tm.dot(out, it.n_g) < 0:
             if self._type == 0:         # Blinn-Phong
-                ret_spec = self.eval_blinn_phong(incid, out, normal, tex)
+                ret_spec = self.eval_blinn_phong(it, incid, out)
             elif self._type == 1:       # Lambertian
-                ret_spec = self.eval_lambertian(out, normal, tex)
+                ret_spec = self.eval_lambertian(it, out)
             elif self._type == 4:
-                ret_spec = self.eval_mod_phong(incid, out, normal)
+                ret_spec = self.eval_mod_phong(it, incid, out)
             elif self._type == 5:
-                R = rotation_between(vec3([0, 1, 0]), normal)
-                ret_spec = self.eval_fresnel_blend(incid, out, normal, R, tex)
+                R = rotation_between(vec3([0, 1, 0]), it.n_s)
+                ret_spec = self.eval_fresnel_blend(it, incid, out, R)
         return ret_spec
     
     @ti.func
@@ -283,29 +282,30 @@ class BRDF:
         if self._type == 0:         # Blinn-Phong
             ret_dir, ret_spec, pdf = self.sample_blinn_phong(it, incid)
         elif self._type == 1:       # Lambertian
-            ret_dir, ret_spec, pdf = self.sample_lambertian(normal, tex)
+            ret_dir, ret_spec, pdf = self.sample_lambertian(it)
         elif self._type == 2:       # Specular - specular has no cosine attenuation
-            ret_dir, ret_spec, pdf = self.sample_specular(incid, normal, tex)
+            ret_dir, ret_spec, pdf = self.sample_specular(it, incid)
         elif self._type == 4:       # Modified-Phong
-            ret_dir, ret_spec, pdf = self.sample_mod_phong(incid, normal, tex)
+            ret_dir, ret_spec, pdf = self.sample_mod_phong(it, incid)
         elif self._type == 5:       # Fresnel-Blend
-            ret_dir, ret_spec, pdf = self.sample_fresnel_blend(incid, normal, tex)
+            ret_dir, ret_spec, pdf = self.sample_fresnel_blend(it, incid)
         else:
             print(f"Warnning: unknown or unsupported BRDF type: {self._type} during sampling.")
+        # Prevent shading normal from light leaking or accidental shadowing
         ret_dot = tm.dot(ret_dir, it.n_g)
         ret_spec = ti.select(ret_dot > 0, ret_spec, 0.)
         return ret_dir, ret_spec, pdf
 
     @ti.func
-    def get_pdf(self, outdir: vec3, normal: vec3, incid: vec3, tex = INVALID):
+    def get_pdf(self, it: ti.template(), outdir: vec3, incid: vec3):
         """ 
             Solid angle PDF for a specific incident direction - BRDF sampling
             Some PDF has nothing to do with backward incid (from eye to the surface), like diffusive 
             This PDF is actually the PDF of cosine-weighted term * BRDF function value
         """
         pdf = 0.0
-        dot_outdir = tm.dot(normal, outdir)
-        dot_indir  = tm.dot(normal, incid)
+        dot_outdir = tm.dot(it.n_s, outdir)
+        dot_indir  = tm.dot(it.n_s, incid)
         if dot_outdir * dot_indir < 0.:         # same hemisphere         
             if self._type == 0:
                 pdf = dot_outdir * INV_PI       # dot is cosine term
@@ -313,17 +313,17 @@ class BRDF:
                 pdf = dot_outdir * INV_PI
             elif self._type == 4:
                 glossiness      = self.mean[2]
-                reflect_view, _ = inci_reflect_dir(incid, normal)
+                reflect_view, _ = inci_reflect_dir(incid, it.n_s)
                 dot_ref_out     = tm.max(0., tm.dot(reflect_view, outdir))
                 diffuse_pdf     = dot_outdir * INV_PI
                 specular_pdf    = 0.5 * (glossiness + 1.) * INV_PI * tm.pow(dot_ref_out, glossiness)
-                diffuse_color   = ti.select(tex[0] < 0, self.k_d, tex)
+                diffuse_color   = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
                 pdf = diffuse_color.max() * diffuse_pdf + self.k_s.max() * specular_pdf
             elif self._type == 5:
                 half_vec = (outdir - incid).normalized()
-                dot_half = tm.dot(half_vec, normal)
-                R = rotation_between(vec3([0, 1, 0]), normal)
-                cos_phi2, sin_phi2 = self.fresnel_cos2_sin2(half_vec, normal, R, dot_half)
+                dot_half = tm.dot(half_vec, it.n_s)
+                R = rotation_between(vec3([0, 1, 0]), it.n_s)
+                cos_phi2, sin_phi2 = self.fresnel_cos2_sin2(half_vec, it.n_s, R, dot_half)
                 pdf = self.k_g[2] * tm.pow(dot_half, self.k_g[0] * cos_phi2 + self.k_g[1] * sin_phi2) / ti.abs(tm.dot(incid, half_vec))
                 pdf = 0.5 * (pdf + dot_outdir * INV_PI)
         return pdf

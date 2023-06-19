@@ -8,6 +8,7 @@ import taichi as ti
 import taichi.math as tm
 from taichi.math import vec3
 from renderer.constants import *
+from tracer.interaction import Interaction
 
 @ti.func
 def remap_pdf(x: float) -> float:
@@ -16,7 +17,7 @@ def remap_pdf(x: float) -> float:
 @ti.dataclass
 class Vertex:
     """
-        A (64 + 12)-Byte Path Vertex
+        A (64 + 24)-Byte Path Vertex
     """
     _type:      ti.i8
     """ 0 for surface, 1 for medium, 2 for light, 3 for camera """
@@ -33,7 +34,9 @@ class Vertex:
     time:       float      
     """ hit time (reserved for future uses) """
     normal:     vec3        
-    """ hit normal """
+    """ hit normal (shading normal) """
+    n_g:        vec3
+    """ hit normal (geometric normal) """
     pos:        vec3        
     """ hit pos """
     ray_in:     vec3        
@@ -94,4 +97,9 @@ class Vertex:
     def not_delta_source(self):
         # if an emitter is positional delta or directional delta
         return (self.bool_bits & 0x03) == 0
+    
+    @ti.experimental.real_func
+    def get_interaction(self) -> Interaction:
+        # FIXME: self.normal
+        return Interaction(obj_id = self.obj_id, n_s = self.normal, n_g = self.n_g, tex = self.tex)
     

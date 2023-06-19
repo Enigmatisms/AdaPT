@@ -73,7 +73,7 @@ class Renderer(PathTracer):
                             if self.does_intersect(light_dir, hit_point, emitter_d):        # shadow ray 
                                 shadow_int.fill(0.0)
                             else:
-                                direct_spec = self.eval(obj_id, ray_d, light_dir, normal, False, False, tex = tex)
+                                direct_spec = self.eval(it, ray_d, light_dir, False, False)
                         else:       # the only situation for being invalid, is when there is only one source and the ray hit the source
                             break_flag = True
                             break
@@ -81,7 +81,7 @@ class Renderer(PathTracer):
                         if ti.static(self.use_mis):
                             mis_w = 1.0
                             if not emitter.is_delta_pos():
-                                bsdf_pdf = self.surface_pdf(obj_id, light_dir, normal, ray_d, tex = tex)
+                                bsdf_pdf = self.surface_pdf(it, light_dir, ray_d)
                                 mis_w    = balance_heuristic(light_pdf, bsdf_pdf)
                             direct_int  += direct_spec * shadow_int * mis_w / emitter_pdf
                         else:
@@ -91,22 +91,22 @@ class Renderer(PathTracer):
                     # emission: ray hitting an area light source
                     emit_int    = vec3([0, 0, 0])
                     if hit_light >= 0:
-                        emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, normal)
+                        emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, it.n_s)
 
                     # indirect component requires sampling 
-                    ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, False, False, tex = tex)
+                    ray_d, indirect_spec, ray_pdf = self.sample_new_ray(it, ray_d, False, False)
                     ray_o = hit_point
                     color += (direct_int + emit_int * emission_weight) * contribution
                     # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)
                     contribution *= indirect_spec / ray_pdf
                     it = self.ray_intersect(ray_d, ray_o)
 
-                    if obj_id >= 0:
-                        hit_light = self.emitter_id[obj_id]
+                    if it.obj_id >= 0:
+                        hit_light = self.emitter_id[it.obj_id]
                         if ti.static(self.use_mis):
                             emitter_pdf = 0.0
-                            if hit_light >= 0 and self.is_delta(obj_id) == 0:
-                                emitter_pdf = self.src_field[hit_light].solid_angle_pdf(ray_d, normal, min_depth)
+                            if hit_light >= 0 and self.is_delta(it.obj_id) == 0:
+                                emitter_pdf = self.src_field[hit_light].solid_angle_pdf(it, ray_d)
                             emission_weight = balance_heuristic(ray_pdf, emitter_pdf)
 
                 self.color[i, j] += ti.select(ti.math.isnan(color), 0., color)
