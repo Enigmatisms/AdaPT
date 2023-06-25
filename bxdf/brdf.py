@@ -49,7 +49,6 @@ class BRDF_np:
         self.kd_default = True
         self.ks_default = True
         self.kg_default = True
-        self.ka_default = True
         self.uv_coords = None
 
         texture_nodes = elem.findall("texture")
@@ -93,7 +92,7 @@ class BRDF_np:
         )
     
     def __repr__(self) -> str:
-        return f"<{self.type.capitalize()} BRDF, default:[{int(self.kd_default), int(self.ks_default), int(self.kg_default), int(self.ka_default)}]>"
+        return f"<{self.type.capitalize()} BRDF, default:[{int(self.kd_default), int(self.ks_default), int(self.kg_default)}]>"
 
 @ti.dataclass
 class BRDF:
@@ -160,7 +159,7 @@ class BRDF:
             local_new_dir, pdf = mod_phong_hemisphere(self.mean[2])
             reflect_view = (-2 * it.n_s * tm.dot(incid, it.n_s) + incid).normalized()
             ray_out_d, _ = delocalize_rotate(reflect_view, local_new_dir)
-            spec = self.eval_mod_phong(incid, ray_out_d, it.n_s)
+            spec = self.eval_mod_phong(it, incid, ray_out_d)
             pdf *= self.k_s.max()
         else:                               # zero contribution
             # it doesn't matter even we don't return a valid ray_out_d
@@ -229,8 +228,8 @@ class BRDF:
     # ======================= Lambertian ========================
     @ti.func
     def eval_lambertian(self, it: ti.template(), ray_out: vec3):
-        cosine_term = tm.max(0.0, tm.dot(ti.n_s, ray_out))
-        diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, ti.tex)
+        cosine_term = tm.max(0.0, tm.dot(it.n_s, ray_out))
+        diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
         return diffuse_color * INV_PI * cosine_term
 
     @ti.func

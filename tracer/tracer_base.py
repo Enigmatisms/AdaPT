@@ -11,7 +11,7 @@ sys.path.append("..")
 import numpy as np
 import taichi as ti
 import taichi.math as tm
-from taichi.math import vec3, mat3
+from taichi.math import vec2, vec3, mat3
 
 from typing import List
 from la.cam_transform import *
@@ -20,6 +20,9 @@ from parsers.obj_desc import ObjDescriptor
 from tracer.interaction import Interaction
 from parsers.xml_parser import scene_parsing
 from renderer.constants import INV_PI, INV_2PI
+
+from rich.console import Console
+CONSOLE = Console(width = 128)
 
 __eps__ = 1e-4
 __inv_eps__ = 1 - __eps__ * 2.
@@ -78,6 +81,7 @@ class TracerBase:
         self.prims      = ti.Vector.field(3, float)                             # leveraging SSDS, shape (N, mesh_num, 3) - vector3d
         self.uv_coords  = ti.Vector.field(2, float)                             # uv coordinates
         self.precom_vec = ti.Vector.field(3, float)
+        self.v_normals  = ti.Vector.field(3, float)
         self.pixels     = ti.Vector.field(3, float, (self.w, self.h))           # output: color
 
         self.dense_nodes = ti.root.dense(ti.i, self.num_prims)
@@ -86,7 +90,12 @@ class TracerBase:
         self.prim_handle = self.dense_nodes.dense(ti.j, 3)
         self.prim_handle.place(self.prims, self.precom_vec)      # for simple shapes, this would be efficient
         self.prim_handle.place(self.uv_coords)
-        self.has_v_normal = False
+        self.has_v_normal = prop["has_vertex_normal"]
+        if prop["has_vertex_normal"]:
+            CONSOLE.log(f"Vertex normals found. Allocating storage for v-normals.")
+            self.prim_handle.place(self.v_normals)                  # actual vertex normal storage
+        else:
+            ti.root.bitmasked(ti.i, 1).place(self.v_normals)        # A dummy place
 
         # pos0: start_idx, pos1: number of primitives, pos2: obj_id (being triangle / sphere? Others to be added, like cylinder, etc.)
         self.obj_info  = ti.field(int, (self.num_objects, 3))
@@ -172,9 +181,9 @@ class TracerBase:
                 tri_num  = self.obj_info[aabb_idx, 1]
                 for mesh_idx in range(start_id, tri_num + start_id):
                     p1 = self.prims[mesh_idx, 0]
-                    vec1 = self.precom_vec[mesh_idx, 0]
-                    vec2 = self.precom_vec[mesh_idx, 1]
-                    mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
+                    v1 = self.precom_vec[mesh_idx, 0]
+                    v2 = self.precom_vec[mesh_idx, 1]
+                    mat = ti.Matrix.cols([v1, v2, -ray]).inverse()
                     u, v, t = mat @ (start_p - p1)
                     if u >= 0 and v >= 0 and u + v <= 1.0:
                         if t > 1e-4 and t < min_depth:
@@ -185,17 +194,26 @@ class TracerBase:
                             coord_v = v
                             sphere_flag = False
         n_g = vec3([1, 0, 0])
+        n_s = vec3([1, 0, 0])
         if obj_id >= 0:
             if sphere_flag:
                 center = self.prims[prm_id, 0]
                 n_g = (start_p + min_depth * ray - center).normalized() 
                 coord_u = (tm.atan2(n_g[1], n_g[0]) + tm.pi) * INV_2PI
                 coord_v = tm.acos(n_g[2]) * INV_PI
+                n_s = n_g
             else:
                 n_g = self.normals[prm_id]
+                # calculate vertex normal (for shading) if vertex normal exists
+                if ti.static(self.has_v_normal):
+                    n_s = self.v_normals[prm_id, 0] * (1. - coord_u - coord_v) + \
+                        coord_u * self.v_normals[prm_id, 1] + \
+                        coord_v * self.v_normals[prm_id, 2]
+                else: 
+                    n_s = n_g
         # We should calculate global uv and n_s outside
         return Interaction(
-            obj_id = obj_id, prim_id = prm_id, n_g = n_g, n_s = n_g,
+            obj_id = obj_id, prim_id = prm_id, n_g = n_g, n_s = n_s,
             uv = vec2(coord_u, coord_v), min_depth = min_depth
         )
 
@@ -229,9 +247,9 @@ class TracerBase:
                 tri_num   = self.obj_info[aabb_idx, 1]
                 for mesh_idx in range(start_id, tri_num + start_id):
                     p1 = self.prims[mesh_idx, 0]
-                    vec1 = self.precom_vec[mesh_idx, 0]
-                    vec2 = self.precom_vec[mesh_idx, 1]
-                    mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
+                    v1 = self.precom_vec[mesh_idx, 0]
+                    v2 = self.precom_vec[mesh_idx, 1]
+                    mat = ti.Matrix.cols([v1, v2, -ray]).inverse()
                     u, v, t = mat @ (start_p - p1)
                     if u >= 0 and v >= 0 and u + v <= 1.0:
                         if t > 1e-4 and t < min_depth:

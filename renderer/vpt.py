@@ -48,7 +48,7 @@ class VolumeRenderer(PathTracer):
     def non_null_surface(self, idx: int):
         non_null = True
         # All these idx >= 0 check is for world scattering medium
-        if idx >= 0 and not ti.is_active(self.brdf_nodes, idx):      # BRDF is non-null, BSDF can be non-null
+        if idx >= 0 and not ti.is_active(self.obj_nodes, idx):      # BRDF is non-null, BSDF can be non-null
             non_null = self.bsdf_field[idx].is_non_null()
         return non_null
 
@@ -162,7 +162,7 @@ class VolumeRenderer(PathTracer):
                     shadow_int  = vec3([0, 0, 0])
                     direct_int  = vec3([0, 0, 0])
                     direct_spec = vec3([1, 1, 1])
-                    tex = self.get_uv_item(self.albedo_map, self.albedo_img, obj_id, prim_id, u_coord, v_coord)
+                    tex, _vl = self.get_uv_item(self.albedo_map, self.albedo_img, obj_id, prim_id, u_coord, v_coord)
                     for _j in range(self.num_shadow_ray):    # more shadow ray samples
                         emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
                         light_dir = vec3([0, 0, 0])

@@ -22,8 +22,7 @@ from la.cam_transform import *
 from sampler.general_sampling import *
 from bxdf.brdf import BRDF_np
 from bxdf.medium import Medium, Medium_np
-from tracer.interaction import Interaction
-from renderer.constants import TRANSPORT_RAD, INVALID
+from renderer.constants import TRANSPORT_RAD
 
 __all__ = ['BSDF_np', 'BSDF']
 
@@ -82,15 +81,16 @@ class BSDF:
             whether the ray is entering or exiting the current BSDF
         """
         dot_normal = tm.dot(incid, it.n_s)
+        # at least according to pbrt-v3, ni / nr is computed as the following (using shading normal)
+        # see https://computergraphics.stackexchange.com/questions/13540/shading-normal-and-geometric-normal-for-refractive-surface-rendering
         entering_this = dot_normal < 0
         ni = ti.select(entering_this, medium.ior, self.medium.ior)
         nr = ti.select(entering_this, self.medium.ior, medium.ior)
         ret_pdf = 1.0
         ret_dir = vec3([0, 1, 0])
-        ret_int = self.k_d
+        ret_int = it.tex
         if is_total_reflection(dot_normal, ni, nr):
-            # ret_dir = (incid - 2 * normal * dot_normal).normalized()      # we can account for total reflection... or not
-            ret_int.fill(0.)
+            ret_dir = (incid - 2 * it.n_s * dot_normal).normalized()
         else:
             refra_vec, _v = snell_refraction(incid, it.n_s, dot_normal, ni, nr)
             reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_normal), ti.abs(tm.dot(refra_vec, it.n_s)))
@@ -106,7 +106,6 @@ class BSDF:
     
     @ti.func
     def eval_det_refraction(self, it: ti.template(), ray_in: vec3, ray_out: vec3, medium, mode):
-        # I think this is counter-intuitive
         dot_out = tm.dot(ray_out, it.n_s)
         entering_this = dot_out < 0
         # notice that eval uses ray_out while sampling uses ray_in, therefore nr & ni have different order
@@ -173,12 +172,11 @@ class BSDF:
         return ret_spec
     
     @ti.func
-    def sample_surf_rays(self, incid: vec3, normal: vec3, medium, mode):
-        # TODO: we need mode here (and in eval)
+    def sample_surf_rays(self, it: ti.template(), incid: vec3, medium, mode):
         ret_dir  = vec3([0, 0, 0])
         ret_spec = vec3([0, 0, 0])
         pdf      = 0.0
         if self._type == 0:
-            ret_dir, ret_spec, pdf = self.sample_det_refraction(incid, normal, medium, mode)
+            ret_dir, ret_spec, pdf = self.sample_det_refraction(it, incid, medium, mode)
         return ret_dir, ret_spec, pdf
     

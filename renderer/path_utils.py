@@ -98,7 +98,7 @@ class Vertex:
         # if an emitter is positional delta or directional delta
         return (self.bool_bits & 0x03) == 0
     
-    @ti.experimental.real_func
+    @ti.func
     def get_interaction(self) -> Interaction:
         # FIXME: self.normal
         return Interaction(obj_id = self.obj_id, n_s = self.normal, n_g = self.n_g, tex = self.tex)

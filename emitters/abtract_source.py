@@ -2,6 +2,7 @@
     Light source abstraction
     @date: 2023.1.20
     @author: Qianyue He
+    @note: I think for emitters, there is no point using shading normal (2023.6.25)
 """
 
 import sys

@@ -35,13 +35,14 @@ class Renderer(PathTracer):
                 ray_d = self.pix2ray(i, j)
                 ray_o = self.cam_t
                 it = self.ray_intersect(ray_d, ray_o)
-                # obj_id, normal, min_depth, prim_id, u_coord, v_coord 
+                self.process_ns(it)                                       # (possibly) get normal map / bump map
+
                 hit_light       = self.emitter_id[ti.max(it.obj_id, 0)]   # id for hit emitter, if nothing is hit, this value will be -1
                 color           = vec3([0, 0, 0])
                 contribution    = vec3([1, 1, 1])
                 emission_weight = 1.0
                 for _i in range(self.max_bounce):
-                    if it.is_ray_not_hit() < 0: break                    # nothing is hit, break
+                    if it.is_ray_not_hit(): break                    # nothing is hit, break
                     if ti.static(self.use_rr):
                         # Simple Russian Roullete ray termination
                         max_value = contribution.max()
@@ -57,7 +58,7 @@ class Renderer(PathTracer):
                     shadow_int  = vec3([0, 0, 0])
                     direct_int  = vec3([0, 0, 0])
                     direct_spec = vec3([1, 1, 1])
-                    it.tex = self.get_uv_item(self.albedo_map, self.albedo_img, it)
+                    it.tex, _vl = self.get_uv_item(self.albedo_map, self.albedo_img, it)
                     for _j in range(self.num_shadow_ray):    # more shadow ray samples
                         emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
                         light_dir = vec3([0, 0, 0])
@@ -69,6 +70,7 @@ class Renderer(PathTracer):
                             emitter_d   = to_emitter.norm()
                             light_dir   = to_emitter / emitter_d
                             # Note that, null surface in vanilla renderer will produce erroneous results
+                            # FIXME: Qianyue He's note on 2023.6.25: why erroneous results?
                             # TODO: for collimated light, this is more complicated --- intersection test and the direction of ray should be modified
                             if self.does_intersect(light_dir, hit_point, emitter_d):        # shadow ray 
                                 shadow_int.fill(0.0)

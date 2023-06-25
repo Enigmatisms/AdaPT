@@ -17,6 +17,7 @@
         <integer name="start_s" value="0"/>       
         <integer name="end_s" value="100"/>          
 
+		<string name="accelerator" value="bvh"/>
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
         <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
@@ -63,6 +64,16 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
+	<bsdf type="det-refraction" id="glass">
+		<rgb name="k_d" value="#FAFAFA"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.5"/>
+		</medium>
+	</bsdf>
+
 	<emitter type="point" id="point">
 		<rgb name="emission" value="60.0, 60., 60.0"/>
 		<rgb name="scaler" value="0.3"/>
@@ -100,18 +111,12 @@
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/flat-ball.obj"/>
-		<transform name="toWorld">
-			<rotate type="euler" r="0.0" p="0.0" y="0"/>
-		</transform>
 		<ref type="material" id="box"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/smooth-ball.obj"/>
-		<transform name="toWorld">
-			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
-		</transform>
-		<ref type="material" id="box"/>
+		<ref type="material" id="glass"/>
 	</shape>
 
 	<shape type="sphere">

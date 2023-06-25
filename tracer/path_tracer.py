@@ -22,7 +22,7 @@ from emitters.abtract_source import LightSource, TaichiSource
 
 from bxdf.brdf import BRDF
 from bxdf.bsdf import BSDF, BSDF_np
-from bxdf.texture import Texture
+from bxdf.texture import Texture, Texture_np
 from parsers.opts import get_options
 from parsers.obj_desc import ObjDescriptor
 from parsers.xml_parser import scene_parsing
@@ -72,7 +72,6 @@ class PathTracer(TracerBase):
         self.emitter_id = ti.field(int, self.num_objects)   
                      
         self.src_num    = len(emitters)
-        self.v_normals  = ti.Vector.field(3, float)
         self.color      = ti.Vector.field(3, float, (self.w, self.h))       # color without normalization
         self.src_field  = TaichiSource.field()
         self.brdf_field = BRDF.field()
@@ -88,16 +87,20 @@ class PathTracer(TracerBase):
         self.roughness_map = Texture.field()                                # TODO: this is useless for now
 
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
-        self.brdf_nodes = ti.root.bitmasked(ti.i, self.num_objects)
-        self.brdf_nodes.place(self.brdf_field)                              # BRDF Taichi storage
+        self.obj_nodes = ti.root.bitmasked(ti.i, self.num_objects)
+        self.obj_nodes.place(self.brdf_field)                              # BRDF Taichi storage
         ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
-        ti.root.bitmasked(ti.i, self.num_objects).place(self.albedo_map, self.normal_map, self.bump_map, self.roughness_map)
+        ti.root.dense(ti.i, self.num_objects).place(self.albedo_map, self.normal_map, self.bump_map, self.roughness_map)
 
         if prop["packed_textures"] is None:
             self.albedo_img    = ti.Vector.field(3, float, (1, 1))
             self.normal_img    = ti.Vector.field(3, float, (1, 1))
             self.bump_img      = ti.Vector.field(3, float, (1, 1))
             self.roughness_img = ti.Vector.field(3, float, (1, 1))
+            self.has_albedo_map    = False
+            self.has_normal_map    = False
+            self.has_bump_map      = False
+            self.has_roughness_map = False
         else:
             images = prop["packed_texture"]     # dict ('albedo': Optional(), 'normal': ...)
             for key, image in images.item():
@@ -105,17 +108,11 @@ class PathTracer(TracerBase):
                     self.__setattr__(f"{key}_img", ti.Vector.field(3, float, (1, 1)))
                     continue
                 tex_h, tex_w, _  = image.shape
+                self.__setattr__(f"has_{key}_map", True)
                 self.__setattr__(f"{key}_img", ti.Vector.field(3, float, (tex_w, tex_h)))
                 self.__getattribute__(f"{key}_img").from_numpy(image)
                 CONSOLE.log(f"Packed texture image tagged '{key}' loaded: ({tex_w}, {tex_h})")
         
-        self.has_v_normal = prop["has_vertex_normal"]
-        if prop["has_vertex_normal"]:
-            CONSOLE.log(f"Vertex normals found. Allocating storage for v-normals.")
-            self.prim_handle.place(self.v_normals)                  # actual vertex normal storage
-        else:
-            ti.root.bitmasked(ti.i, 1).place(self.v_normals)        # A dummy place
-
         CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
         self.initialze(emitters, objects)
         CONSOLE.log(f"Path tracer initialization in {self.clock.toc(True):.3f} ms")
@@ -234,9 +231,9 @@ class PathTracer(TracerBase):
                     self.uv_coords[cur_id, 2] = vec2(uv_coord[2])
                 if obj.vns is not None:
                     vn = obj.vns[j]
-                    self.v_normals[cur_id, 0] = vec2(vn[0])
-                    self.v_normals[cur_id, 1] = vec2(vn[1])
-                    self.v_normals[cur_id, 2] = vec2(vn[2])
+                    self.v_normals[cur_id, 0] = vec3(vn[0])
+                    self.v_normals[cur_id, 1] = vec3(vn[1])
+                    self.v_normals[cur_id, 2] = vec3(vn[2])
 
             self.obj_info[i, 0] = acc_prim_num
             self.obj_info[i, 1] = obj.tri_num
@@ -251,6 +248,8 @@ class PathTracer(TracerBase):
             for key, value in obj.texture_group.items():        # exporting texture group
                 if value is not None:
                     self.__getattribute__(f"{key}_map")[i] = value.export()
+                else:
+                    self.__getattribute__(f"{key}_map")[i] = Texture_np.default()
                     
             self.aabbs[i, 0]    = vec3(obj.aabb[0])        # unrolled
             self.aabbs[i, 1]    = vec3(obj.aabb[1])
@@ -262,13 +261,35 @@ class PathTracer(TracerBase):
     @ti.func
     def get_uv_item(self, textures: ti.template(), tex_img: ti.template(), it: ti.template()):
         """ Convert primitive local UV to the global UV coord for an object """
-        it.tex = INVALID
-        if ti.is_active(textures, it.obj_id):
+        tex_value = INVALID
+        valid = False
+        if it.obj_id >= 0 and textures[it.obj_id].type > -255:
+            u, v = it.uv                # local u and local v
             is_sphere = self.obj_info[it.obj_id, 2]
             if is_sphere == 0:          # not a sphere
                 u, v = self.uv_coords[it.prim_id, 1] * u + self.uv_coords[it.prim_id, 2] * v + \
-                    self.uv_coords[it.prim_id, 0] * (1. - u - v)
-            it.tex = textures[it.obj_id].query(tex_img, u, v)
+                    self.uv_coords[it.prim_id, 0] * (1. - u - v)        # convert from local to global
+            tex_value = textures[it.obj_id].query(tex_img, u, v)
+            valid = True
+        return tex_value, valid
+
+    @ti.func
+    def process_ns(self, it: ti.template()):
+        """ Process shading normal for interaction 
+            For example, we may have bump map / normal map
+            We should convert the normal from local frame to global frame
+            normal map: replace the original shading normal with normal map normal
+            bump map: apply a rotational offset to the current shading normal
+        """
+        if ti.static(self.has_normal_map):
+            normal, n_valid = self.get_uv_item(self.normal_map, self.normal_img, it)
+            if n_valid:
+                R = rotation_between(vec3([0, 1, 0]), it.n_g)
+                it.n_s = (R @ normal).normalized()
+        if ti.static(self.has_bump_map):
+            delta_n, d_valid = self.get_uv_item(self.bump_map, self.bump_img, it)
+            if d_valid:
+                it.n_s, _ = delocalize_rotate(it.n_s, delta_n)
 
     @ti.func
     def bvh_intersect(self, bvh_id, ray, start_p):
@@ -291,9 +312,9 @@ class PathTracer(TracerBase):
                 ray_t += ti.select(center_norm2 > radius2 + 1e-4, -ray_cut, ray_cut)
         else:
             p1 = self.prims[prim_idx, 0]
-            vec1 = self.precom_vec[prim_idx, 0]
-            vec2 = self.precom_vec[prim_idx, 1]
-            mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
+            v1 = self.precom_vec[prim_idx, 0]
+            v2 = self.precom_vec[prim_idx, 1]
+            mat = ti.Matrix.cols([v1, v2, -ray]).inverse()
             u, v, t = mat @ (start_p - p1)
             # u, v as barycentric coordinates should be returned
             if u >= 0 and v >= 0 and u + v <= 1.0:
@@ -335,17 +356,26 @@ class PathTracer(TracerBase):
                         coord_v     = v
             node_idx += 1
         n_g = vec3([1, 0, 0])
+        n_s = vec3([1, 0, 0])
         if obj_id >= 0:
             if sphere_flag:
                 center = self.prims[prim_id, 0]
                 n_g = (start_p + min_depth * ray - center).normalized() 
                 coord_u = (tm.atan2(n_g[1], n_g[0]) + tm.pi) * INV_2PI
                 coord_v = tm.acos(n_g[2]) * INV_PI
+                n_s = n_g
             else:
                 n_g = self.normals[prim_id]
+                # calculate vertex normal (for shading) if vertex normal exists
+                if ti.static(self.has_v_normal):
+                    n_s = self.v_normals[prim_id, 0] * (1. - coord_u - coord_v) + \
+                        coord_u * self.v_normals[prim_id, 1] + \
+                        coord_v * self.v_normals[prim_id, 2]
+                else: 
+                    n_s = n_g
         # The returned coord_u and coord_v is not the actual uv coords (but for one specific primitive)
         return Interaction(
-            obj_id = obj_id, prim_id = prim_id, n_g = n_g, n_s = n_g,
+            obj_id = obj_id, prim_id = prim_id, n_g = n_g, n_s = n_s,
             uv = vec2(coord_u, coord_v), min_depth = min_depth
         )
     
@@ -379,8 +409,8 @@ class PathTracer(TracerBase):
 
     @ti.func
     def sample_new_ray(self, 
-        idx: int, incid: vec3, normal: vec3, is_mi: int, 
-        in_free_space: int, mode: int = TRANSPORT_UNI, tex: vec3 = INVALID
+        it: ti.template(), incid: vec3, is_mi: int, 
+        in_free_space: int, mode: int = TRANSPORT_UNI
     ):
         """ Mode is for cosine term calculation: \\
             For camera path, cosine term is computed against (ray_out and normal), \\
@@ -395,12 +425,12 @@ class PathTracer(TracerBase):
             if in_free_space:       # sample world medium
                 ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
             else:                   # sample object medium
-                ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].medium.sample_new_rays(incid)
+                ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].medium.sample_new_rays(incid)
         else:                       # surface sampling
-            if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                ret_dir, ret_spec, ret_pdf = self.brdf_field[idx].sample_new_rays(incid, normal, tex)
+            if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
+                ret_dir, ret_spec, ret_pdf = self.brdf_field[it.obj_id].sample_new_rays(it, incid)
             else:                                       # directly sample surface
-                ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].sample_surf_rays(incid, normal, self.world.medium, mode)
+                ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].sample_surf_rays(it, incid, self.world.medium, mode)
         return ret_dir, ret_spec, ret_pdf
 
     @ti.func
@@ -414,20 +444,20 @@ class PathTracer(TracerBase):
             else:                   # is_mi implys is_scattering = True
                 ret_spec.fill(self.bsdf_field[it.obj_id].medium.eval(incid, out))
         else:                       # surface interaction
-            if ti.is_active(self.brdf_nodes, it.obj_id):      # active means the object is attached to BRDF
+            if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
                 ret_spec = self.brdf_field[it.obj_id].eval(it, incid, out)
             else:                                       # directly evaluate surface
-                ret_spec = self.bsdf_field[it.obj_id].eval_surf(incid, out, normal, self.world.medium, mode, tex)
+                ret_spec = self.bsdf_field[it.obj_id].eval_surf(it, incid, out, self.world.medium, mode)
         return ret_spec
     
     @ti.func
     def surface_pdf(self, it: ti.template(), outdir: vec3, incid: vec3):
         """ Outdir: actual incident ray direction, incid: ray (from camera) """
         pdf = 0.
-        if ti.is_active(self.brdf_nodes, it.obj_id):      # active means the object is attached to BRDF
+        if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
             pdf = self.brdf_field[it.obj_id].get_pdf(it, outdir, incid)
         else:
-            pdf = self.bsdf_field[it.obj_id].get_pdf(outdir, normal, incid, self.world.medium)
+            pdf = self.bsdf_field[it.obj_id].get_pdf(it, outdir, incid, self.world.medium)
         return pdf
     
     @ti.func
@@ -456,7 +486,7 @@ class PathTracer(TracerBase):
         # REAL FUNC
         is_delta = False
         if idx >= 0:
-            if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
+            if ti.is_active(self.obj_nodes, idx):      # active means the object is attached to BRDF
                 is_delta = self.brdf_field[idx].is_delta
             else:
                 is_delta = self.bsdf_field[idx].is_delta
@@ -467,7 +497,7 @@ class PathTracer(TracerBase):
         # FIXME: if sigma_t is too small, set the scattering medium to det-refract
         # REAL FUNC
         is_scattering = False
-        if idx >= 0 and not ti.is_active(self.brdf_nodes, idx):
+        if idx >= 0 and not ti.is_active(self.obj_nodes, idx):
             is_scattering = self.bsdf_field[idx].medium.is_scattering()
         return is_scattering
 
