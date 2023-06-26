@@ -229,44 +229,45 @@ class BDPT(VolumeRenderer):
 
         while True:
             # Step 1: ray intersection
-            obj_id, normal, min_depth, prim_id, u_coord, v_coord = self.ray_intersect(ray_d, ray_o)
+            it = self.ray_intersect(ray_d, ray_o)
 
-            if obj_id < 0:     
+            if it.obj_id < 0:     
                 if not self.world_scattering: break     # nothing is hit, break
                 else:                                   # the world is filled with scattering medium
                     # TODO: This may not be totally correct, should be double-checked
                     min_depth = self.world_bound_time(ray_o, ray_d)
                     in_free_space = True
-                    obj_id = -1
+                    it.obj_id = -1
             else:
-                in_free_space = tm.dot(normal, ray_d) < 0
+                in_free_space = tm.dot(it.n_g, ray_d) < 0
 
             # Step 2: check for mean free path sampling
             # Calculate mfp, path_beta = transmittance / PDF
-            is_mi, min_depth, path_beta = self.sample_mfp(obj_id, in_free_space, min_depth) 
-            if obj_id < 0 and not is_mi: break  # exiting world bound
+            is_mi, min_depth, path_beta = self.sample_mfp(it.obj_id, in_free_space, min_depth) 
+            if it.obj_id < 0 and not is_mi: break  # exiting world bound
             throughput *= path_beta             # attenuate first
             if throughput.max() < 5e-5: break
                 
             hit_point = ray_d * min_depth + ray_o
-            hit_light = -1 if is_mi else self.emitter_id[obj_id]
-            acc_time += min_depth * self.get_ior(obj_id, in_free_space)
+            hit_light = -1 if is_mi else self.emitter_id[it.obj_id]
+            acc_time += min_depth * self.get_ior(it.obj_id, in_free_space)
 
             # Do not place vertex on null surface (no correct answer about whether it's surface or medium)
-            if not is_mi and not self.non_null_surface(obj_id):    # surface interaction for null surface should be skipped   
+            if not is_mi and not self.non_null_surface(it.obj_id):    # surface interaction for null surface should be skipped   
                 ray_o = hit_point
                 continue
 
             # Step 3: Create a new vertex and calculate pdf_fwd
-            pdf_fwd = BDPT.convert_density(ray_pdf, hit_point - last_v_pos, normal, is_mi)
+            pdf_fwd = BDPT.convert_density(ray_pdf, hit_point - last_v_pos, it.n_s, is_mi)
             last_v_pos = hit_point
-            is_delta = (not is_mi) and self.is_delta(obj_id)
+            is_delta = (not is_mi) and self.is_delta(it.obj_id)
             bool_bits = BDPT.get_bool(d_delta = is_delta, is_area = (hit_light >= 0), in_fspace = in_free_space, is_delta = is_delta)
             
-            tex, _vl = self.get_uv_item(self.albedo_map, self.albedo_img, obj_id, prim_id, u_coord, v_coord)
-            vertex_args = {"_type": ti.select(is_mi, VERTEX_MEDIUM, VERTEX_SURFACE), "obj_id": obj_id, "emit_id": hit_light, 
+            tex, _vl = self.get_uv_item(self.albedo_map, self.albedo_img, it)
+            vertex_args = {"_type": ti.select(is_mi, VERTEX_MEDIUM, VERTEX_SURFACE), "obj_id": it.obj_id, "emit_id": hit_light, 
                 "bool_bits": bool_bits, "pdf_fwd": pdf_fwd, "time": acc_time, "pos": hit_point,
-                "normal": ti.select(is_mi, ZERO_V3, normal), "ray_in": ray_d, "beta": throughput, "tex": tex            
+                "normal": ti.select(is_mi, ZERO_V3, it.n_s), "n_g": ti.select(is_mi, ZERO_V3, it.n_g), 
+                "ray_in": ray_d, "beta": throughput, "tex": tex            
             }
             vertex_num += 1
             if transport_mode == TRANSPORT_IMP:         # Camera path
@@ -283,7 +284,7 @@ class BDPT(VolumeRenderer):
 
             # Step 5: sample new ray. This should distinguish between surface and medium interactions
             old_ray_d = ray_d
-            ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, old_ray_d, normal, is_mi, in_free_space, transport_mode, tex)
+            ray_d, indirect_spec, ray_pdf = self.sample_new_ray(it, old_ray_d, is_mi, in_free_space, transport_mode)
             ray_o = hit_point
             pdf_bwd = ray_pdf
             if not is_mi:
@@ -294,7 +295,7 @@ class BDPT(VolumeRenderer):
                     pdf_bwd = 0.
                 else:
                     # Step 6: re-evaluate backward PDF
-                    pdf_bwd = self.surface_pdf(obj_id, -old_ray_d, normal, -ray_d, tex)
+                    pdf_bwd = self.surface_pdf(it, -old_ray_d, -ray_d)
 
             # ray_o is the position of the current vertex, which is used in prev vertex pdf_bwd
             if transport_mode == TRANSPORT_IMP:         # Camera transport mode
@@ -317,7 +318,7 @@ class BDPT(VolumeRenderer):
         if sid == 0:                                    # light path is not used  
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_light():                       # is the current vertex an emitter vertex?
-                le = self.src_field[int(vertex.emit_id)].eval_le(vertex.ray_in, vertex.normal) * vertex.beta
+                le = self.src_field[int(vertex.emit_id)].eval_le(vertex.ray_in, vertex.n_g) * vertex.beta
                 ret_time = self.src_field[int(vertex.emit_id)].emit_time + vertex.time      # for emission, we should acount for their emission time
         elif tid == 1:                                  # re-rasterize point onto the film, atomic add is allowed
             vertex = self.light_paths[i, j, sid - 1]
@@ -330,11 +331,13 @@ class BDPT(VolumeRenderer):
                 track_pos      = vertex.pos
                 # camera importance is valid / visible / radiance transferable
                 if cam_pdf > 0:
-                    fr2cam = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, 
-                            vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_IMP, vertex.tex)
+                    vit = vertex.get_interaction()
+                    fr2cam = self.eval(vit, vertex.ray_in, connect_dir, 
+                                    vertex.is_mi(), in_free_space, TRANSPORT_IMP)
                     bool_bits = BDPT.get_bool(True, in_fspace = self.free_space_cam)
                     sampled_v = Vertex(_type = VERTEX_CAMERA, obj_id = -1, emit_id = -1, 
-                        bool_bits = bool_bits, time = vertex.time + depth, normal = self.cam_normal,
+                        bool_bits = bool_bits, time = vertex.time + depth, 
+                        normal = self.cam_normal, n_g = self.cam_normal,
                         pos = self.cam_t, ray_in = ZERO_V3, beta = we / cam_pdf, tex = INVALID
                     )
                     vertex_sampled = True
@@ -355,13 +358,14 @@ class BDPT(VolumeRenderer):
                 in_free_space = vertex.is_in_free_space()
                 # emitter should have non-zero emission / visible / transferable
                 if emit_int.max() > 0:
-                    fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, 
-                            vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_RAD, vertex.tex)
+                    vit = vertex.get_interaction()
+                    fr2light    = self.eval(vit, vertex.ray_in, connect_dir, 
+                                    vertex.is_mi(), in_free_space, TRANSPORT_RAD)
                     # We should apply texture on the emitter, so get color should be computed here
                     # Sample hit should also return uv coords
                     sampled_v   = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(emit_id), emit_id = emit_id, 
                         bool_bits = emitter.bool_bits, time = emitter.emit_time, pdf_fwd = emitter.area_pdf() / float(self.src_num),
-                        normal  = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf, tex = INVALID
+                        normal  = normal, n_g = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf, tex = INVALID
                     )
                     vertex_sampled = True
                     calc_transmittance = fr2light.max() > 0
@@ -378,10 +382,12 @@ class BDPT(VolumeRenderer):
                 cam_in_fspace = cam_v.is_in_free_space()
                 lit_in_fspace = lit_v.is_in_free_space()
                 if depth > 0.:           # if not occluded
-                    fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, connect_dir, 
-                            cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_RAD, cam_v.tex)
-                    fr_lit = self.eval(int(lit_v.obj_id), lit_v.ray_in, -connect_dir, 
-                            lit_v.normal, lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP, lit_v.tex)
+                    cam_vit = cam_v.get_interaction()
+                    lit_vit = lit_v.get_interaction()
+                    fr_cam = self.eval(cam_vit, cam_v.ray_in, connect_dir, 
+                                    cam_v.is_mi(), cam_in_fspace, TRANSPORT_RAD)
+                    fr_lit = self.eval(lit_vit, lit_v.ray_in, -connect_dir, 
+                                    lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP)
                     # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                     calc_transmittance = fr_cam.max() > 0 and fr_lit.max() > 0
                     le = cam_v.beta * fr_cam * fr_lit * lit_v.beta / (depth * depth)

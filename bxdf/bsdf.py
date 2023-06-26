@@ -88,7 +88,7 @@ class BSDF:
         nr = ti.select(entering_this, self.medium.ior, medium.ior)
         ret_pdf = 1.0
         ret_dir = vec3([0, 1, 0])
-        ret_int = it.tex
+        ret_int = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
         if is_total_reflection(dot_normal, ni, nr):
             ret_dir = (incid - 2 * it.n_s * dot_normal).normalized()
         else:

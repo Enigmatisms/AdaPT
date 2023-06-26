@@ -102,10 +102,11 @@ class PathTracer(TracerBase):
             self.has_bump_map      = False
             self.has_roughness_map = False
         else:
-            images = prop["packed_texture"]     # dict ('albedo': Optional(), 'normal': ...)
-            for key, image in images.item():
+            images = prop["packed_textures"]     # dict ('albedo': Optional(), 'normal': ...)
+            for key, image in images.items():
                 if image is None:               # no image means we don't have this kind of mapping
                     self.__setattr__(f"{key}_img", ti.Vector.field(3, float, (1, 1)))
+                    self.__setattr__(f"has_{key}_map", False)
                     continue
                 tex_h, tex_w, _  = image.shape
                 self.__setattr__(f"has_{key}_map", True)
