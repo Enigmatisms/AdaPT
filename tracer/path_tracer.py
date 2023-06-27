@@ -199,6 +199,33 @@ class PathTracer(TracerBase):
                 primitives.append(primitive)
         primitives = np.stack(primitives, axis = 0).astype(np.float32)
         return primitives, obj_info
+    
+    def load_primitives(
+        self, primitives: np.ndarray, indices: np.ndarray, 
+        n_g: np.ndarray, n_s: np.ndarray = None, uvs: np.ndarray = None
+    ):
+        """ Load primitives via faster API """
+        self.prims.from_numpy(primitives)
+        # sphere primitives are padded
+        prim_vecs = np.concatenate([
+            primitives[..., 1, :] - primitives[..., 0, :],
+            primitives[..., 2, :] - primitives[..., 0, :],
+            primitives[..., 0, :]], axis = -2)
+        prim_vecs[indices, :2, :] = primitives[indices, :2, :]
+        self.precom_vec.from_numpy(prim_vecs)
+        self.normals.from_numpy(n_g)
+        if n_s is not None and self.has_v_normal:
+            self.v_normals.from_numpy(n_s)
+        if uvs is not None:
+            self.uv_coords.from_numpy(uvs)
+
+    def convert_bvh_info(self):
+        """ Faster API for BVH python-to-taichi conversion 
+            TODO: Here we actually should modify the output pattern of the bvh pybind module
+            To directly export the information of different field and store them in a numpy array
+            then we can use a kernel function to load the information to taichi end
+        """
+        pass
 
     def initialze(self, emitters: List[LightSource], objects: List[ObjDescriptor]):
         # FIXME: Path tracer initialization is too slow
@@ -214,6 +241,9 @@ class PathTracer(TracerBase):
                 cur_id = acc_prim_num + j
                 self.prims[cur_id, 0] = vec3(mesh[0])
                 self.prims[cur_id, 1] = vec3(mesh[1])
+
+                # FIXME: use numpy and from numpy to accelerate loading
+                # BVH might have some difficulty, since there is no function API
                 if mesh.shape[0] > 2:       # not a sphere
                     self.prims[cur_id, 2] = vec3(mesh[2])
                     self.precom_vec[cur_id, 0] = self.prims[cur_id, 1] - self.prims[cur_id, 0]                    

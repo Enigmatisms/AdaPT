@@ -237,15 +237,15 @@ def scene_parsing(directory: str, file: str):
         roughness is of lower priority
     - [ ] Speed up python->taichi conversion
     """
-    meshes, area_lut, has_vertex_normal \
+    all_objs, area_lut, has_vertex_normal \
                      = parse_wavefront(directory, shape_nodes, bsdf_dict, emitter_dict, textures)
     configs          = parse_global_sensor(sensor_node)
     configs['world'] = parse_world(world_node)
     configs['packed_textures']   = teximgs
     configs['has_vertex_normal'] = has_vertex_normal
     emitter_configs  = update_emitter_config(emitter_configs, area_lut)
-    return emitter_configs, meshes, configs
+    return emitter_configs, all_objs, configs
 
 if __name__ == "__main__":
-    emitter_configs, meshes, configs = scene_parsing("../scenes/", "cbox/complex.xml")
-    print(emitter_configs, meshes, configs)
+    emitter_configs, all_objs, configs = scene_parsing("../scenes/", "cbox/complex.xml")
+    print(emitter_configs, all_objs, configs)
