@@ -143,16 +143,16 @@ class VolumeRenderer(PathTracer):
                     if it.obj_id < 0:     
                         if not self.world_scattering: break     # nothing is hit, break
                         else:                                   # the world is filled with scattering medium
-                            min_depth = self.world_bound_time(ray_o, ray_d)
+                            it.min_depth = self.world_bound_time(ray_o, ray_d)
                             in_free_space = True
                             it.obj_id = -1
                     else:
                         in_free_space = tm.dot(it.n_g, ray_d) < 0
                     # Step 3: check for mean free path sampling
                     # Calculate mfp, path_beta = transmittance / PDF
-                    is_mi, min_depth, path_beta = self.sample_mfp(it.obj_id, in_free_space, min_depth) 
+                    is_mi, it.min_depth, path_beta = self.sample_mfp(it.obj_id, in_free_space, it.min_depth) 
                     if it.obj_id < 0 and not is_mi: break          # exiting world bound
-                    hit_point = ray_d * min_depth + ray_o
+                    hit_point = ray_d * it.min_depth + ray_o
                     throughput *= path_beta         # attenuate first
                     if not is_mi and not self.non_null_surface(it.obj_id):
                         ray_o = hit_point
@@ -164,7 +164,8 @@ class VolumeRenderer(PathTracer):
                     shadow_int  = vec3([0, 0, 0])
                     direct_int  = vec3([0, 0, 0])
                     direct_spec = vec3([1, 1, 1])
-                    tex, _vl = self.get_uv_item(self.albedo_map, self.albedo_img, it)
+                    direct_pdf  = 1.
+                    it.tex, _vl = self.get_uv_item(self.albedo_map, self.albedo_img, it)
                     for _j in range(self.num_shadow_ray):    # more shadow ray samples
                         emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
                         light_dir = vec3([0, 0, 0])
