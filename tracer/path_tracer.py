@@ -470,7 +470,7 @@ class PathTracer(TracerBase):
             else:
                 pdf = self.bsdf_field[it.obj_id].medium.eval(incid, out)
         else:
-            pdf = self.surface_pdf(it, it.obj_id, out, incid)
+            pdf = self.surface_pdf(it, out, incid)
         return pdf
     
     @ti.func

@@ -33,7 +33,7 @@ class Vertex:
     """ backward pdf """
     time:       float      
     """ hit time (reserved for future uses) """
-    normal:     vec3        
+    n_s:     vec3        
     """ hit normal (shading normal) """
     n_g:        vec3
     """ hit normal (geometric normal) """
@@ -57,7 +57,7 @@ class Vertex:
             inv_norm2 = 1. / diff_vec.norm_sqr()
             pdf *= inv_norm2
             if self.has_normal():      # camera has no normal, for now (pin-hole)
-                pdf *= ti.abs(tm.dot(self.normal, diff_vec * ti.sqrt(inv_norm2)))
+                pdf *= ti.abs(tm.dot(self.n_s, diff_vec * ti.sqrt(inv_norm2)))
         return pdf
 
     @ti.func
@@ -75,7 +75,7 @@ class Vertex:
     @ti.func
     def has_normal(self):
         # Point Source / Area Source / Surface interaction vertex all have a normal
-        return (self.normal != ZERO_V3).any()
+        return (self.n_s != ZERO_V3).any()
     
     @ti.func
     def pdf_ratio(self):
@@ -101,5 +101,5 @@ class Vertex:
     @ti.func
     def get_interaction(self) -> Interaction:
         # FIXME: self.normal
-        return Interaction(obj_id = self.obj_id, n_s = self.normal, n_g = self.n_g, tex = self.tex)
+        return Interaction(obj_id = self.obj_id, n_s = self.n_s, n_g = self.n_g, tex = self.tex)
     

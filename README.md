@@ -69,6 +69,8 @@ BTW, I am just a starter in CG (ray-tracing stuffs) and Taichi Lang, so there WI
 
 ### Rendering Example
 
+Note that the Taichi lang version used on your machine  **<u>should not exceed 1.5.0</u>**. Since version 1.6.0 there will be a JIT compilation bug that I am not yet able to locate. This problem will be fixed in the future if my code has something erroneous.
+
 ​		To run the rendering, use:
 
 ```shell
