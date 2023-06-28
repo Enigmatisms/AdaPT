@@ -74,7 +74,7 @@ class BSDF:
 
     # ========================= Deterministic Refraction =========================
     @ti.func
-    def sample_det_refraction(self, it: ti.template(), incid: vec3, medium, mode):
+    def sample_det_refraction(self, it: ti.template(), incid: vec3, medium: ti.template(), mode):
         """ 
             Deterministic refraction sampling - Surface reflection is pure mirror specular \\ 
             other (Medium) could be incident medium or refraction medium, depending on \\
@@ -105,7 +105,7 @@ class BSDF:
         return ret_dir, ret_int * ret_pdf, ret_pdf
     
     @ti.func
-    def eval_det_refraction(self, it: ti.template(), ray_in: vec3, ray_out: vec3, medium, mode):
+    def eval_det_refraction(self, it: ti.template(), ray_in: vec3, ray_out: vec3, medium: ti.template(), mode):
         dot_out = tm.dot(ray_out, it.n_s)
         entering_this = dot_out < 0
         # notice that eval uses ray_out while sampling uses ray_in, therefore nr & ni have different order
@@ -136,7 +136,7 @@ class BSDF:
     # ========================= General operations =========================
 
     @ti.func
-    def get_pdf(self, it: ti.template(), outdir: vec3, incid: vec3, medium):
+    def get_pdf(self, it: ti.template(), outdir: vec3, incid: vec3, medium: ti.template()):
         pdf = 0.
         if self._type == -1:
             pdf = ti.select(tm.dot(incid, outdir) > 1 - 5e-5, 1., 0.)
@@ -165,14 +165,14 @@ class BSDF:
     
     # ========================= Surface interactions ============================
     @ti.func
-    def eval_surf(self, it: ti.template(), incid: vec3, out: vec3, medium, mode) -> vec3:
+    def eval_surf(self, it: ti.template(), incid: vec3, out: vec3, medium: ti.template(), mode) -> vec3:
         ret_spec = vec3([0, 0, 0])
         if self._type == 0:
             ret_spec = self.eval_det_refraction(it, incid, out, medium, mode)
         return ret_spec
     
     @ti.func
-    def sample_surf_rays(self, it: ti.template(), incid: vec3, medium, mode):
+    def sample_surf_rays(self, it: ti.template(), incid: vec3, medium: ti.template(), mode):
         ret_dir  = vec3([0, 0, 0])
         ret_spec = vec3([0, 0, 0])
         pdf      = 0.0
