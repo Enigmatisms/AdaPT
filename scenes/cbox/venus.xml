@@ -10,8 +10,7 @@
 		<float name="fov" value="76.829"/>
         <integer name="sample_count" value="128"/>
         <integer name="max_bounce" value="8"/>
-        <integer name="num_shadow_ray" value="1"/>    
-        <boolean name="brdf_two_sides" value="true"/>	    <!-- Whether to use two-sided BRDF -->
+        <integer name="num_shadow_ray" value="3"/>    
 
         <string name="accelerator" value="bvh"/>          
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
@@ -44,42 +43,112 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
+	<brdf type="blinn-phong" id="dark-silver">
+		<rgb name="k_d" value="#D3D3D3"/>
+		<rgb name="k_g" value="8.0"/>
+		<rgb name="k_s" value="#222222"/>
+	</brdf>
+
 	<brdf type="blinn-phong" id="gold">
 		<rgb name="k_d" value="#AA9182"/>
 		<rgb name="k_g" value="20.0"/>
 		<rgb name="k_s" value="#535353"/>
 	</brdf>
 
-	<bsdf type="det-refraction" id="water">
+	<bsdf type="det-refraction" id="glass">
 		<rgb name="k_d" value="#F6F9FB"/>
 		<medium type="transparent">
 			<rgb name="u_a" value="0.0"/>
 			<rgb name="u_s" value="0.0"/>
 			<rgb name="par" value="0.0"/>
-			<float name="ior" value="1.333"/>
+			<float name="ior" value="1.5"/>
 		</medium>
 	</bsdf>
 
-    <emitter type="point" id="point">
-		<rgb name="emission" value="6.0, 5.5, 5.0"/>
-		<point name="pos" x="0.555117" y="0.367948" z="0.514904"/>
-		<rgb name="scaler" value="0.2"/>
+    <emitter type="area" id="bright">
+		<rgb name="emission" value="6.0, 5.7, 5.2"/>
+		<rgb name="scaler" value="0.06"/>
 	</emitter>
+
+	<emitter type="area" id="ball_emit">
+		<rgb name="emission" value="2.0, 1.9, 1.8"/>
+		<rgb name="scaler" value="0.35"/>
+	</emitter>
+
+	<emitter type="area" id="left-emit">
+		<rgb name="emission" value="2.0, 1.8, 1.7"/>
+		<rgb name="scaler" value="0.4"/>
+	</emitter>
+
+	<emitter type="area" id="right-emit">
+		<rgb name="emission" value="2.0, 1.9, 1.7"/>
+		<rgb name="scaler" value="0.35"/>
+	</emitter>
+
+	<shape type="sphere">
+		<point name="center" x="0.555117" y="0.367948" z="0.514904"/>
+		<float name="radius" value="0.03"/>
+		<ref type="material" id="box"/>
+		<ref type="emitter" id="bright"/>
+	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/venus/bottom.obj"/>
 		<ref type="material" id="box"/>
+		<ref type="texture" tag="bump" id="floor"/>
 	</shape>
 
     <shape type="obj">
-		<string name="filename" value="../meshes/venus/venus-body.obj"/>
+		<string name="filename" value="../meshes/venus/venus-body-left.obj"/>
 		<ref type="material" id="gold"/>
 	</shape>
 
-    <shape type="obj">
-		<string name="filename" value="../meshes/venus/water-surf-full.obj"/>
-		<ref type="material" id="water"/>
+	<shape type="obj">
+		<string name="filename" value="../meshes/venus/venus-body-right.obj"/>
+		<ref type="material" id="dark-silver"/>
+		<ref type="texture" tag="bump" id="body"/>
 	</shape>
+
+    <shape type="obj">
+		<string name="filename" value="../meshes/venus/blockage.obj"/>
+		<ref type="material" id="box"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/venus/left-box.obj"/>
+		<ref type="material" id="box"/>
+		<ref type="emitter" id="left-emit"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/venus/right-box.obj"/>
+		<ref type="material" id="box"/>
+		<ref type="emitter" id="right-emit"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/venus/glass-tower.obj"/>
+		<ref type="material" id="glass"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/venus/front-ball.obj"/>
+		<ref type="material" id="glass"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/venus/back-ball.obj"/>
+		<ref type="material" id="box"/>
+		<ref type="emitter" id="ball_emit"/>
+	</shape>
+
+	<texture id="floor" tag="bump" type="image">
+		<string name="filename" value="./scenes/meshes/textures/bump/bump1.jpg"/>
+	</texture>
+
+	<texture id="body" tag="bump" type="image">
+		<string name="filename" value="./scenes/meshes/textures/bump/bump2.jpg"/>
+	</texture>
 
 	<world name="yes!">
 		<rgb name="skybox" value="0.0"/>

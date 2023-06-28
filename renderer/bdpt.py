@@ -219,6 +219,7 @@ class BDPT(VolumeRenderer):
         while True:
             # Step 1: ray intersection
             it = self.ray_intersect(ray_d, ray_o)
+            self.process_ns(it)                                       # (possibly) get normal map / bump map
 
             if it.obj_id < 0:     
                 if not self.world_scattering: break     # nothing is hit, break
