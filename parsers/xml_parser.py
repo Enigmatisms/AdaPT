@@ -7,6 +7,7 @@
 """
 import os
 import sys
+import numpy as np
 sys.path.append("..")
 
 import xml.etree.ElementTree as xet
@@ -46,6 +47,12 @@ __SOURCE_MAP__ = {"point": PointSource, "area": AreaSource, "spot": SpotSource, 
     level 1    AABB1 (tri1 tri2 tri3)     AABB2 (tri4 tri5 tri6)     AABB3 (tri4 tri5 tri6)
 """
 
+def none_checker(value, prim_num, last_dim = 3):
+    """ Check whether the value is None. If True, replace the value with a zero array """
+    if value is None:
+        return np.zeros((prim_num, 3, last_dim), dtype = np.float32)
+    return value
+
 def update_emitter_config(emitter_config: List, area_lut: dict):
     for i, emitter in enumerate(emitter_config):
         if i in area_lut:
@@ -83,15 +90,21 @@ def parse_wavefront(
     directory: str, obj_list: List[xet.Element], 
     bsdf_dict: dict, emitter_dict: dict, texture_dict: List[Texture_np]) -> List[Arr]:
     """ Parsing wavefront obj file (filename) from list of xml nodes """
-    all_objs = []
+    all_objs  = []
+    all_prims = []
+    all_uvs   = []
+    all_normals = []
+    all_v_norms = []
+    indices = []            # indicating whether the current primitive is sphere or not 
     # Some emitters will be attached to objects, to sample the object-attached emitters
     # We need to calculate surface area of the object mesh first (asuming each triangle has similar area)
     attached_area_dict = {}
     has_vertex_normal = False
+    cum_prim_num = 0
     for elem in obj_list:
         # vns: vertex normals / uvs: uv coordinates
         vns, uvs, trans_r, trans_t = None, None, None, None                           # uv_coordinates and transform
-        obj_type = 0
+        obj_type = TRIANGLE_MESH
         if elem.get("type") == "obj":
             filepath_child       = elem.find("string")
             # get mesh / geometrical normal / shading normal / uv coords for texture
@@ -104,7 +117,7 @@ def parse_wavefront(
                 has_vertex_normal = True
         else:                   # CURRENTLY, only sphere is supported
             meshes, normals = parse_sphere_element(elem)
-            obj_type = 1
+            obj_type = SPHERE
         ref_childs    = elem.findall("ref")        
         bsdf_item     = None
         texture_group = {"albedo": None, "normal": None, "bump": None, "roughness": None}
@@ -135,8 +148,28 @@ def parse_wavefront(
             
         if bsdf_item is None:
             raise ValueError("Object should be attached with a BSDF for now since no default one implemented yet.")
+        prim_num = meshes.shape[0] 
+        if obj_type == SPHERE:      # padding to (1, 3, 3)
+            meshes = np.concatenate((meshes, np.zeros((1, 1, 3), dtype=np.float32)), axis = -2)
+            indices.append(prim_num, np.int32)
+        all_prims.append(meshes)
+        all_normals.append(normals)
+        all_v_norms.append(none_checker(vns, prim_num))
+        all_uvs.append(none_checker(uvs, prim_num, last_dim = 2))
+        # TODO: once we have tested the from_numpy loading scheme, we can remove meshes from the object
         all_objs.append(ObjDescriptor(meshes, normals, bsdf_item, vns, uvs, texture_group, trans_r, trans_t, emit_ref_id, obj_type))
-    return all_objs, attached_area_dict, has_vertex_normal
+        cum_prim_num += prim_num
+    
+    if indices:
+        indices = np.int64(indices)
+    else:
+        indices = None
+    all_uvs = np.concatenate(all_uvs, axis = 0).astype(np.float32)
+    all_prims = np.concatenate(all_prims, axis = 0).astype(np.float32)
+    all_normals = np.concatenate(all_normals, axis = 0).astype(np.float32)
+    all_v_norms = np.concatenate(all_v_norms, axis = 0).astype(np.float32)
+    array_info = {"primitives": all_prims, "indices": indices, "n_g": all_normals, "n_s": all_v_norms, "uvs": all_uvs}
+    return array_info, all_objs, attached_area_dict, has_vertex_normal
 
 def parse_bxdf(bxdf_list: List[xet.Element]):
     """
@@ -237,15 +270,15 @@ def scene_parsing(directory: str, file: str):
         roughness is of lower priority
     - [ ] Speed up python->taichi conversion
     """
-    all_objs, area_lut, has_vertex_normal \
+    array_info, all_objs, area_lut, has_vertex_normal \
                      = parse_wavefront(directory, shape_nodes, bsdf_dict, emitter_dict, textures)
     configs          = parse_global_sensor(sensor_node)
     configs['world'] = parse_world(world_node)
     configs['packed_textures']   = teximgs
     configs['has_vertex_normal'] = has_vertex_normal
     emitter_configs  = update_emitter_config(emitter_configs, area_lut)
-    return emitter_configs, all_objs, configs
+    return emitter_configs, array_info, all_objs, configs
 
 if __name__ == "__main__":
-    emitter_configs, all_objs, configs = scene_parsing("../scenes/", "cbox/complex.xml")
-    print(emitter_configs, all_objs, configs)
+    emitter_configs, array_info, all_objs, configs = scene_parsing("../scenes/", "cbox/complex.xml")
+    print(emitter_configs, array_info.shape, all_objs, configs)

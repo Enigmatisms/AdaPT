@@ -29,8 +29,11 @@ class VolumeRenderer(PathTracer):
     """
         Volumetric Renderer Class
     """
-    def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
-        super().__init__(emitters, objects, prop)
+    def __init__(self, 
+        emitters: List[LightSource], array_info: dict, 
+        objects: List[ObjDescriptor], prop: dict, bvh_delay: bool = False
+    ):
+        super().__init__(emitters, array_info, objects, prop, bvh_delay)
         self.world_scattering = self.world.medium._type >= 0
         
     @ti.func

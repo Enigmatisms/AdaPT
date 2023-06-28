@@ -70,7 +70,23 @@ class Visualizer(TracerBase):
 
         # pos0: start_idx, pos1: number of primitives, pos2: obj_id (being triangle / sphere? Others to be added, like cylinder, etc.)
         self.obj_info  = ti.field(int, (self.num_objects, 3))
+        self.load_primitives(**array_info)
         self.initialze(objects)
+
+    def load_primitives(
+        self, primitives: np.ndarray, indices: np.ndarray, 
+        n_g: np.ndarray, n_s: np.ndarray, uvs: np.ndarray
+    ):
+        """ Load primitives via faster API """
+        self.prims.from_numpy(primitives)
+        # sphere primitives are padded
+        prim_vecs = np.concatenate([
+            primitives[..., 1, :] - primitives[..., 0, :],
+            primitives[..., 2, :] - primitives[..., 0, :],
+            primitives[..., 0, :]], axis = -2)
+        prim_vecs[indices, :2, :] = primitives[indices, :2, :]
+        self.precom_vec.from_numpy(prim_vecs)
+        self.normals.from_numpy(n_g)
 
     def set_width(self, val: int):
         self.w[None] = int(val)
@@ -94,19 +110,6 @@ class Visualizer(TracerBase):
     def initialze(self, objects: List[ObjDescriptor]):
         acc_prim_num = 0
         for i, obj in enumerate(objects):
-            for j, (mesh, normal) in enumerate(zip(obj.meshes, obj.normals)):
-                cur_id = acc_prim_num + j
-                self.prims[cur_id, 0] = vec3(mesh[0])
-                self.prims[cur_id, 1] = vec3(mesh[1])
-                if mesh.shape[0] > 2:       # not a sphere
-                    self.prims[cur_id, 2] = vec3(mesh[2])
-                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 1] - self.prims[cur_id, 0]                    
-                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 2] - self.prims[cur_id, 0] 
-                    self.precom_vec[cur_id, 2] = self.prims[cur_id, 0]
-                else:
-                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 0]
-                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 1]           
-                self.normals[cur_id] = vec3(normal) 
             self.obj_info[i, 0] = acc_prim_num
             self.obj_info[i, 1] = obj.tri_num
             self.obj_info[i, 2] = obj.type
@@ -163,9 +166,9 @@ if __name__ == "__main__":
     ti.init(arch = ti.vulkan, default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path)
     vertex_field = ti.Vector.field(3, float, 8)
     input_folder = os.path.join(options.input_path, options.scene)
-    _, meshes, configs = scene_parsing(input_folder, options.name)  # complex_cornell
+    _, array_info, all_objs, configs = scene_parsing(input_folder, options.name)  # complex_cornell
 
-    viz = Visualizer(meshes, configs)
+    viz = Visualizer(all_objs, configs)
     init_R = Rot.from_matrix(viz.cam_r[None].to_numpy()).as_euler('zxy', degrees = True)
 
     # GGUI initializations 
@@ -231,3 +234,4 @@ if __name__ == "__main__":
         canvas.lines(vertex_field, width = 0.002, color = (0., 0.4, 1.0))
         window.show()
         if window.running == False: break
+        

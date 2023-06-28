@@ -51,11 +51,14 @@ class PathTracer(TracerBase):
         Simple Ray tracing using Bary-centric coordinates
         This tracer can yield result with global illumination effect
     """
-    def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
+    def __init__(self, 
+        emitters: List[LightSource], array_info: dict, 
+        objects: List[ObjDescriptor], prop: dict, bvh_delay: bool = False
+    ):
+        """ bvh_delay: since in taichi, field can not be constructed after a kernel is called
+            therefore, during BDPT we might need to execute bvh_process manually 
+        """
         super().__init__(objects, prop)
-        """
-            Implement path tracing algorithms first, then we can improve light source / BSDF / participating media
-        """
         self.clock = TicToc()
         self.anti_alias         = prop['anti_alias']
         self.stratified_sample  = prop['stratified_sampling']   # whether to use stratified sampling
@@ -115,6 +118,7 @@ class PathTracer(TracerBase):
                 CONSOLE.log(f"Packed texture image tagged '{key}' loaded: ({tex_w}, {tex_h})")
         
         CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
+        self.load_primitives(**array_info)
         self.initialze(emitters, objects)
         CONSOLE.log(f"Path tracer initialization in {self.clock.toc(True):.3f} ms")
 
@@ -128,6 +132,10 @@ class PathTracer(TracerBase):
         self.w_aabb_min = ti.min(self.cam_t, min_val) - 0.1         
         self.w_aabb_max = ti.max(self.cam_t, max_val) + 0.1
 
+        if not bvh_delay:
+            self.bvh_process(array_info, objects, prop)
+
+    def bvh_process(self, array_info: dict, objects: List[ObjDescriptor], prop: dict):
         if prop.get('accelerator', 'none') == 'bvh':
             try:
                 from bvh_cpp import bvh_build
@@ -136,22 +144,35 @@ class PathTracer(TracerBase):
                 CONSOLE.log("[yellow]:warning: Warning: Fall back to brute force primitive traversal.")
             else:
                 CONSOLE.log(":rocket: Using SAH-BVH tree accelerator.")
-                primitives, obj_info = self.prepare_for_bvh(objects)
+                old_primitives, obj_info = self.prepare_for_bvh(objects)
+                primitives = array_info["primitives"]
                 self.clock.tic()
-                py_nodes, py_bvhs = bvh_build(primitives, obj_info, self.w_aabb_min.to_numpy(), self.w_aabb_max.to_numpy())
-                CONSOLE.log(f":rocket: BVH construction finished in {self.clock.toc_tic(True):.3f} ms")
+                print("BVH build started, old: ", old_primitives.shape, ", new: ", primitives.shape)
+                bvh_minmax, bvh_info, node_minmax, node_info = \
+                        bvh_build(primitives, obj_info, self.w_aabb_min.to_numpy(), self.w_aabb_max.to_numpy())
+                bvh_minmax  = bvh_minmax.reshape(-1, 2, 3)
+                node_minmax = node_minmax.reshape(-1, 2, 3)
+                bvh_info    = bvh_info.reshape(-1, 2)
+                node_info   = node_info.reshape(-1, 3)
+                CONSOLE.log(f":rocket: BVH construction finished in {self.clock.toc_tic():.4f} s")
 
-                self.node_num = len(py_nodes)
-                self.bvh_num = len(py_bvhs)
+                self.node_num = node_info.shape[0]
+                self.bvh_num  = bvh_info.shape[0]
 
+                self.clock.tic()
                 self.lin_nodes = LinearNode.field()
                 self.lin_bvhs  = LinearBVH.field()
                 ti.root.dense(ti.i, self.node_num).place(self.lin_nodes)
                 ti.root.dense(ti.i, self.bvh_num).place(self.lin_bvhs)
-                export_python_bvh(self.lin_nodes, self.lin_bvhs, py_nodes, py_bvhs)
+                self.convert_bvh_info(bvh_minmax, bvh_info, node_minmax, node_info)
+                CONSOLE.log(f":rocket: BVH exported in {self.clock.toc_tic():.4f} s")
+
+                # export_python_bvh(self.lin_nodes, self.lin_bvhs, py_nodes, py_bvhs)
                 CONSOLE.log(f"{self.node_num } nodes and {self.bvh_num} bvh primitives are loaded.")
                 self.__setattr__("ray_intersect", self.ray_intersect_bvh)
                 self.__setattr__("does_intersect", self.does_intersect_bvh)
+        else:
+            CONSOLE.log(f":tractor: No accelerator used. Use a BVH accelerator if num prims {self.num_prims} exceeds 128.")
 
     def get_check_point(self):
         """This is a simple checkpoint saver, which can be hacked.
@@ -200,32 +221,28 @@ class PathTracer(TracerBase):
         primitives = np.stack(primitives, axis = 0).astype(np.float32)
         return primitives, obj_info
     
-    def load_primitives(
-        self, primitives: np.ndarray, indices: np.ndarray, 
-        n_g: np.ndarray, n_s: np.ndarray = None, uvs: np.ndarray = None
+    @ti.kernel
+    def convert_bvh_info(self, 
+        bvh_minmax: ti.types.ndarray(), bvh_info: ti.types.ndarray(), 
+        node_minmax: ti.types.ndarray(), node_info: ti.types.ndarray()
     ):
-        """ Load primitives via faster API """
-        self.prims.from_numpy(primitives)
-        # sphere primitives are padded
-        prim_vecs = np.concatenate([
-            primitives[..., 1, :] - primitives[..., 0, :],
-            primitives[..., 2, :] - primitives[..., 0, :],
-            primitives[..., 0, :]], axis = -2)
-        prim_vecs[indices, :2, :] = primitives[indices, :2, :]
-        self.precom_vec.from_numpy(prim_vecs)
-        self.normals.from_numpy(n_g)
-        if n_s is not None and self.has_v_normal:
-            self.v_normals.from_numpy(n_s)
-        if uvs is not None:
-            self.uv_coords.from_numpy(uvs)
-
-    def convert_bvh_info(self):
         """ Faster API for BVH python-to-taichi conversion 
             TODO: Here we actually should modify the output pattern of the bvh pybind module
             To directly export the information of different field and store them in a numpy array
             then we can use a kernel function to load the information to taichi end
         """
-        pass
+        for i in self.lin_bvhs:
+            self.lin_bvhs[i] = LinearBVH(
+                mini = vec3([bvh_minmax[i, 0, 0], bvh_minmax[i, 0, 1], bvh_minmax[i, 0, 2]]), 
+                maxi = vec3([bvh_minmax[i, 1, 0], bvh_minmax[i, 1, 1], bvh_minmax[i, 1, 2]]),
+                obj_idx = bvh_info[i, 0], prim_idx = bvh_info[i, 1],
+            )
+        for i in self.lin_nodes:
+            self.lin_nodes[i] = LinearNode(
+                mini = vec3([node_minmax[i, 0, 0], node_minmax[i, 0, 1], node_minmax[i, 0, 2]]), 
+                maxi = vec3([node_minmax[i, 1, 0], node_minmax[i, 1, 1], node_minmax[i, 1, 2]]),
+                base = node_info[i, 0], prim_cnt = node_info[i, 1], all_offset = node_info[i, 2]
+            )
 
     def initialze(self, emitters: List[LightSource], objects: List[ObjDescriptor]):
         # FIXME: Path tracer initialization is too slow
@@ -236,36 +253,6 @@ class PathTracer(TracerBase):
 
         acc_prim_num = 0
         for i, obj in enumerate(objects):
-            prim_num = obj.meshes.shape[0]
-            for j, (mesh, normal) in tqdm.tqdm(enumerate(zip(obj.meshes, obj.normals)), total = prim_num):
-                cur_id = acc_prim_num + j
-                self.prims[cur_id, 0] = vec3(mesh[0])
-                self.prims[cur_id, 1] = vec3(mesh[1])
-
-                # FIXME: use numpy and from numpy to accelerate loading
-                # BVH might have some difficulty, since there is no function API
-                if mesh.shape[0] > 2:       # not a sphere
-                    self.prims[cur_id, 2] = vec3(mesh[2])
-                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 1] - self.prims[cur_id, 0]                    
-                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 2] - self.prims[cur_id, 0] 
-                    self.precom_vec[cur_id, 2] = self.prims[cur_id, 0]
-                else:
-                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 0]
-                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 1]           
-                if obj.vns is not None:             # got vertex normal
-                    pass
-                self.normals[cur_id] = vec3(normal) 
-                if obj.uv_coords is not None:
-                    uv_coord = obj.uv_coords[j]
-                    self.uv_coords[cur_id, 0] = vec2(uv_coord[0])
-                    self.uv_coords[cur_id, 1] = vec2(uv_coord[1])
-                    self.uv_coords[cur_id, 2] = vec2(uv_coord[2])
-                if obj.vns is not None:
-                    vn = obj.vns[j]
-                    self.v_normals[cur_id, 0] = vec3(vn[0])
-                    self.v_normals[cur_id, 1] = vec3(vn[1])
-                    self.v_normals[cur_id, 2] = vec3(vn[2])
-
             self.obj_info[i, 0] = acc_prim_num
             self.obj_info[i, 1] = obj.tri_num
             self.obj_info[i, 2] = obj.type
@@ -563,5 +550,5 @@ if __name__ == "__main__":
     options = get_options()
     ti.init(arch = ti.vulkan, kernel_profiler = options.profile, default_ip = ti.int32, default_fp = ti.f32)
     input_folder = os.path.join(options.input_path, options.scene)
-    emitter_configs, meshes, configs = scene_parsing(input_folder, options.name)  # complex_cornell
-    pt = PathTracer(emitter_configs, meshes, configs)
+    emitter_configs, array_info, all_objs, configs = scene_parsing(input_folder, options.name)  # complex_cornell
+    pt = PathTracer(emitter_configs, all_objs, configs)

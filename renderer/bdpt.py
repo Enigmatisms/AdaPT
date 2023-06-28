@@ -38,8 +38,11 @@ def block_size(val, max_val = 512):
 
 @ti.data_oriented
 class BDPT(VolumeRenderer):
-    def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
-        super().__init__(emitters, objects, prop)
+    def __init__(self, 
+        emitters: List[LightSource], array_info: dict, 
+        objects: List[ObjDescriptor], prop: dict
+    ):
+        super().__init__(emitters, array_info, objects, prop, bvh_delay = True)
         decomp_mode = {'transient_cam': TRANSIENT_CAM, 'transient_lit': TRANSIENT_LIT, 'none': STEADY_STATE}
         decomp_state = decomp_mode[prop.get('decomposition', 'none')]
         if decomp_mode == TRANSIENT_LIT:
@@ -115,6 +118,9 @@ class BDPT(VolumeRenderer):
                 raise ValueError("Transient interval must be positive. Otherwise, meaningful or futile.")
         else:
             CONSOLE.log(":flashlight: Steady state BDPT rendering")
+            
+        # BVH construction is delayed until all fields are constructed
+        self.bvh_process(array_info, objects, prop)
 
         # self.A is the area of the imaging space on z = 1 plane
         self.A = float(self.w * self.h) * (self.inv_focal * self.inv_focal)

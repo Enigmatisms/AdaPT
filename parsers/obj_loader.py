@@ -3,7 +3,7 @@
     @author Qianyue He
     @date 2023.1.19
 """
-__all__ = ['extract_obj_info', 'apply_transform', 'calculate_surface_area']
+__all__ = ['extract_obj_info', 'apply_transform', 'calculate_surface_area', 'TRIANGLE_MESH', 'SPHERE']
 
 import numpy as np
 import pywavefront as pwf
@@ -12,6 +12,9 @@ from numpy import ndarray as Arr
 
 from rich.console import Console
 CONSOLE = Console(width = 128)
+
+TRIANGLE_MESH = 0
+SPHERE = 1
 
 # supported_rot_type = ("euler", "quaternion", "angle-axis")
 
@@ -79,12 +82,12 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = False):
 
 def calculate_surface_area(meshes: Arr, _type = 0):
     area_sum = 0.
-    if _type == 0:
+    if _type == TRIANGLE_MESH:
         for face in meshes:
             dv1 = face[1] - face[0]
             dv2 = face[2] - face[0]
             area_sum += np.linalg.norm(np.cross(dv1, dv2)) / 2.
-    elif _type == 1:
+    elif _type == SPHERE:
         radius = meshes[0, 1, 0]
         # ellipsoid surface area approximation
         area_sum = 4. * np.pi * radius ** 2

@@ -114,6 +114,25 @@ class TracerBase:
     def initialze(self, _objects: List[ObjDescriptor]):
         pass
 
+    def load_primitives(
+        self, primitives: np.ndarray, indices: np.ndarray, 
+        n_g: np.ndarray, n_s: np.ndarray, uvs: np.ndarray
+    ):
+        """ Load primitives via faster API """
+        self.prims.from_numpy(primitives)
+        # sphere primitives are padded
+        prim_vecs = np.stack([
+            primitives[..., 1, :] - primitives[..., 0, :],
+            primitives[..., 2, :] - primitives[..., 0, :],
+            primitives[..., 0, :]], axis = -2)
+        if indices is not None:
+            prim_vecs[indices, :2, :] = primitives[indices, :2, :]
+        self.precom_vec.from_numpy(prim_vecs)
+        self.normals.from_numpy(n_g)
+        self.uv_coords.from_numpy(uvs)
+        if self.has_v_normal:
+            self.v_normals.from_numpy(n_s)
+
     @ti.func
     def pix2ray(self, i, j):
         """
@@ -268,5 +287,5 @@ class TracerBase:
     
 if __name__ == "__main__":
     ti.init()
-    _, meshes, configs = scene_parsing("../scene/test/", "test.xml")
-    base = TracerBase(meshes, configs)
+    _, array_info, all_objs, configs = scene_parsing("../scene/test/", "test.xml")
+    base = TracerBase(all_objs, configs)

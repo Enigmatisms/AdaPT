@@ -67,12 +67,12 @@ if __name__ == "__main__":
     ti.init(arch = mapped_arch(opts.arch), kernel_profiler = opts.profile, device_memory_fraction = 0.8, offline_cache = not opts.no_cache, \
             default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path, debug = opts.debug)
     input_folder = os.path.join(opts.input_path, opts.scene)
-    emitter_configs, all_objs, configs = scene_parsing(input_folder, opts.name)  # complex_cornell
+    emitter_configs, array_info, all_objs, configs = scene_parsing(input_folder, opts.name)  # complex_cornell
     output_folder = f"{folder_path(opts.output_path)}"
     output_freq = opts.output_freq
     if output_freq > 0:
         output_folder = folder_path(f"{output_folder}{opts.img_name}-{opts.name[:-4]}-{opts.type}/")
-    rdr: PathTracer = rdr_mapping[opts.type](emitter_configs, all_objs, configs)
+    rdr: PathTracer = rdr_mapping[opts.type](emitter_configs, array_info, all_objs, configs)
     if type(rdr) != BDPT and configs.get('decomposition', 'none').startswith('transient'):
         CONSOLE.log("[bold yellow] Transient rendering is only supported in BDPT renderer.")
 

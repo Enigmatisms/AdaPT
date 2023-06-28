@@ -31,7 +31,10 @@ class BlinnPhongTracer(TracerBase):
         origin + direction * t = u * PA(vec) + v * PB(vec) + P
         This is a rank-3 matrix linear equation
     """
-    def __init__(self, emitter: PointSource, objects: List[ObjDescriptor], prop: dict):
+    def __init__(self, 
+        emitter: PointSource, array_info: dict, 
+        objects: List[ObjDescriptor], prop: dict
+    ):
         super().__init__(objects, prop)
         self.emit_int = vec3(emitter.intensity)   
             
@@ -40,24 +43,12 @@ class BlinnPhongTracer(TracerBase):
         self.depth_map  = ti.field(float, (self.w, self.h))                # output: gray-scale
         self.norm_map   = ti.Vector.field(3, float, (self.w, self.h))                # output: gray-scale
 
+        self.load_primitives(**array_info)
         self.initialze(objects)
 
     def initialze(self, objects: List[ObjDescriptor]):
         acc_prim_num = 0
         for i, obj in enumerate(objects):
-            for j, (mesh, normal) in enumerate(zip(obj.meshes, obj.normals)):
-                cur_id = acc_prim_num + j
-                self.prims[cur_id, 0] = vec3(mesh[0])
-                self.prims[cur_id, 1] = vec3(mesh[1])
-                if mesh.shape[0] > 2:       # not a sphere
-                    self.prims[cur_id, 2] = vec3(mesh[2])
-                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 1] - self.prims[cur_id, 0]                    
-                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 2] - self.prims[cur_id, 0]                
-                    self.precom_vec[cur_id, 2] = self.prims[cur_id, 0]
-                else:
-                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 0]
-                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 1]     
-                self.normals[cur_id] = vec3(normal) 
             self.obj_info[i, 0] = acc_prim_num
             self.obj_info[i, 1] = obj.tri_num
             self.obj_info[i, 2] = obj.type
