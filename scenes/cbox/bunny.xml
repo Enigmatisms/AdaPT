@@ -11,7 +11,7 @@
         <integer name="sample_count" value="128"/>
         <integer name="max_bounce" value="10"/>
         <integer name="max_depth" value="12"/>
-        <integer name="num_shadow_ray" value="4"/>       
+        <integer name="num_shadow_ray" value="2"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
@@ -159,13 +159,13 @@
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/bunny_body.obj"/>
-		<ref type="material" id="fresnel"/>
-		<ref type="texture" id="crystal"/>
+		<ref type="material" id="glass1"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/bunny_head.obj"/>
-		<ref type="material" id="glass1"/>
+		<ref type="material" id="fresnel"/>
+		<ref type="texture" id="crystal"/>
 	</shape>
 
 	<texture id="lava" type="image">

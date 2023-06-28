@@ -32,7 +32,7 @@ def timing(verbose = True):
             start_time = time()
             ret_val = func(*args, **kwargs)
             if verbose:
-                CONSOLE.log(f":hourglass_flowing_sand: Function <{func.__name__}> takes {(time() - start_time) * 1e3:.4f} ms")
+                CONSOLE.log(f":hourglass_flowing_sand: Function <{func.__name__}> takes {time() - start_time:.4f} s")
             return ret_val
         return inner_wrapper
     return outter_wrapper

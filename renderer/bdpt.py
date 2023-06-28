@@ -29,17 +29,13 @@ N_MAX_BOUNCE = 32
 T_MAX_BOUNCE = 400
 MAX_SAMPLE_CNT = 512
 
-def block_size(val, max_val = 512):
-    if val > max_val or val == 0: return max_val
-    if val % 32 == 0 or (val & (val-1) == 0): return val
-    cand1 = val - val % 32
-    cand2 = 1 << int(log2(val))
-    return cand1 if cand1 >= cand2 else cand2
-
 @ti.data_oriented
 class BDPT(VolumeRenderer):
-    def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
-        super().__init__(emitters, objects, prop)
+    def __init__(self, 
+        emitters: List[LightSource], array_info: dict, 
+        objects: List[ObjDescriptor], prop: dict
+    ):
+        super().__init__(emitters, array_info, objects, prop, bvh_delay = True)
         decomp_mode = {'transient_cam': TRANSIENT_CAM, 'transient_lit': TRANSIENT_LIT, 'none': STEADY_STATE}
         decomp_state = decomp_mode[prop.get('decomposition', 'none')]
         if decomp_mode == TRANSIENT_LIT:
@@ -54,8 +50,6 @@ class BDPT(VolumeRenderer):
         self.crop_range  = ti.field(ti.i8)              # dummy field, useless when there is no cropping
         self.time_cnts   = ti.field(ti.i32)
         self.time_bins   = ti.Vector.field(3, float)
-
-        self.vertex_cnts = ti.field(ti.i32)
 
         if self.do_crop:
             # Memory conserving implementation
@@ -80,9 +74,7 @@ class BDPT(VolumeRenderer):
         self.lit_bitmask = self.path_nodes.dense(ti.k, max_bounce_used + 1)
         self.cam_bitmask.place(self.cam_paths, offset = offsets)    
         self.lit_bitmask.place(self.light_paths, offset = offsets)  
-        self.path_nodes.dense(ti.k, 2).place(self.vertex_cnts, offset = offsets)
         self.path_nodes.place(self.crop_range, offset = (offsets[:2]))
-        self.conn_path_block_size = block_size(self.max_bounce + 1, 256)
 
         # ti.profiler.memory_profiler.print_memory_profiler_info()
 
@@ -115,6 +107,9 @@ class BDPT(VolumeRenderer):
                 raise ValueError("Transient interval must be positive. Otherwise, meaningful or futile.")
         else:
             CONSOLE.log(":flashlight: Steady state BDPT rendering")
+            
+        # BVH construction is delayed until all fields are constructed
+        self.bvh_process(array_info, objects, prop)
 
         # self.A is the area of the imaging space on z = 1 plane
         self.A = float(self.w * self.h) * (self.inv_focal * self.inv_focal)
@@ -132,32 +127,24 @@ class BDPT(VolumeRenderer):
 
     @ti.kernel
     def render(self, t_start: int, t_end: int, s_start: int, s_end: int, max_bnc: int, max_depth: int):
-        self.cnt[None] += 1
+        cnt = ti.atomic_add(self.cnt[None], 1) + 1
         decomp = self.decomp[None]
         min_time = self.min_time[None]
         max_time = self.max_time[None]
         interval = self.interval[None]
 
-        ti.loop_config(parallelize = 8)
-        for i, j, k in self.vertex_cnts:
-            in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
-            if in_crop_range:
-                if k == 1:
-                    self.vertex_cnts[i, j, 1] = ti.min(self.generate_light_path(i, j, max_bnc) + 1, s_end)     # k == 1
-                else:
-                    self.vertex_cnts[i, j, 0] = ti.min(self.generate_eye_path(i, j, max_bnc) + 1, t_end)       # k == 0
-        
         ti.block_local(self.time_cnts)
         ti.block_local(self.time_bins)
-        ti.block_local(self.cam_paths)
-        ti.block_local(self.light_paths)
-        ti.loop_config(parallelize = 8, block_dim = self.conn_path_block_size)
-        for i, j, t in self.cam_paths:
+        ti.loop_config(parallelize = 8, block_dim = 512)
+        for i, j in self.pixels:
             in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
+            local_color = ZERO_V3
             if in_crop_range:
-                t_end_i = self.vertex_cnts[i, j, 0]
-                s_end_i = self.vertex_cnts[i, j, 1]
-                if t >= t_start and t < t_end_i:
+                cam_vnum = self.generate_eye_path(i, j, max_bnc) + 1
+                lit_vnum = self.generate_light_path(i, j, max_bnc) + 1
+                s_end_i = ti.min(lit_vnum, s_end)
+                t_end_i = ti.min(cam_vnum, t_end)
+                for t in range(t_start, t_end_i):
                     for s in range(s_start, s_end_i):
                         depth = s + t - 2
                         if (s == 1 and t == 1) or depth < 0 or depth > max_depth:
@@ -170,13 +157,15 @@ class BDPT(VolumeRenderer):
                             id_j = j
                             if t == 1 and raster_p.min() >= 0:      # non-local contribution
                                 id_i, id_j = raster_p               # splat samples can only contribute in cropping range
+                                self.color[id_i, id_j] += color
+                            else:
+                                local_color += color
                             if decomp >= TRANSIENT_CAM and path_time < max_time and path_time > min_time:
                                 time_idx = int((path_time - min_time) / interval)
                                 self.time_bins[id_i, id_j, time_idx] += color   # time_bins and cnts have offset
                                 self.time_cnts[id_i, id_j, time_idx] += 1
-                            self.color[id_i, id_j] += color
-        for i, j in self.pixels:
-            self.pixels[i, j] = self.color[i, j] / self.cnt[None]
+                self.color[i, j] += local_color
+                self.pixels[i, j] = self.color[i, j] / cnt
     
     def reset(self):
         """ Resetting path vertex container """
@@ -186,11 +175,11 @@ class BDPT(VolumeRenderer):
     def generate_eye_path(self, i: int, j: int, max_bnc: int):
         ray_d = self.pix2ray(i, j)
         dot_ray = tm.dot(ray_d, self.cam_normal)
-        _, pdf_dir = self.pdf_camera(dot_ray)
+        pdf_dir = self.pdf_camera(dot_ray)
         # Starting vertex assignment, note that camera should be a connectible vertex
         self.cam_paths[i, j, 0] = Vertex(_type = VERTEX_CAMERA, obj_id = -1, emit_id = -1, 
             bool_bits = BDPT.get_bool(p_delta = True, in_fspace = self.free_space_cam), time = self.init_time,
-            normal = ZERO_V3, pos = self.cam_t, ray_in = ZERO_V3, beta = vec3([1., 1., 1.])
+            n_s = ZERO_V3, n_g = ZERO_V3, pos = self.cam_t, ray_in = ZERO_V3, beta = vec3([1., 1., 1.])
         )
         return self.random_walk(i, j, max_bnc, self.cam_t, ray_d, pdf_dir, ONES_V3, TRANSPORT_RAD) + 1
 
@@ -202,7 +191,7 @@ class BDPT(VolumeRenderer):
         vertex_pdf = pdf_pos * emitter_pdf
         self.light_paths[i, j, 0] = Vertex(_type = VERTEX_EMITTER, obj_id = emitter.obj_ref_id, 
             emit_id = emit_id, bool_bits = emitter.bool_bits, time = emitter.emit_time, pdf_fwd = vertex_pdf, 
-            normal = normal, pos = ray_o, ray_in = ZERO_V3, beta = ret_int
+            n_s = normal, n_g = normal, pos = ray_o, ray_in = ZERO_V3, beta = ret_int
         )
         vertex_num = 0
         if pdf_dir > 0. and ret_int.max() > 0. and vertex_pdf > 0.:      # black emitter / inpossible direction 
@@ -229,44 +218,46 @@ class BDPT(VolumeRenderer):
 
         while True:
             # Step 1: ray intersection
-            obj_id, normal, min_depth, prim_id, u_coord, v_coord = self.ray_intersect(ray_d, ray_o)
+            it = self.ray_intersect(ray_d, ray_o)
+            self.process_ns(it)                                       # (possibly) get normal map / bump map
 
-            if obj_id < 0:     
+            if it.obj_id < 0:     
                 if not self.world_scattering: break     # nothing is hit, break
                 else:                                   # the world is filled with scattering medium
                     # TODO: This may not be totally correct, should be double-checked
-                    min_depth = self.world_bound_time(ray_o, ray_d)
+                    it.min_depth = self.world_bound_time(ray_o, ray_d)
                     in_free_space = True
-                    obj_id = -1
+                    it.obj_id = -1
             else:
-                in_free_space = tm.dot(normal, ray_d) < 0
+                in_free_space = tm.dot(it.n_g, ray_d) < 0
 
             # Step 2: check for mean free path sampling
             # Calculate mfp, path_beta = transmittance / PDF
-            is_mi, min_depth, path_beta = self.sample_mfp(obj_id, in_free_space, min_depth) 
-            if obj_id < 0 and not is_mi: break  # exiting world bound
+            is_mi, it.min_depth, path_beta = self.sample_mfp(it.obj_id, in_free_space, it.min_depth) 
+            if it.obj_id < 0 and not is_mi: break  # exiting world bound
             throughput *= path_beta             # attenuate first
             if throughput.max() < 5e-5: break
                 
-            hit_point = ray_d * min_depth + ray_o
-            hit_light = -1 if is_mi else self.emitter_id[obj_id]
-            acc_time += min_depth * self.get_ior(obj_id, in_free_space)
+            hit_point = ray_d * it.min_depth + ray_o
+            hit_light = -1 if is_mi else self.emitter_id[it.obj_id]
+            acc_time += it.min_depth * self.get_ior(it.obj_id, in_free_space)
 
             # Do not place vertex on null surface (no correct answer about whether it's surface or medium)
-            if not is_mi and not self.non_null_surface(obj_id):    # surface interaction for null surface should be skipped   
+            if not is_mi and not self.non_null_surface(it.obj_id):    # surface interaction for null surface should be skipped   
                 ray_o = hit_point
                 continue
 
             # Step 3: Create a new vertex and calculate pdf_fwd
-            pdf_fwd = BDPT.convert_density(ray_pdf, hit_point - last_v_pos, normal, is_mi)
+            pdf_fwd = BDPT.convert_density(ray_pdf, hit_point - last_v_pos, it.n_s, is_mi)
             last_v_pos = hit_point
-            is_delta = (not is_mi) and self.is_delta(obj_id)
+            is_delta = (not is_mi) and self.is_delta(it.obj_id)
             bool_bits = BDPT.get_bool(d_delta = is_delta, is_area = (hit_light >= 0), in_fspace = in_free_space, is_delta = is_delta)
             
-            tex = self.get_uv_color(obj_id, prim_id, u_coord, v_coord)
-            vertex_args = {"_type": ti.select(is_mi, VERTEX_MEDIUM, VERTEX_SURFACE), "obj_id": obj_id, "emit_id": hit_light, 
+            it.tex, _vl = self.get_uv_item(self.albedo_map, self.albedo_img, it)
+            vertex_args = {"_type": ti.select(is_mi, VERTEX_MEDIUM, VERTEX_SURFACE), "obj_id": it.obj_id, "emit_id": hit_light, 
                 "bool_bits": bool_bits, "pdf_fwd": pdf_fwd, "time": acc_time, "pos": hit_point,
-                "normal": ti.select(is_mi, ZERO_V3, normal), "ray_in": ray_d, "beta": throughput, "tex": tex            
+                "n_s": ti.select(is_mi, ZERO_V3, it.n_s), "n_g": ti.select(is_mi, ZERO_V3, it.n_g), 
+                "ray_in": ray_d, "beta": throughput, "tex": it.tex            
             }
             vertex_num += 1
             if transport_mode == TRANSPORT_IMP:         # Camera path
@@ -283,7 +274,7 @@ class BDPT(VolumeRenderer):
 
             # Step 5: sample new ray. This should distinguish between surface and medium interactions
             old_ray_d = ray_d
-            ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, old_ray_d, normal, is_mi, in_free_space, transport_mode, tex)
+            ray_d, indirect_spec, ray_pdf = self.sample_new_ray(it, old_ray_d, is_mi, in_free_space, transport_mode)
             ray_o = hit_point
             pdf_bwd = ray_pdf
             if not is_mi:
@@ -294,8 +285,8 @@ class BDPT(VolumeRenderer):
                     pdf_bwd = 0.
                 else:
                     # Step 6: re-evaluate backward PDF
-                    pdf_bwd = self.surface_pdf(obj_id, -old_ray_d, normal, -ray_d, tex)
-
+                    pdf_bwd = self.surface_pdf(it, -old_ray_d, -ray_d)
+            throughput *= BDPT.correct_shading_normal(it, old_ray_d, ray_d, is_mi, transport_mode)
             # ray_o is the position of the current vertex, which is used in prev vertex pdf_bwd
             if transport_mode == TRANSPORT_IMP:         # Camera transport mode
                 self.light_paths[i, j, prev_vid].set_pdf_bwd(pdf_bwd, ray_o)
@@ -317,7 +308,7 @@ class BDPT(VolumeRenderer):
         if sid == 0:                                    # light path is not used  
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_light():                       # is the current vertex an emitter vertex?
-                le = self.src_field[int(vertex.emit_id)].eval_le(vertex.ray_in, vertex.normal) * vertex.beta
+                le = self.src_field[int(vertex.emit_id)].eval_le(vertex.ray_in, vertex.n_g) * vertex.beta
                 ret_time = self.src_field[int(vertex.emit_id)].emit_time + vertex.time      # for emission, we should acount for their emission time
         elif tid == 1:                                  # re-rasterize point onto the film, atomic add is allowed
             vertex = self.light_paths[i, j, sid - 1]
@@ -330,11 +321,13 @@ class BDPT(VolumeRenderer):
                 track_pos      = vertex.pos
                 # camera importance is valid / visible / radiance transferable
                 if cam_pdf > 0:
-                    fr2cam = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, 
-                            vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_IMP, vertex.tex)
+                    vit = vertex.get_interaction()
+                    fr2cam = self.eval(vit, vertex.ray_in, connect_dir, 
+                                    vertex.is_mi(), in_free_space, TRANSPORT_IMP)
                     bool_bits = BDPT.get_bool(True, in_fspace = self.free_space_cam)
                     sampled_v = Vertex(_type = VERTEX_CAMERA, obj_id = -1, emit_id = -1, 
-                        bool_bits = bool_bits, time = vertex.time + depth, normal = self.cam_normal,
+                        bool_bits = bool_bits, time = vertex.time + depth, 
+                        n_s = self.cam_normal, n_g = self.cam_normal,
                         pos = self.cam_t, ray_in = ZERO_V3, beta = we / cam_pdf, tex = INVALID
                     )
                     vertex_sampled = True
@@ -355,13 +348,14 @@ class BDPT(VolumeRenderer):
                 in_free_space = vertex.is_in_free_space()
                 # emitter should have non-zero emission / visible / transferable
                 if emit_int.max() > 0:
-                    fr2light    = self.eval(int(vertex.obj_id), vertex.ray_in, connect_dir, 
-                            vertex.normal, vertex.is_mi(), in_free_space, TRANSPORT_RAD, vertex.tex)
+                    vit = vertex.get_interaction()
+                    fr2light    = self.eval(vit, vertex.ray_in, connect_dir, 
+                                    vertex.is_mi(), in_free_space, TRANSPORT_RAD)
                     # We should apply texture on the emitter, so get color should be computed here
                     # Sample hit should also return uv coords
                     sampled_v   = Vertex(_type = VERTEX_EMITTER, obj_id = self.get_associated_obj(emit_id), emit_id = emit_id, 
                         bool_bits = emitter.bool_bits, time = emitter.emit_time, pdf_fwd = emitter.area_pdf() / float(self.src_num),
-                        normal  = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf, tex = INVALID
+                        n_s  = normal, n_g = normal, pos = emit_pos, ray_in = ZERO_V3, beta = emit_int / emitter_pdf, tex = INVALID
                     )
                     vertex_sampled = True
                     calc_transmittance = fr2light.max() > 0
@@ -378,10 +372,12 @@ class BDPT(VolumeRenderer):
                 cam_in_fspace = cam_v.is_in_free_space()
                 lit_in_fspace = lit_v.is_in_free_space()
                 if depth > 0.:           # if not occluded
-                    fr_cam = self.eval(int(cam_v.obj_id), cam_v.ray_in, connect_dir, 
-                            cam_v.normal, cam_v.is_mi(), cam_in_fspace, TRANSPORT_RAD, cam_v.tex)
-                    fr_lit = self.eval(int(lit_v.obj_id), lit_v.ray_in, -connect_dir, 
-                            lit_v.normal, lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP, lit_v.tex)
+                    cam_vit = cam_v.get_interaction()
+                    lit_vit = lit_v.get_interaction()
+                    fr_cam = self.eval(cam_vit, cam_v.ray_in, connect_dir, 
+                                    cam_v.is_mi(), cam_in_fspace, TRANSPORT_RAD)
+                    fr_lit = self.eval(lit_vit, lit_v.ray_in, -connect_dir, 
+                                    lit_v.is_mi(), lit_in_fspace, TRANSPORT_IMP)
                     # Geometry term: two cosine is in fr_xxx, length^{-2} is directly computed here
                     calc_transmittance = fr_cam.max() > 0 and fr_lit.max() > 0
                     le = cam_v.beta * fr_cam * fr_lit * lit_v.beta / (depth * depth)
@@ -526,14 +522,10 @@ class BDPT(VolumeRenderer):
             Implementation see reference: PBR-Book chapter 16-1, equation 16.2
             https://www.pbr-book.org/3ed-2018/Light_Transport_III_Bidirectional_Methods/The_Path-Space_Measurement_Equation#eq:importance-sa
         """
-        pdf_pos = 1.
-        pdf_dir = 1.
+        pdf_dir = 0.
         if dot_normal > 0.:     # No need to rasterize again
             pdf_dir /= (self.A * ti.pow(dot_normal, 3))
-        else:
-            pdf_pos = 0.
-            pdf_dir = 0.
-        return pdf_pos, pdf_dir
+        return pdf_dir
     
     @ti.func
     def pdf_ratio(self, cur: ti.template(), prev_pos, next: ti.template(), prev_null = False):
@@ -550,7 +542,7 @@ class BDPT(VolumeRenderer):
         elif cur._type == VERTEX_CAMERA:
             ray_norm = ray_out.norm()
             if ray_norm > 0:
-                _pp, pdf_sa = self.pdf_camera(ti.abs(tm.dot(self.cam_normal, ray_out / ray_norm)))
+                pdf_sa = self.pdf_camera(ti.abs(tm.dot(self.cam_normal, ray_out / ray_norm)))
         else:
             is_in_fspace = cur.is_in_free_space()
 
@@ -559,7 +551,8 @@ class BDPT(VolumeRenderer):
             if ray_out_norm > 0.:
                 normed_ray_out = ray_out / ray_out_norm
                 # FIXME: emitter can be inside the Medium (not in the free space), therefore `is_mi` can not only be `cur._type == VERTEX_MEDIUM`
-                pdf_sa = self.get_pdf(int(cur.obj_id), ray_in, normed_ray_out, cur.normal, cur._type == VERTEX_MEDIUM, is_in_fspace, cur.tex)
+                cur_vit = cur.get_interaction()
+                pdf_sa = self.get_pdf(cur_vit, ray_in, normed_ray_out, cur._type == VERTEX_MEDIUM, is_in_fspace)
         if cur._type != VERTEX_EMITTER:
             # convert to area measure for the next node
             pdf_area = next.get_pdf_bwd(pdf_sa, cur.pos)
@@ -571,11 +564,20 @@ class BDPT(VolumeRenderer):
         ray_dir  = prev.pos - cur.pos
         inv_len  = 1. / ray_dir.norm()
         ray_dir *= inv_len
-        pdf = self.src_field[int(cur.emit_id)].direction_pdf(ray_dir, cur.normal)
+        pdf = self.src_field[int(cur.emit_id)].direction_pdf(ray_dir, cur.n_g)      # use geometric normal for emitters
         if prev.has_normal():
-            pdf *= ti.abs(tm.dot(ray_dir, prev.normal))
+            pdf *= ti.abs(tm.dot(ray_dir, prev.n_s))
         pdf *= (inv_len * inv_len)
         return pdf
+    
+    @staticmethod
+    @ti.func
+    def correct_shading_normal(it: ti.template(), incid: vec3, outd: vec3, is_mi, tr_mode: int):
+        """ Correct shading normal """
+        val = 1.
+        if tr_mode == TRANSPORT_IMP and not is_mi:
+            val = ti.abs(tm.dot(it.n_s, outd) * tm.dot(it.n_g, incid) / tm.dot(it.n_g, outd) * tm.dot(it.n_s, incid))
+        return val
     
     @staticmethod
     @ti.func

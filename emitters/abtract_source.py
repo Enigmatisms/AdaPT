@@ -2,6 +2,7 @@
     Light source abstraction
     @date: 2023.1.20
     @author: Qianyue He
+    @note: I think for emitters, there is no point using shading normal (2023.6.25)
 """
 
 import sys
@@ -211,10 +212,10 @@ class TaichiSource:
         return ret_int
 
     @ti.func
-    def solid_angle_pdf(self, incid_dir: vec3, normal: vec3, depth: float):
+    def solid_angle_pdf(self, it: ti.template(), incid_dir: vec3):
         """ Area PDF converting to solid angle PDF (for hitting a area light) """
-        dot_res = ti.abs(tm.dot(incid_dir, normal))
-        return ti.select(dot_res > 0.0, self.area_pdf() * ti.pow(depth, 2) / dot_res, 0.0)
+        dot_res = ti.abs(tm.dot(incid_dir, it.n_s))
+        return ti.select(dot_res > 0.0, self.area_pdf() * ti.pow(it.min_depth, 2) / dot_res, 0.0)
 
     @ti.func
     def area_pdf(self):

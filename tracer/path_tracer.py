@@ -30,6 +30,7 @@ from renderer.constants import TRANSPORT_UNI, INV_2PI, INV_PI, INVALID
 
 from sampler.general_sampling import *
 from utils.tools import TicToc
+from tracer.interaction import Interaction
 from tracer.ti_bvh import LinearBVH, LinearNode, export_python_bvh
 
 from rich.console import Console
@@ -50,18 +51,20 @@ class PathTracer(TracerBase):
         Simple Ray tracing using Bary-centric coordinates
         This tracer can yield result with global illumination effect
     """
-    def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
+    def __init__(self, 
+        emitters: List[LightSource], array_info: dict, 
+        objects: List[ObjDescriptor], prop: dict, bvh_delay: bool = False
+    ):
+        """ bvh_delay: since in taichi, field can not be constructed after a kernel is called
+            therefore, during BDPT we might need to execute bvh_process manually 
+        """
         super().__init__(objects, prop)
-        """
-            Implement path tracing algorithms first, then we can improve light source / BSDF / participating media
-        """
         self.clock = TicToc()
         self.anti_alias         = prop['anti_alias']
         self.stratified_sample  = prop['stratified_sampling']   # whether to use stratified sampling
         self.use_mis            = prop['use_mis']               # whether to use multiple importance sampling
         self.num_shadow_ray     = prop['num_shadow_ray']        # number of shadow samples to trace
-        # two sides BRDF (for some complex scene of which the normals might be incorrectly pointed)
-        self.brdf_two_sides     = prop.get('brdf_two_sides', False) 
+        
         if self.num_shadow_ray > 0:
             self.inv_num_shadow_ray = 1. / float(self.num_shadow_ray)
         else:
@@ -76,25 +79,48 @@ class PathTracer(TracerBase):
         self.src_field  = TaichiSource.field()
         self.brdf_field = BRDF.field()
         self.bsdf_field = BSDF.field()
-        self.textures   = Texture.field()
+
+        # These four texture mappings might be accessed with the same pattern
+        self.albedo_map    = Texture.field()
+        self.normal_map    = Texture.field()
+        self.bump_map      = Texture.field()
+
+        # FIXME: I might need to dive deeper, this might not be appropriate
+        # maybe we should opt for environment map (env lighting)
+        self.roughness_map = Texture.field()                                # TODO: this is useless for now
+
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
-        self.brdf_nodes = ti.root.bitmasked(ti.i, self.num_objects)
-        self.brdf_nodes.place(self.brdf_field)                              # BRDF Taichi storage
+        self.obj_nodes = ti.root.bitmasked(ti.i, self.num_objects)
+        self.obj_nodes.place(self.brdf_field)                              # BRDF Taichi storage
         ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
-        ti.root.bitmasked(ti.i, self.num_objects).place(self.textures)
+        ti.root.dense(ti.i, self.num_objects).place(self.albedo_map, self.normal_map, self.bump_map, self.roughness_map)
 
-        if prop["packed_texture"] is None:
-            self.texture_img = ti.Vector.field(3, float, (1, 1))
+        if prop["packed_textures"] is None:
+            self.albedo_img    = ti.Vector.field(3, float, (1, 1))
+            self.normal_img    = ti.Vector.field(3, float, (1, 1))
+            self.bump_img      = ti.Vector.field(3, float, (1, 1))
+            self.roughness_img = ti.Vector.field(3, float, (1, 1))
+            self.has_albedo_map    = False
+            self.has_normal_map    = False
+            self.has_bump_map      = False
+            self.has_roughness_map = False
         else:
-            image = prop["packed_texture"]
-            tex_h, tex_w, _  = image.shape
-            self.texture_img = ti.Vector.field(3, float, (tex_w, tex_h))
-            self.texture_img.from_numpy(image)
-            CONSOLE.log(f"Packed texture images loaded: ({tex_w}, {tex_h})")
-
-        CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
+            images = prop["packed_textures"]     # dict ('albedo': Optional(), 'normal': ...)
+            for key, image in images.items():
+                if image is None:               # no image means we don't have this kind of mapping
+                    self.__setattr__(f"{key}_img", ti.Vector.field(3, float, (1, 1)))
+                    self.__setattr__(f"has_{key}_map", False)
+                    continue
+                tex_h, tex_w, _  = image.shape
+                self.__setattr__(f"has_{key}_map", True)
+                self.__setattr__(f"{key}_img", ti.Vector.field(3, float, (tex_w, tex_h)))
+                self.__getattribute__(f"{key}_img").from_numpy(image)
+                CONSOLE.log(f"Packed texture image tagged '{key}' loaded: ({tex_w}, {tex_h})")
+        
+        CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic():.4f} s")
+        self.load_primitives(**array_info)
         self.initialze(emitters, objects)
-        CONSOLE.log(f"Path tracer initialization in {self.clock.toc(True):.3f} ms")
+        CONSOLE.log(f"Path tracer initialization in {self.clock.toc():.4f} s")
 
         min_val = vec3([1e3, 1e3, 1e3])
         max_val = vec3([-1e3, -1e3, -1e3])
@@ -106,6 +132,10 @@ class PathTracer(TracerBase):
         self.w_aabb_min = ti.min(self.cam_t, min_val) - 0.1         
         self.w_aabb_max = ti.max(self.cam_t, max_val) + 0.1
 
+        if not bvh_delay:
+            self.bvh_process(array_info, objects, prop)
+
+    def bvh_process(self, array_info: dict, objects: List[ObjDescriptor], prop: dict):
         if prop.get('accelerator', 'none') == 'bvh':
             try:
                 from bvh_cpp import bvh_build
@@ -114,22 +144,34 @@ class PathTracer(TracerBase):
                 CONSOLE.log("[yellow]:warning: Warning: Fall back to brute force primitive traversal.")
             else:
                 CONSOLE.log(":rocket: Using SAH-BVH tree accelerator.")
-                primitives, obj_info = self.prepare_for_bvh(objects)
+                obj_info = self.prepare_for_bvh(objects)
+                primitives = array_info["primitives"]
                 self.clock.tic()
-                py_nodes, py_bvhs = bvh_build(primitives, obj_info, self.w_aabb_min.to_numpy(), self.w_aabb_max.to_numpy())
-                CONSOLE.log(f":rocket: BVH construction finished in {self.clock.toc_tic(True):.3f} ms")
+                bvh_minmax, node_minmax, bvh_info, node_info = \
+                        bvh_build(primitives, obj_info, self.w_aabb_min.to_numpy(), self.w_aabb_max.to_numpy())
+                bvh_minmax  = bvh_minmax.reshape(-1, 2, 3)
+                node_minmax = node_minmax.reshape(-1, 2, 3)
+                bvh_info    = bvh_info.reshape(-1, 2)
+                node_info   = node_info.reshape(-1, 3)
+                CONSOLE.log(f":rocket: BVH construction finished in {self.clock.toc_tic():.4f} s")
 
-                self.node_num = len(py_nodes)
-                self.bvh_num = len(py_bvhs)
+                self.node_num = node_info.shape[0]
+                self.bvh_num  = bvh_info.shape[0]
 
+                self.clock.tic()
                 self.lin_nodes = LinearNode.field()
                 self.lin_bvhs  = LinearBVH.field()
                 ti.root.dense(ti.i, self.node_num).place(self.lin_nodes)
                 ti.root.dense(ti.i, self.bvh_num).place(self.lin_bvhs)
-                export_python_bvh(self.lin_nodes, self.lin_bvhs, py_nodes, py_bvhs)
+                self.convert_bvh_info(bvh_minmax, bvh_info, node_minmax, node_info)
+                CONSOLE.log(f":rocket: BVH exported in {self.clock.toc_tic():.4f} s")
+
+                # export_python_bvh(self.lin_nodes, self.lin_bvhs, py_nodes, py_bvhs)
                 CONSOLE.log(f"{self.node_num } nodes and {self.bvh_num} bvh primitives are loaded.")
                 self.__setattr__("ray_intersect", self.ray_intersect_bvh)
                 self.__setattr__("does_intersect", self.does_intersect_bvh)
+        else:
+            CONSOLE.log(f":tractor: No accelerator used. Use a BVH accelerator if num prims {self.num_prims} exceeds 128.")
 
     def get_check_point(self):
         """This is a simple checkpoint saver, which can be hacked.
@@ -164,47 +206,45 @@ class PathTracer(TracerBase):
         self.cnt[None] = check_point["counter"]
 
     def prepare_for_bvh(self, objects: List[ObjDescriptor]):
-        primitives = []
         obj_info = np.zeros((2, len(objects)), dtype = np.int32)        
-        for i, obj in tqdm.tqdm(enumerate(objects)):
+        for i, obj in enumerate(objects):
             # for sphere, it would be (1, 2, 3), for others it would be (n, 3, 3)
             num_primitive = obj.meshes.shape[0]
             obj_info[0, i] = num_primitive
             obj_info[1, i] = obj.type
-            for primitive in obj.meshes:
-                if primitive.shape[0] < 3:
-                    primitive = np.vstack((primitive, np.zeros((1, 3), dtype=np.float32)))
-                primitives.append(primitive)
-        primitives = np.stack(primitives, axis = 0).astype(np.float32)
-        return primitives, obj_info
+        return obj_info
+    
+    @ti.kernel
+    def convert_bvh_info(self, 
+        bvh_minmax: ti.types.ndarray(), bvh_info: ti.types.ndarray(), 
+        node_minmax: ti.types.ndarray(), node_info: ti.types.ndarray()
+    ):
+        """ Faster API for BVH python-to-taichi conversion 
+            TODO: Here we actually should modify the output pattern of the bvh pybind module
+            To directly export the information of different field and store them in a numpy array
+            then we can use a kernel function to load the information to taichi end
+        """
+        for i in self.lin_bvhs:
+            self.lin_bvhs[i] = LinearBVH(
+                mini = vec3([bvh_minmax[i, 0, 0], bvh_minmax[i, 0, 1], bvh_minmax[i, 0, 2]]), 
+                maxi = vec3([bvh_minmax[i, 1, 0], bvh_minmax[i, 1, 1], bvh_minmax[i, 1, 2]]),
+                obj_idx = bvh_info[i, 0], prim_idx = bvh_info[i, 1],
+            )
+        for i in self.lin_nodes:
+            self.lin_nodes[i] = LinearNode(
+                mini = vec3([node_minmax[i, 0, 0], node_minmax[i, 0, 1], node_minmax[i, 0, 2]]), 
+                maxi = vec3([node_minmax[i, 1, 0], node_minmax[i, 1, 1], node_minmax[i, 1, 2]]),
+                base = node_info[i, 0], prim_cnt = node_info[i, 1], all_offset = node_info[i, 2]
+            )
 
     def initialze(self, emitters: List[LightSource], objects: List[ObjDescriptor]):
-        self.uv_coords.fill(0)
+        # FIXME: Path tracer initialization is too slow
         for i, emitter in enumerate(emitters):
             self.src_field[i] = emitter.export()
             self.src_field[i].obj_ref_id = -1
 
         acc_prim_num = 0
         for i, obj in enumerate(objects):
-            for j, (mesh, normal) in tqdm.tqdm(enumerate(zip(obj.meshes, obj.normals))):
-                cur_id = acc_prim_num + j
-                self.prims[cur_id, 0] = vec3(mesh[0])
-                self.prims[cur_id, 1] = vec3(mesh[1])
-                if mesh.shape[0] > 2:       # not a sphere
-                    self.prims[cur_id, 2] = vec3(mesh[2])
-                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 1] - self.prims[cur_id, 0]                    
-                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 2] - self.prims[cur_id, 0] 
-                    self.precom_vec[cur_id, 2] = self.prims[cur_id, 0]
-                else:
-                    self.precom_vec[cur_id, 0] = self.prims[cur_id, 0]
-                    self.precom_vec[cur_id, 1] = self.prims[cur_id, 1]           
-                self.normals[cur_id] = vec3(normal) 
-            if obj.uv_coords is not None:
-                for j, uv_coord in tqdm.tqdm(enumerate(obj.uv_coords)):
-                    cur_id = acc_prim_num + j
-                    self.uv_coords[cur_id, 0] = vec2(uv_coord[0])
-                    self.uv_coords[cur_id, 1] = vec2(uv_coord[1])
-                    self.uv_coords[cur_id, 2] = vec2(uv_coord[2])
             self.obj_info[i, 0] = acc_prim_num
             self.obj_info[i, 1] = obj.tri_num
             self.obj_info[i, 2] = obj.type
@@ -214,10 +254,13 @@ class PathTracer(TracerBase):
                 self.bsdf_field[i]  = obj.bsdf.export()
             else:
                 self.brdf_field[i]  = obj.bsdf.export()
-            if obj.texture is None:
-                self.textures[i] = Texture_np.default()
-            else:
-                self.textures[i] = obj.texture.export()
+            
+            for key, value in obj.texture_group.items():        # exporting texture group
+                if value is not None:
+                    self.__getattribute__(f"{key}_map")[i] = value.export()
+                else:
+                    self.__getattribute__(f"{key}_map")[i] = Texture_np.default()
+                    
             self.aabbs[i, 0]    = vec3(obj.aabb[0])        # unrolled
             self.aabbs[i, 1]    = vec3(obj.aabb[1])
             emitter_ref_id      = obj.emitter_ref_id
@@ -226,17 +269,37 @@ class PathTracer(TracerBase):
                 self.src_field[emitter_ref_id].obj_ref_id = i
 
     @ti.func
-    def get_uv_color(self, obj_id: int, prim_id: int, u: float, v: float):
+    def get_uv_item(self, textures: ti.template(), tex_img: ti.template(), it: ti.template()):
         """ Convert primitive local UV to the global UV coord for an object """
-        color = INVALID
-        has_texture = self.textures[obj_id].type > -255
-        if has_texture:
-            is_sphere = self.obj_info[obj_id, 2]
+        tex_value = INVALID
+        valid = False
+        if it.obj_id >= 0 and textures[it.obj_id].type > -255:
+            u, v = it.uv                # local u and local v
+            is_sphere = self.obj_info[it.obj_id, 2]
             if is_sphere == 0:          # not a sphere
-                u, v = self.uv_coords[prim_id, 1] * u + self.uv_coords[prim_id, 2] * v + \
-                    self.uv_coords[prim_id, 0] * (1. - u - v)
-            color = self.textures[obj_id].query(self.texture_img, u, v)
-        return color
+                u, v = self.uv_coords[it.prim_id, 1] * u + self.uv_coords[it.prim_id, 2] * v + \
+                    self.uv_coords[it.prim_id, 0] * (1. - u - v)        # convert from local to global
+            tex_value = textures[it.obj_id].query(tex_img, u, v)
+            valid = True
+        return tex_value, valid
+
+    @ti.func
+    def process_ns(self, it: ti.template()):
+        """ Process shading normal for interaction 
+            For example, we may have bump map / normal map
+            We should convert the normal from local frame to global frame
+            normal map: replace the original shading normal with normal map normal
+            bump map: apply a rotational offset to the current shading normal
+        """
+        if ti.static(self.has_normal_map):
+            normal, n_valid = self.get_uv_item(self.normal_map, self.normal_img, it)
+            if n_valid:
+                R = rotation_between(vec3([0, 1, 0]), it.n_g)
+                it.n_s = R @ normal
+        if ti.static(self.has_bump_map):
+            delta_n, d_valid = self.get_uv_item(self.bump_map, self.bump_img, it)
+            if d_valid:
+                it.n_s, _ = delocalize_rotate(it.n_s, delta_n)
 
     @ti.func
     def bvh_intersect(self, bvh_id, ray, start_p):
@@ -259,20 +322,16 @@ class PathTracer(TracerBase):
                 ray_t += ti.select(center_norm2 > radius2 + 1e-4, -ray_cut, ray_cut)
         else:
             p1 = self.prims[prim_idx, 0]
-            vec1 = self.precom_vec[prim_idx, 0]
-            vec2 = self.precom_vec[prim_idx, 1]
-            mat = ti.Matrix.cols([vec1, vec2, -ray]).inverse()
+            v1 = self.precom_vec[prim_idx, 0]
+            v2 = self.precom_vec[prim_idx, 1]
+            mat = ti.Matrix.cols([v1, v2, -ray]).inverse()
             u, v, t = mat @ (start_p - p1)
             # u, v as barycentric coordinates should be returned
-            if u >= 0 and v >= 0 and u + v <= 1.0:
-                ray_t = t
+            ray_t = ti.select(u >= 0 and v >= 0 and u + v <= 1.0, t, ray_t)
         return ray_t, obj_idx, prim_idx, is_sphere, u, v
     
     @ti.func
     def ray_intersect_bvh(self, ray: vec3, start_p, min_depth = -1.0):
-        # FIXME: major revision should be made. In order to properly use texture
-        # We need to return the intersection barycentric coordinates / sphere coordinates
-        # This is going to be a laborious job
         """ Ray intersection with BVH, to prune unnecessary computation """
         obj_id  = -1
         prim_id = -1
@@ -305,17 +364,29 @@ class PathTracer(TracerBase):
                         coord_u     = u
                         coord_v     = v
             node_idx += 1
-        normal = vec3([1, 0, 0])
+        n_g = vec3([1, 0, 0])
+        n_s = vec3([1, 0, 0])
         if obj_id >= 0:
             if sphere_flag:
                 center = self.prims[prim_id, 0]
-                normal = (start_p + min_depth * ray - center).normalized() 
-                coord_u = (tm.atan2(normal[1], normal[0]) + tm.pi) * INV_2PI
-                coord_v = tm.acos(normal[2]) * INV_PI
+                n_g = (start_p + min_depth * ray - center).normalized() 
+                coord_u = (tm.atan2(n_g[1], n_g[0]) + tm.pi) * INV_2PI
+                coord_v = tm.acos(n_g[2]) * INV_PI
+                n_s = n_g
             else:
-                normal = self.normals[prim_id]
+                n_g = self.normals[prim_id]
+                # calculate vertex normal (for shading) if vertex normal exists
+                if ti.static(self.has_v_normal):
+                    n_s = self.v_normals[prim_id, 0] * (1. - coord_u - coord_v) + \
+                        coord_u * self.v_normals[prim_id, 1] + \
+                        coord_v * self.v_normals[prim_id, 2]
+                else: 
+                    n_s = n_g
         # The returned coord_u and coord_v is not the actual uv coords (but for one specific primitive)
-        return (obj_id, normal, min_depth, prim_id, coord_u, coord_v)
+        return Interaction(
+            obj_id = obj_id, prim_id = prim_id, n_g = n_g, n_s = n_s,
+            uv = vec2(coord_u, coord_v), min_depth = min_depth
+        )
     
     @ti.func
     def does_intersect_bvh(self, ray, start_p, min_depth = -1.0):
@@ -345,11 +416,10 @@ class PathTracer(TracerBase):
             node_idx += 1
         return hit_flag
 
-    # TODO: some profiling is needed, passing by reference or by value, which one is faster?
     @ti.func
     def sample_new_ray(self, 
-        idx: int, incid: vec3, normal: vec3, is_mi: int, 
-        in_free_space: int, mode: int = TRANSPORT_UNI, tex: vec3 = INVALID
+        it: ti.template(), incid: vec3, is_mi: int, 
+        in_free_space: int, mode: int = TRANSPORT_UNI
     ):
         """ Mode is for cosine term calculation: \\
             For camera path, cosine term is computed against (ray_out and normal), \\
@@ -364,67 +434,51 @@ class PathTracer(TracerBase):
             if in_free_space:       # sample world medium
                 ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
             else:                   # sample object medium
-                ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].medium.sample_new_rays(incid)
+                ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].medium.sample_new_rays(incid)
         else:                       # surface sampling
-            if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                if ti.static(self.brdf_two_sides):
-                    dot_res = tm.dot(incid, normal)
-                    if dot_res > 0.:                    # two sides
-                        normal *= -1
-                ret_dir, ret_spec, ret_pdf = self.brdf_field[idx].sample_new_rays(incid, normal, tex)
+            if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
+                ret_dir, ret_spec, ret_pdf = self.brdf_field[it.obj_id].sample_new_rays(it, incid)
             else:                                       # directly sample surface
-                ret_dir, ret_spec, ret_pdf = self.bsdf_field[idx].sample_surf_rays(incid, normal, self.world.medium, mode)
+                ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].sample_surf_rays(it, incid, self.world.medium, mode)
         return ret_dir, ret_spec, ret_pdf
 
     @ti.func
-    def eval(self, idx: int, incid: vec3, out: vec3, normal: vec3, 
-        is_mi: int, in_free_space: int, mode: int = TRANSPORT_UNI, tex: vec3 = INVALID) -> vec3:
+    def eval(self, it: ti.template(), incid: vec3, out: vec3, is_mi: int, 
+             in_free_space: int, mode: int = TRANSPORT_UNI) -> vec3:
         ret_spec = vec3([1, 1, 1])
         if is_mi:
             # FIXME: eval_phase and phase function currently return a float
             if in_free_space:       # evaluate world medium
                 ret_spec.fill(self.world.medium.eval(incid, out))
             else:                   # is_mi implys is_scattering = True
-                ret_spec.fill(self.bsdf_field[idx].medium.eval(incid, out))
+                ret_spec.fill(self.bsdf_field[it.obj_id].medium.eval(incid, out))
         else:                       # surface interaction
-            if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-                if ti.static(self.brdf_two_sides):
-                    dot_res = tm.dot(incid, normal)
-                    if dot_res > 0.:                    # two sides
-                        normal *= -1
-                ret_spec = self.brdf_field[idx].eval(incid, out, normal, tex)
+            if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
+                ret_spec = self.brdf_field[it.obj_id].eval(it, incid, out)
             else:                                       # directly evaluate surface
-                ret_spec = self.bsdf_field[idx].eval_surf(incid, out, normal, self.world.medium, mode, tex)
+                ret_spec = self.bsdf_field[it.obj_id].eval_surf(it, incid, out, self.world.medium, mode)
         return ret_spec
     
     @ti.func
-    def surface_pdf(self, idx: int, outdir: vec3, normal: vec3, incid: vec3, tex: vec3 = INVALID):
+    def surface_pdf(self, it: ti.template(), outdir: vec3, incid: vec3):
         """ Outdir: actual incident ray direction, incid: ray (from camera) """
         pdf = 0.
-        if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
-            if ti.static(self.brdf_two_sides):
-                dot_res = tm.dot(incid, normal)
-                if dot_res > 0.:                    # two sides
-                    normal *= -1
-            pdf = self.brdf_field[idx].get_pdf(outdir, normal, incid, tex)
+        if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
+            pdf = self.brdf_field[it.obj_id].get_pdf(it, outdir, incid)
         else:
-            pdf = self.bsdf_field[idx].get_pdf(outdir, normal, incid, self.world.medium)
+            pdf = self.bsdf_field[it.obj_id].get_pdf(it, outdir, incid, self.world.medium)
         return pdf
     
     @ti.func
-    def get_pdf(self, idx: int, incid: vec3, out: vec3, normal: vec3, is_mi: int, in_free_space: int, tex: vec3 = INVALID):
+    def get_pdf(self, it: ti.template(), incid: vec3, out: vec3, is_mi: int, in_free_space: int):
         pdf = 0.
         if is_mi:   # evaluate phase function
             if in_free_space:
                 pdf = self.world.medium.eval(incid, out)
             else:
-                pdf = self.bsdf_field[idx].medium.eval(incid, out)
+                pdf = self.bsdf_field[it.obj_id].medium.eval(incid, out)
         else:
-            if ti.static(self.brdf_two_sides):
-                dot_res = tm.dot(incid, normal)
-                if dot_res > 0.:                    # two sides
-                    normal *= -1
-            pdf = self.surface_pdf(idx, out, normal, incid, tex)
+            pdf = self.surface_pdf(it, out, incid)
         return pdf
     
     @ti.func
@@ -441,7 +495,7 @@ class PathTracer(TracerBase):
         # REAL FUNC
         is_delta = False
         if idx >= 0:
-            if ti.is_active(self.brdf_nodes, idx):      # active means the object is attached to BRDF
+            if ti.is_active(self.obj_nodes, idx):      # active means the object is attached to BRDF
                 is_delta = self.brdf_field[idx].is_delta
             else:
                 is_delta = self.bsdf_field[idx].is_delta
@@ -452,7 +506,7 @@ class PathTracer(TracerBase):
         # FIXME: if sigma_t is too small, set the scattering medium to det-refract
         # REAL FUNC
         is_scattering = False
-        if idx >= 0 and not ti.is_active(self.brdf_nodes, idx):
+        if idx >= 0 and not ti.is_active(self.obj_nodes, idx):
             is_scattering = self.bsdf_field[idx].medium.is_scattering()
         return is_scattering
 
@@ -487,5 +541,5 @@ if __name__ == "__main__":
     options = get_options()
     ti.init(arch = ti.vulkan, kernel_profiler = options.profile, default_ip = ti.int32, default_fp = ti.f32)
     input_folder = os.path.join(options.input_path, options.scene)
-    emitter_configs, meshes, configs = scene_parsing(input_folder, options.name)  # complex_cornell
-    pt = PathTracer(emitter_configs, meshes, configs)
+    emitter_configs, array_info, all_objs, configs = scene_parsing(input_folder, options.name)  # complex_cornell
+    pt = PathTracer(emitter_configs, all_objs, configs)

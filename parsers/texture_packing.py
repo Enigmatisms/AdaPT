@@ -24,12 +24,13 @@ from bxdf.texture import Texture_np
 
 from matplotlib.patches import Rectangle
 
-SIZE2USE = [4096, 3072, 2048, 1024]
+SIZE2USE = [3072, 2048, 1024, 720]
 
 __all__ = ("image_packer")
 
 @timing()
 def image_packer(textures: List[Texture_np]) -> Tuple[np.ndarray, List[Texture_np]]:
+    # TODO: Check this logic? this seems strange
     starting_point = 3
     total_size = 0
     rects = []
@@ -40,9 +41,9 @@ def image_packer(textures: List[Texture_np]) -> Tuple[np.ndarray, List[Texture_n
         if max_size > 1024:
             starting_point = 0
         elif max_size > 720:
-            starting_point = 1
+            starting_point = min(starting_point, 1)
         elif max_size > 400:
-            starting_point = 2
+            starting_point = min(starting_point, 2)
         total_size += h * w
         rects.append((w, h, idx))               # but rect_id does
     total_size = np.sqrt(total_size) * 1.1      # 1.1 is for redundancy

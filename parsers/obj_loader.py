@@ -3,7 +3,7 @@
     @author Qianyue He
     @date 2023.1.19
 """
-__all__ = ['extract_obj_info', 'apply_transform', 'calculate_surface_area']
+__all__ = ['extract_obj_info', 'apply_transform', 'calculate_surface_area', 'TRIANGLE_MESH', 'SPHERE']
 
 import numpy as np
 import pywavefront as pwf
@@ -12,6 +12,9 @@ from numpy import ndarray as Arr
 
 from rich.console import Console
 CONSOLE = Console(width = 128)
+
+TRIANGLE_MESH = 0
+SPHERE = 1
 
 # supported_rot_type = ("euler", "quaternion", "angle-axis")
 
@@ -41,9 +44,9 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = False):
         start_dim = 0
         dim_num = sum([int(part[1:]) for part in all_parts])
         all_data = np.float32(material.vertices).reshape(-1, dim_num)
-        mesh_faces = None
-        uv_coords = None
-        normals = None
+        mesh_faces  = None
+        vert_normal = None      # note that vert_normal is of the same shape with mesh_faces (N, 3, 3)
+        uv_coords   = None
         for part in all_parts:
             if part.startswith("T"):
                 uv_coords = all_data[:, start_dim:start_dim+2]
@@ -54,6 +57,8 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = False):
                 uv_coords = uv_coords.reshape(-1, 3, 2)
             elif part.startswith("V"):
                 mesh_faces = np.float32(all_data[:, start_dim:start_dim+3]).reshape(-1, 3, 3)
+            elif part.startswith("N"):
+                vert_normal = np.float32(all_data[:, start_dim:start_dim+3]).reshape(-1, 3, 3)
             start_dim += int(part[1:])
 
         assert mesh_faces is not None     # we directly use the vertices loaded, so this can not be empty
@@ -62,26 +67,26 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = False):
         # so uv-coordinates are ordered too
         # vertices shape: (N_faces, 3, 3), uv_coords shape: (N_faces, 3, 2)
 
-        if normals is None:                 # normal is not computed in obj
-            dp1 = mesh_faces[:, 1, :] - mesh_faces[:, 0, :]
-            dp2 = mesh_faces[:, 2, :] - mesh_faces[:, 1, :]
-            normals = np.cross(dp1, dp2)
-            normals /= np.linalg.norm(normals, axis = -1, keepdims = True)
+        # calculate geometrical normal
+        dp1 = mesh_faces[:, 1, :] - mesh_faces[:, 0, :]
+        dp2 = mesh_faces[:, 2, :] - mesh_faces[:, 1, :]
+        normals = np.cross(dp1, dp2)
+        normals /= np.linalg.norm(normals, axis = -1, keepdims = True)
         
         if verbose:
             CONSOLE.log(f"Mesh loaded from '{path}', output shape: [blue]{mesh_faces.shape}[/blue]")
-        return mesh_faces, normals, uv_coords
+        return mesh_faces, normals, vert_normal, uv_coords
     else:
         raise ValueError("This wavefront onject file has no material but it is required.")
 
 def calculate_surface_area(meshes: Arr, _type = 0):
     area_sum = 0.
-    if _type == 0:
+    if _type == TRIANGLE_MESH:
         for face in meshes:
             dv1 = face[1] - face[0]
             dv2 = face[2] - face[0]
             area_sum += np.linalg.norm(np.cross(dv1, dv2)) / 2.
-    elif _type == 1:
+    elif _type == SPHERE:
         radius = meshes[0, 1, 0]
         # ellipsoid surface area approximation
         area_sum = 4. * np.pi * radius ** 2

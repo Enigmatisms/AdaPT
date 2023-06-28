@@ -9,6 +9,7 @@ from taichi.math import vec3
 from typing import List
 from la.cam_transform import *
 from tracer.path_tracer import PathTracer
+from tracer.interaction import Interaction
 from emitters.abtract_source import LightSource
 
 from parsers.obj_desc import ObjDescriptor
@@ -22,24 +23,30 @@ class Renderer(PathTracer):
     """
         Renderer Final Class
     """
-    def __init__(self, emitters: List[LightSource], objects: List[ObjDescriptor], prop: dict):
-        super().__init__(emitters, objects, prop)
+    def __init__(self, 
+        emitters: List[LightSource], array_info: dict, 
+        objects: List[ObjDescriptor], prop: dict
+    ):
+        super().__init__(emitters, array_info, objects, prop)
         
     @ti.kernel
     def render(self, _t_start: int, _t_end: int, _s_start: int, _s_end: int, _a: int, _b: int):
         self.cnt[None] += 1
+        ti.loop_config(parallelize = 8, block_dim = 512)
         for i, j in self.pixels:
             in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
             if not self.do_crop or in_crop_range:
                 ray_d = self.pix2ray(i, j)
                 ray_o = self.cam_t
-                obj_id, normal, min_depth, prim_id, u_coord, v_coord = self.ray_intersect(ray_d, ray_o)
-                hit_light       = self.emitter_id[ti.max(obj_id, 0)]   # id for hit emitter, if nothing is hit, this value will be -1
+                it = self.ray_intersect(ray_d, ray_o)
+                self.process_ns(it)                                       # (possibly) get normal map / bump map
+
+                hit_light       = self.emitter_id[ti.max(it.obj_id, 0)]   # id for hit emitter, if nothing is hit, this value will be -1
                 color           = vec3([0, 0, 0])
                 contribution    = vec3([1, 1, 1])
                 emission_weight = 1.0
                 for _i in range(self.max_bounce):
-                    if obj_id < 0: break                    # nothing is hit, break
+                    if it.is_ray_not_hit(): break                    # nothing is hit, break
                     if ti.static(self.use_rr):
                         # Simple Russian Roullete ray termination
                         max_value = contribution.max()
@@ -47,7 +54,7 @@ class Renderer(PathTracer):
                         else: contribution *= 1. / (max_value + 1e-7)    # unbiased calculation
                     else:
                         if contribution.max() < 1e-4: break     # contribution too small, break
-                    hit_point   = ray_d * min_depth + ray_o
+                    hit_point   = ray_d * it.min_depth + ray_o
 
                     direct_pdf  = 1.0
                     emitter_pdf = 1.0
@@ -55,7 +62,7 @@ class Renderer(PathTracer):
                     shadow_int  = vec3([0, 0, 0])
                     direct_int  = vec3([0, 0, 0])
                     direct_spec = vec3([1, 1, 1])
-                    tex = self.get_uv_color(obj_id, prim_id, u_coord, v_coord)
+                    it.tex, _vl = self.get_uv_item(self.albedo_map, self.albedo_img, it)
                     for _j in range(self.num_shadow_ray):    # more shadow ray samples
                         emitter, emitter_pdf, emitter_valid, _ei = self.sample_light(hit_light)
                         light_dir = vec3([0, 0, 0])
@@ -67,11 +74,12 @@ class Renderer(PathTracer):
                             emitter_d   = to_emitter.norm()
                             light_dir   = to_emitter / emitter_d
                             # Note that, null surface in vanilla renderer will produce erroneous results
+                            # FIXME: Qianyue He's note on 2023.6.25: why erroneous results?
                             # TODO: for collimated light, this is more complicated --- intersection test and the direction of ray should be modified
                             if self.does_intersect(light_dir, hit_point, emitter_d):        # shadow ray 
                                 shadow_int.fill(0.0)
                             else:
-                                direct_spec = self.eval(obj_id, ray_d, light_dir, normal, False, False, tex = tex)
+                                direct_spec = self.eval(it, ray_d, light_dir, False, False)
                         else:       # the only situation for being invalid, is when there is only one source and the ray hit the source
                             break_flag = True
                             break
@@ -79,7 +87,7 @@ class Renderer(PathTracer):
                         if ti.static(self.use_mis):
                             mis_w = 1.0
                             if not emitter.is_delta_pos():
-                                bsdf_pdf = self.surface_pdf(obj_id, light_dir, normal, ray_d, tex = tex)
+                                bsdf_pdf = self.surface_pdf(it, light_dir, ray_d)
                                 mis_w    = balance_heuristic(light_pdf, bsdf_pdf)
                             direct_int  += direct_spec * shadow_int * mis_w / emitter_pdf
                         else:
@@ -89,22 +97,22 @@ class Renderer(PathTracer):
                     # emission: ray hitting an area light source
                     emit_int    = vec3([0, 0, 0])
                     if hit_light >= 0:
-                        emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, normal)
+                        emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, it.n_s)
 
                     # indirect component requires sampling 
-                    ray_d, indirect_spec, ray_pdf = self.sample_new_ray(obj_id, ray_d, normal, False, False, tex = tex)
+                    ray_d, indirect_spec, ray_pdf = self.sample_new_ray(it, ray_d, False, False)
                     ray_o = hit_point
                     color += (direct_int + emit_int * emission_weight) * contribution
                     # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)
                     contribution *= indirect_spec / ray_pdf
-                    obj_id, normal, min_depth, prim_id, u_coord, v_coord = self.ray_intersect(ray_d, ray_o)
+                    it = self.ray_intersect(ray_d, ray_o)
 
-                    if obj_id >= 0:
-                        hit_light = self.emitter_id[obj_id]
+                    if it.obj_id >= 0:
+                        hit_light = self.emitter_id[it.obj_id]
                         if ti.static(self.use_mis):
                             emitter_pdf = 0.0
-                            if hit_light >= 0 and self.is_delta(obj_id) == 0:
-                                emitter_pdf = self.src_field[hit_light].solid_angle_pdf(ray_d, normal, min_depth)
+                            if hit_light >= 0 and self.is_delta(it.obj_id) == 0:
+                                emitter_pdf = self.src_field[hit_light].solid_angle_pdf(it, ray_d)
                             emission_weight = balance_heuristic(ray_pdf, emitter_pdf)
 
                 self.color[i, j] += ti.select(ti.math.isnan(color), 0., color)

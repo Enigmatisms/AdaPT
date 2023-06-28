@@ -7,6 +7,7 @@
 """
 import os
 import sys
+import numpy as np
 sys.path.append("..")
 
 import xml.etree.ElementTree as xet
@@ -46,6 +47,12 @@ __SOURCE_MAP__ = {"point": PointSource, "area": AreaSource, "spot": SpotSource, 
     level 1    AABB1 (tri1 tri2 tri3)     AABB2 (tri4 tri5 tri6)     AABB3 (tri4 tri5 tri6)
 """
 
+def none_checker(value, prim_num, last_dim = 3):
+    """ Check whether the value is None. If True, replace the value with a zero array """
+    if value is None:
+        return np.zeros((prim_num, 3, last_dim), dtype = np.float32)
+    return value
+
 def update_emitter_config(emitter_config: List, area_lut: dict):
     for i, emitter in enumerate(emitter_config):
         if i in area_lut:
@@ -82,30 +89,42 @@ def parse_emitters(em_elem: list):
 def parse_wavefront(
     directory: str, obj_list: List[xet.Element], 
     bsdf_dict: dict, emitter_dict: dict, texture_dict: List[Texture_np]) -> List[Arr]:
-    """
-        Parsing wavefront obj file (filename) from list of xml nodes    
-    """
-    all_objs = []
+    """ Parsing wavefront obj file (filename) from list of xml nodes """
+    all_objs  = []
+    all_prims = []
+    all_uvs   = []
+    all_normals = []
+    all_v_norms = []
+    indices = []            # indicating whether the current primitive is sphere or not 
     # Some emitters will be attached to objects, to sample the object-attached emitters
     # We need to calculate surface area of the object mesh first (asuming each triangle has similar area)
     attached_area_dict = {}
+    has_vertex_normal = False
+    cum_prim_num = 0
     for elem in obj_list:
-        uvs, trans_r, trans_t = None, None, None                           # uv_coordinates and transform
-        obj_type = 0
+        # vns: vertex normals / uvs: uv coordinates
+        vns, uvs, trans_r, trans_t = None, None, None, None                           # uv_coordinates and transform
+        obj_type = TRIANGLE_MESH
         if elem.get("type") == "obj":
             filepath_child       = elem.find("string")
-            meshes, normals, uvs = extract_obj_info(os.path.join(directory, filepath_child.get("value")))
+            # get mesh / geometrical normal / shading normal / uv coords for texture
+            meshes, normals, vns, uvs = extract_obj_info(os.path.join(directory, filepath_child.get("value")))
             transform_child      = elem.find("transform")
             if transform_child is not None:
                 trans_r, trans_t    = transform_parse(transform_child)
                 meshes, normals     = apply_transform(meshes, normals, trans_r, trans_t)
+            if vns is not None:
+                has_vertex_normal = True
         else:                   # CURRENTLY, only sphere is supported
             meshes, normals = parse_sphere_element(elem)
-            obj_type = 1
-        ref_childs   = elem.findall("ref")        
-        bsdf_item    = None
-        texture      = None
-        emit_ref_id  = -1
+            obj_type = SPHERE
+        ref_childs    = elem.findall("ref")        
+        bsdf_item     = None
+        texture_group = {"albedo": None, "normal": None, "bump": None, "roughness": None}
+        emit_ref_id   = -1
+
+        # Currently, texture (groups) and object form bi-jection, since this way is simpler to implement
+        # and can avoid id look up (memory ops might be very slow) 
         for ref_child in ref_childs:
             ref_type = ref_child.get("type")
             ref_id = ref_child.get("id")
@@ -115,12 +134,42 @@ def parse_wavefront(
                 emit_ref_id = emitter_dict[ref_id]
                 attached_area_dict[emit_ref_id] = calculate_surface_area(meshes, obj_type)
             elif ref_type == "texture":
-                texture = texture_dict[ref_id]
+                ref_tag = ref_child.get("tag", None)
+                if ref_tag == None:
+                    ref_tag = "albedo"
+                    CONSOLE.log(f"[yellow]Warning: BXDF[/yellow] Texture ref_id {ref_id} has no tag. Set default as 'albedo'.")
+                elif ref_tag not in texture_group:
+                    ref_tag = "albedo"
+                    CONSOLE.log(f"[yellow]Warning: BXDF[/yellow] Texture ref_tag {ref_tag} not supported. Set default as 'albedo'.")
+                # make sure texture group has corresponding tag
+                if texture_dict[ref_tag] is None or ref_id not in texture_dict[ref_tag]:
+                    raise KeyError(f"Texture id '{ref_id}' does not have tag '{ref_tag}' mapping, check if it is from other groups.")
+                texture_group[ref_tag] = texture_dict[ref_tag][ref_id]
             
         if bsdf_item is None:
             raise ValueError("Object should be attached with a BSDF for now since no default one implemented yet.")
-        all_objs.append(ObjDescriptor(meshes, normals, bsdf_item, uvs, texture, trans_r, trans_t, emit_ref_id, obj_type))
-    return all_objs, attached_area_dict
+        prim_num = meshes.shape[0] 
+        if obj_type == SPHERE:      # padding to (1, 3, 3)
+            meshes = np.concatenate((meshes, np.zeros((1, 1, 3), dtype=np.float32)), axis = -2)
+            indices.append(cum_prim_num)
+        all_prims.append(meshes)
+        all_normals.append(normals)
+        all_v_norms.append(none_checker(vns, prim_num))
+        all_uvs.append(none_checker(uvs, prim_num, last_dim = 2))
+        # TODO: once we have tested the from_numpy loading scheme, we can remove meshes from the object
+        all_objs.append(ObjDescriptor(meshes, normals, bsdf_item, vns, uvs, texture_group, trans_r, trans_t, emit_ref_id, obj_type))
+        cum_prim_num += prim_num
+    
+    if indices:
+        indices = np.int64(indices)
+    else:
+        indices = None
+    all_uvs = np.concatenate(all_uvs, axis = 0).astype(np.float32)
+    all_prims = np.concatenate(all_prims, axis = 0).astype(np.float32)
+    all_normals = np.concatenate(all_normals, axis = 0).astype(np.float32)
+    all_v_norms = np.concatenate(all_v_norms, axis = 0).astype(np.float32)
+    array_info = {"primitives": all_prims, "indices": indices, "n_g": all_normals, "n_s": all_v_norms, "uvs": all_uvs}
+    return array_info, all_objs, attached_area_dict, has_vertex_normal
 
 def parse_bxdf(bxdf_list: List[xet.Element]):
     """
@@ -142,15 +191,25 @@ def parse_bxdf(bxdf_list: List[xet.Element]):
 
 def parse_texture(texture_list: List[xet.Element]):
     """ Parsing Textures
-        return List of Texture_np
+        return Dict of Texture_np, containing four different types of mapping
     """
     if len(texture_list) == 0:
         return None, None
-    textures = []
+    textures = {"albedo": [], "normal": [], "bump": [], "roughness": []}
     for texture in texture_list:
-        textures.append(Texture_np(texture))
+        map_type = texture.get("tag", "albedo")
+        textures[map_type].append(Texture_np(texture))
     # Do texture packing
-    return image_packer(textures)
+    packed_textures = {}
+    packed_imgs = {}
+    for key, value in textures.items():
+        if len(value) == 0:
+            tex_img, tex_info = None, None
+        else:
+            tex_img, tex_info = image_packer(value)
+        packed_imgs[key] = tex_img
+        packed_textures[key] = tex_info
+    return packed_imgs, packed_textures
 
 def parse_world(world_elem: xet.Element):
     world = World_np(world_elem)
@@ -200,14 +259,26 @@ def scene_parsing(directory: str, file: str):
     emitter_configs, \
     emitter_dict     = parse_emitters(emitter_nodes)
     bsdf_dict        = parse_bxdf(bxdf_nodes)
-    teximg, textures = parse_texture(texture_nodes)
-    meshes, area_lut = parse_wavefront(directory, shape_nodes, bsdf_dict, emitter_dict, textures)
+    teximgs, textures = parse_texture(texture_nodes)
+    """ Texture mapping should be updateded (FIXME):
+    - [x] <ref type = "texture".../>. Now for each object, there can only be one ref for each type of reference
+        But TODO: texture needs more that one (albedo map, normal map, bump map, roughness map), for other mappings
+        I do not want to implement them. Therefore, 1-to-many mapping should be correctly established
+    - [x] Loading from python to Taichi (for different kinds of mapping)
+        Each mapping might needs a different packing, therefore we need different image packaging and texture info block
+        For normal mapping, non-bidirectional renderers will be simple but not for BDPT
+        roughness is of lower priority
+    - [ ] Speed up python->taichi conversion
+    """
+    array_info, all_objs, area_lut, has_vertex_normal \
+                     = parse_wavefront(directory, shape_nodes, bsdf_dict, emitter_dict, textures)
     configs          = parse_global_sensor(sensor_node)
     configs['world'] = parse_world(world_node)
-    configs['packed_texture'] = teximg
+    configs['packed_textures']   = teximgs
+    configs['has_vertex_normal'] = has_vertex_normal
     emitter_configs  = update_emitter_config(emitter_configs, area_lut)
-    return emitter_configs, meshes, configs
+    return emitter_configs, array_info, all_objs, configs
 
 if __name__ == "__main__":
-    emitter_configs, meshes, configs = scene_parsing("../scenes/", "cbox/complex.xml")
-    print(emitter_configs, meshes, configs)
+    emitter_configs, array_info, all_objs, configs = scene_parsing("../scenes/", "cbox/complex.xml")
+    print(emitter_configs, array_info.shape, all_objs, configs)

@@ -35,6 +35,7 @@ class Texture_np:
     MODE_IMAGE   = 0
     MODE_CHECKER = 1
     def __init__(self, elem: xet.Element, max_size = 2048) -> None:
+        self.tag = elem.get("tag", "albedo")
         self.max_size = max_size
         self.id = elem.get("id")
         self.type = elem.get("type")
@@ -71,6 +72,9 @@ class Texture_np:
                     self.h = min(self.h, max_size)
                     texture_img = cv.resize(texture_img, (self.w, self.h))
                 self.texture_img = texture_img.astype(np.float32) / 255.
+                if self.tag == "bump":
+                    # since normally, the up-axis for bump map texture is z, but for AdaPT, the axis should be y
+                    self.texture_img[..., [1, 2]] = self.texture_img[..., [2, 1]]
         float_nodes = elem.findall("float")
         for float_n in float_nodes:
             name = float_n.get("name")
