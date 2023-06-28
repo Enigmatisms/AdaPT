@@ -151,7 +151,7 @@ def parse_wavefront(
         prim_num = meshes.shape[0] 
         if obj_type == SPHERE:      # padding to (1, 3, 3)
             meshes = np.concatenate((meshes, np.zeros((1, 1, 3), dtype=np.float32)), axis = -2)
-            indices.append(prim_num, np.int32)
+            indices.append(cum_prim_num)
         all_prims.append(meshes)
         all_normals.append(normals)
         all_v_norms.append(none_checker(vns, prim_num))

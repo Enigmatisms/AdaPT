@@ -117,10 +117,10 @@ class PathTracer(TracerBase):
                 self.__getattribute__(f"{key}_img").from_numpy(image)
                 CONSOLE.log(f"Packed texture image tagged '{key}' loaded: ({tex_w}, {tex_h})")
         
-        CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic(True):.3f} ms")
+        CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic():.4f} s")
         self.load_primitives(**array_info)
         self.initialze(emitters, objects)
-        CONSOLE.log(f"Path tracer initialization in {self.clock.toc(True):.3f} ms")
+        CONSOLE.log(f"Path tracer initialization in {self.clock.toc():.4f} s")
 
         min_val = vec3([1e3, 1e3, 1e3])
         max_val = vec3([-1e3, -1e3, -1e3])
@@ -144,11 +144,10 @@ class PathTracer(TracerBase):
                 CONSOLE.log("[yellow]:warning: Warning: Fall back to brute force primitive traversal.")
             else:
                 CONSOLE.log(":rocket: Using SAH-BVH tree accelerator.")
-                old_primitives, obj_info = self.prepare_for_bvh(objects)
+                obj_info = self.prepare_for_bvh(objects)
                 primitives = array_info["primitives"]
                 self.clock.tic()
-                print("BVH build started, old: ", old_primitives.shape, ", new: ", primitives.shape)
-                bvh_minmax, bvh_info, node_minmax, node_info = \
+                bvh_minmax, node_minmax, bvh_info, node_info = \
                         bvh_build(primitives, obj_info, self.w_aabb_min.to_numpy(), self.w_aabb_max.to_numpy())
                 bvh_minmax  = bvh_minmax.reshape(-1, 2, 3)
                 node_minmax = node_minmax.reshape(-1, 2, 3)
@@ -207,19 +206,13 @@ class PathTracer(TracerBase):
         self.cnt[None] = check_point["counter"]
 
     def prepare_for_bvh(self, objects: List[ObjDescriptor]):
-        primitives = []
         obj_info = np.zeros((2, len(objects)), dtype = np.int32)        
-        for i, obj in tqdm.tqdm(enumerate(objects)):
+        for i, obj in enumerate(objects):
             # for sphere, it would be (1, 2, 3), for others it would be (n, 3, 3)
             num_primitive = obj.meshes.shape[0]
             obj_info[0, i] = num_primitive
             obj_info[1, i] = obj.type
-            for primitive in obj.meshes:
-                if primitive.shape[0] < 3:
-                    primitive = np.vstack((primitive, np.zeros((1, 3), dtype=np.float32)))
-                primitives.append(primitive)
-        primitives = np.stack(primitives, axis = 0).astype(np.float32)
-        return primitives, obj_info
+        return obj_info
     
     @ti.kernel
     def convert_bvh_info(self, 
@@ -246,7 +239,6 @@ class PathTracer(TracerBase):
 
     def initialze(self, emitters: List[LightSource], objects: List[ObjDescriptor]):
         # FIXME: Path tracer initialization is too slow
-        self.uv_coords.fill(0)
         for i, emitter in enumerate(emitters):
             self.src_field[i] = emitter.export()
             self.src_field[i].obj_ref_id = -1

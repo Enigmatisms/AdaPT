@@ -37,7 +37,6 @@ def extract_obj_info(path: str, verbose = True, auto_scale_uv = False):
         break
     if material is not None:
         vert_type = material.vertex_format
-        print(vert_type)
         if "T" not in vert_type:
             if verbose:
                 CONSOLE.log(f"[blue]Attention: Object contains no uv-coordinates for vtype '{vert_type}'")

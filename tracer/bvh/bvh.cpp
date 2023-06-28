@@ -220,7 +220,7 @@ std::tuple<py::array_t<float>, py::array_t<float>, py::array_t<int>, py::array_t
     py::array_t<float> nodes_minmax(lin_nodes.size() * 6);
     py::array_t<int> bvh_info(lin_bvhs.size() * 2);
     py::array_t<int> nodes_info(lin_nodes.size() * 3);
-    for (size_t i = 0; i < lin_bvhs.size(); i += 4) {
+    for (size_t i = 0; i < lin_bvhs.size(); i++) {
         const LinearBVH& bvh_ref = lin_bvhs[i];
         float* minmax_ptr = bvh_minmax.mutable_data(6 * i);
         int* info_ptr = bvh_info.mutable_data(2 * i);
@@ -233,7 +233,7 @@ std::tuple<py::array_t<float>, py::array_t<float>, py::array_t<int>, py::array_t
         *info_ptr = bvh_ref.obj_idx;
         *(info_ptr + 1) = bvh_ref.prim_idx;
     }
-    for (size_t i = 0; i < lin_nodes.size(); i += 4) {
+    for (size_t i = 0; i < lin_nodes.size(); i++) {
         const LinearNode& node_ref = lin_nodes[i];
         float* minmax_ptr = nodes_minmax.mutable_data(6 * i);
         int* info_ptr = nodes_info.mutable_data(3 * i);
@@ -269,9 +269,7 @@ void bvh_build_base(
     for (const BVHInfo& bvh: bvh_infos) {
         lin_bvhs.emplace_back(bvh);
     }
-    printf("Here, base completed.\n");
     delete root_node;
-    printf("Here, root deleted.\n");
 }
 
 std::tuple<py::array_t<float>, py::array_t<float>, py::array_t<int>, py::array_t<int>>
@@ -282,7 +280,6 @@ std::tuple<py::array_t<float>, py::array_t<float>, py::array_t<int>, py::array_t
     std::vector<LinearBVH> lin_bvhs; 
     std::vector<LinearNode> lin_nodes;
     bvh_build_base(obj_array, obj_info, world_min, world_max, lin_bvhs, lin_nodes);
-    printf("BVH returned, to numpy started.\n");
     return to_numpy(lin_bvhs, lin_nodes);
     // The old way:
     // return std::make_tuple(py::cast(lin_nodes), py::cast(lin_bvhs));
