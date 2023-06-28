@@ -295,7 +295,7 @@ class PathTracer(TracerBase):
             normal, n_valid = self.get_uv_item(self.normal_map, self.normal_img, it)
             if n_valid:
                 R = rotation_between(vec3([0, 1, 0]), it.n_g)
-                it.n_s = (R @ normal).normalized()
+                it.n_s = R @ normal
         if ti.static(self.has_bump_map):
             delta_n, d_valid = self.get_uv_item(self.bump_map, self.bump_img, it)
             if d_valid:
@@ -327,8 +327,7 @@ class PathTracer(TracerBase):
             mat = ti.Matrix.cols([v1, v2, -ray]).inverse()
             u, v, t = mat @ (start_p - p1)
             # u, v as barycentric coordinates should be returned
-            if u >= 0 and v >= 0 and u + v <= 1.0:
-                ray_t = t
+            ray_t = ti.select(u >= 0 and v >= 0 and u + v <= 1.0, t, ray_t)
         return ray_t, obj_idx, prim_idx, is_sphere, u, v
     
     @ti.func

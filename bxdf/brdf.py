@@ -185,7 +185,7 @@ class BRDF:
     
     @ti.func
     def fresnel_cos2_sin2(self, half_vec: vec3, normal: vec3, R: mat3, dot_half: float):
-        transed_x = (R @ vec3([1, 0, 0])).normalized()
+        transed_x = (R @ vec3([1, 0, 0]))
         cos_phi2  = tm.dot(transed_x, (half_vec - dot_half * normal).normalized()) ** 2       # azimuth angle of half vector 
         return cos_phi2, 1. - cos_phi2
 

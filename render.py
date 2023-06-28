@@ -151,7 +151,11 @@ if __name__ == "__main__":
                     ti.tools.imwrite(image, f"{output_folder}img_{iter_cnt:05d}.{opts.img_ext}")
     rdr.summary()
     if opts.profile:
-        ti.profiler.print_kernel_profiler_info() 
+        CONSOLE.rule()
+        ti.profiler.print_kernel_profiler_info('trace') 
+        CONSOLE.rule()
+        ti.profiler.print_scoped_profiler_info()
+        CONSOLE.rule()
         ti.profiler.memory_profiler.print_memory_profiler_info()
     image = apply_watermark(rdr, opts.normalize, True, not opts.no_watermark)
     save_figure = not opts.no_save_fig

@@ -29,13 +29,6 @@ N_MAX_BOUNCE = 32
 T_MAX_BOUNCE = 400
 MAX_SAMPLE_CNT = 512
 
-def block_size(val, max_val = 512):
-    if val > max_val or val == 0: return max_val
-    if val % 32 == 0 or (val & (val-1) == 0): return val
-    cand1 = val - val % 32
-    cand2 = 1 << int(log2(val))
-    return cand1 if cand1 >= cand2 else cand2
-
 @ti.data_oriented
 class BDPT(VolumeRenderer):
     def __init__(self, 
@@ -57,8 +50,6 @@ class BDPT(VolumeRenderer):
         self.crop_range  = ti.field(ti.i8)              # dummy field, useless when there is no cropping
         self.time_cnts   = ti.field(ti.i32)
         self.time_bins   = ti.Vector.field(3, float)
-
-        self.vertex_cnts = ti.field(ti.i32)
 
         if self.do_crop:
             # Memory conserving implementation
@@ -83,9 +74,7 @@ class BDPT(VolumeRenderer):
         self.lit_bitmask = self.path_nodes.dense(ti.k, max_bounce_used + 1)
         self.cam_bitmask.place(self.cam_paths, offset = offsets)    
         self.lit_bitmask.place(self.light_paths, offset = offsets)  
-        self.path_nodes.dense(ti.k, 2).place(self.vertex_cnts, offset = offsets)
         self.path_nodes.place(self.crop_range, offset = (offsets[:2]))
-        self.conn_path_block_size = block_size(self.max_bounce + 1, 256)
 
         # ti.profiler.memory_profiler.print_memory_profiler_info()
 
@@ -138,32 +127,24 @@ class BDPT(VolumeRenderer):
 
     @ti.kernel
     def render(self, t_start: int, t_end: int, s_start: int, s_end: int, max_bnc: int, max_depth: int):
-        self.cnt[None] += 1
+        cnt = ti.atomic_add(self.cnt[None], 1) + 1
         decomp = self.decomp[None]
         min_time = self.min_time[None]
         max_time = self.max_time[None]
         interval = self.interval[None]
 
-        ti.loop_config(parallelize = 8)
-        for i, j, k in self.vertex_cnts:
-            in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
-            if in_crop_range:
-                if k == 1:
-                    self.vertex_cnts[i, j, 1] = ti.min(self.generate_light_path(i, j, max_bnc) + 1, s_end)     # k == 1
-                else:
-                    self.vertex_cnts[i, j, 0] = ti.min(self.generate_eye_path(i, j, max_bnc) + 1, t_end)       # k == 0
-        
         ti.block_local(self.time_cnts)
         ti.block_local(self.time_bins)
-        ti.block_local(self.cam_paths)
-        ti.block_local(self.light_paths)
-        ti.loop_config(parallelize = 8, block_dim = self.conn_path_block_size)
-        for i, j, t in self.cam_paths:
+        ti.loop_config(parallelize = 8, block_dim = 512)
+        for i, j in self.pixels:
             in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
+            local_color = ZERO_V3
             if in_crop_range:
-                t_end_i = self.vertex_cnts[i, j, 0]
-                s_end_i = self.vertex_cnts[i, j, 1]
-                if t >= t_start and t < t_end_i:
+                cam_vnum = self.generate_eye_path(i, j, max_bnc) + 1
+                lit_vnum = self.generate_light_path(i, j, max_bnc) + 1
+                s_end_i = ti.min(lit_vnum, s_end)
+                t_end_i = ti.min(cam_vnum, t_end)
+                for t in range(t_start, t_end_i):
                     for s in range(s_start, s_end_i):
                         depth = s + t - 2
                         if (s == 1 and t == 1) or depth < 0 or depth > max_depth:
@@ -176,13 +157,15 @@ class BDPT(VolumeRenderer):
                             id_j = j
                             if t == 1 and raster_p.min() >= 0:      # non-local contribution
                                 id_i, id_j = raster_p               # splat samples can only contribute in cropping range
+                                self.color[id_i, id_j] += color
+                            else:
+                                local_color += color
                             if decomp >= TRANSIENT_CAM and path_time < max_time and path_time > min_time:
                                 time_idx = int((path_time - min_time) / interval)
                                 self.time_bins[id_i, id_j, time_idx] += color   # time_bins and cnts have offset
                                 self.time_cnts[id_i, id_j, time_idx] += 1
-                            self.color[id_i, id_j] += color
-        for i, j in self.pixels:
-            self.pixels[i, j] = self.color[i, j] / self.cnt[None]
+                self.color[i, j] += local_color
+                self.pixels[i, j] = self.color[i, j] / cnt
     
     def reset(self):
         """ Resetting path vertex container """
@@ -192,7 +175,7 @@ class BDPT(VolumeRenderer):
     def generate_eye_path(self, i: int, j: int, max_bnc: int):
         ray_d = self.pix2ray(i, j)
         dot_ray = tm.dot(ray_d, self.cam_normal)
-        _, pdf_dir = self.pdf_camera(dot_ray)
+        pdf_dir = self.pdf_camera(dot_ray)
         # Starting vertex assignment, note that camera should be a connectible vertex
         self.cam_paths[i, j, 0] = Vertex(_type = VERTEX_CAMERA, obj_id = -1, emit_id = -1, 
             bool_bits = BDPT.get_bool(p_delta = True, in_fspace = self.free_space_cam), time = self.init_time,
@@ -538,14 +521,10 @@ class BDPT(VolumeRenderer):
             Implementation see reference: PBR-Book chapter 16-1, equation 16.2
             https://www.pbr-book.org/3ed-2018/Light_Transport_III_Bidirectional_Methods/The_Path-Space_Measurement_Equation#eq:importance-sa
         """
-        pdf_pos = 1.
-        pdf_dir = 1.
+        pdf_dir = 0.
         if dot_normal > 0.:     # No need to rasterize again
             pdf_dir /= (self.A * ti.pow(dot_normal, 3))
-        else:
-            pdf_pos = 0.
-            pdf_dir = 0.
-        return pdf_pos, pdf_dir
+        return pdf_dir
     
     @ti.func
     def pdf_ratio(self, cur: ti.template(), prev_pos, next: ti.template(), prev_null = False):
@@ -562,7 +541,7 @@ class BDPT(VolumeRenderer):
         elif cur._type == VERTEX_CAMERA:
             ray_norm = ray_out.norm()
             if ray_norm > 0:
-                _pp, pdf_sa = self.pdf_camera(ti.abs(tm.dot(self.cam_normal, ray_out / ray_norm)))
+                pdf_sa = self.pdf_camera(ti.abs(tm.dot(self.cam_normal, ray_out / ray_norm)))
         else:
             is_in_fspace = cur.is_in_free_space()
 

@@ -88,7 +88,7 @@ class VolumeRenderer(PathTracer):
         tr = vec3([1., 1., 1.])
         in_free_space = True
         cur_point = start_p
-        cur_ray = ray.normalized()
+        cur_ray = ray
         acc_depth = 0.0
         for _i in range(7):             # maximum tracking depth = 7 (corresponding to at most 2 clouds of smoke)
             it = self.ray_intersect(cur_ray, cur_point, depth)
@@ -123,6 +123,7 @@ class VolumeRenderer(PathTracer):
     @ti.kernel
     def render(self, _t_start: int, _t_end: int, _s_start: int, _s_end: int, _a: int, _b: int):
         self.cnt[None] += 1
+        ti.loop_config(parallelize = 8, block_dim = 512)
         for i, j in self.pixels:
             in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
             if not self.do_crop or in_crop_range:
