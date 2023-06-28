@@ -31,7 +31,7 @@ Bunny scenes are not uploaded in the repo (90k+ primitives).
 
 ##### Console output
 
-Powered by rich console. Note that there is a speed bottle-neck for loading scene objects (see PR #16)
+Powered by rich console. Note that the loading speed bottleneck (in the figure) no longer exist after [PR #19](https://github.com/Enigmatisms/AdaPT/pull/19) ! 
 
 ![Screenshot from 2023-05-31 12-36-59](https://github.com/Enigmatisms/AdaPT/assets/46109954/963448af-da1b-422d-bcf7-e44aa4808973)
 
@@ -53,7 +53,8 @@ Here are the features I currently implemented and support:
 - A **unidirectional / bidirectional Monte-Carlo MIS path tracer**: supports as many bounce times as you wish, and the rendering process is based on Taichi Lang, therefore it can be very fast (not on the first run, the first run of a scene might take a long time due to taichi function inlining, especially for BDPT). The figures displayed above can be rendered within 15-20s (with cuda-backend, GPU supported). The rendering result is displayed incrementally, or maximum iteration number can be pre-set.
 - **Volumetric path tracer** that supports uni/bidirectional path tracing in both bounded and unbounded condition
 - A **transient renderer** with which you can visualize the propagation of the global radiance.
-- Texture packing and texture mapping, see `scenes/bunny.xml` for an configuration example.
+- Texture packing and texture mapping, see `scenes/bunny.xml` for an configuration example. We support bump map / normal map / roughness map (this is not tested) for now.
+- Shading normal is supported for a smooth appearance. 
 - Rendering checkpointing and [rich](https://github.com/Textualize/rich) console pannel support. 
 - Ray tracing accelerating structure, for now, we only support `BVH`. `KD-tree` will be implemented in the future.
 - Global / indirect illumination & Ability to handle simple caustics
