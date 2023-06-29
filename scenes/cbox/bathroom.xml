@@ -1,0 +1,197 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- A test file for mitsuba-like scene xml file parser -->
+<!-- Author: Qianyue He / Original credit goes to Wenzel Jakob -->
+<!-- Only Steady state rendering are supported -->
+<!-- Only RGB or rgb spectrums are supported -->
+<scene version="1.1">
+	<sensor type="perspective">
+		<float name="near_clip" value="0.001"/>
+		<float name="far_clip" value="2000"/>
+		<float name="fov" value="62.927"/>
+        <integer name="sample_count" value="128"/>
+        <integer name="max_bounce" value="24"/>
+        <integer name="num_shadow_ray" value="1"/>       
+
+        <string name="accelerator" value="bvh"/>       
+        <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
+        <boolean name="anti_alias" value="true"/>       	
+        <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
+        <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
+        <boolean name="brdf_two_sides" value="true"/>		<!-- Whether to use two sided BRDF -->
+		
+		<transform name="toWorld">
+			<lookat target="10.13163817 14.07076217 28.6112411" origin="10.57173729 14.19812107 29.50011253" up="0, 1, 0"/>
+		</transform>
+
+		<integer name="start_t" value="1"/>       
+        <integer name="end_t" value="100"/>       
+        <integer name="start_s" value="0"/>       
+        <integer name="end_s" value="100"/>   
+
+		<film type="film">
+			<integer name="width" value="1024"/>
+			<integer name="height" value="814"/>
+			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
+			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
+			<integer name="crop_rx" value="0"/>		<!-- Crop half radius for x-axis -->
+			<integer name="crop_ry" value="0"/>		<!-- Crop half radius for y-axis -->
+		</film>
+	</sensor>
+
+	<brdf type="lambertian" id="light">
+		<rgb name="k_d" value="#555555"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="white">
+		<rgb name="k_d" value="#BDBDBD"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="specular" id="mirror">
+		<rgb name="k_d" value="#DEDEDE"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<emitter type="area" id="area">
+		<rgb name="emission" value="50.0, 50.0, 50.0"/>
+		<rgb name="scaler" value="0.5"/>
+	</emitter>
+
+	<!-- Shapes -->
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/bathtub.obj"/>
+		<transform name="toWorld">
+			<translate x="0" y="-0.001" z="0"/>
+		</transform>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/cabinet-lights.obj"/>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area"/>
+		<!-- <ref type="texture" id="back-door"/> -->
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/cabinets.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/carpets.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/ceiling-lights.obj"/>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/floor.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/glossy-metals.obj"/>
+		<ref type="material" id="mirror"/>
+		<!-- <ref type="texture" id="crystal"/> -->
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/little-thing.obj"/>
+		<ref type="material" id="mirror"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/lotion.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/mirror-lights.obj"/>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/mirrors.obj"/>
+		<ref type="material" id="mirror"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/right-wall.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/skirting.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/statues.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/stepper.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/surronding.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/trash-bin.obj"/>
+		<ref type="material" id="mirror"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/wash-sinks.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/window.obj"/>
+		<ref type="material" id="white"/>
+		<ref type="emitter" id="area"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/wood.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<!-- Textures -->
+
+	<texture id="back-door" type="image">
+		<!-- <float name="scale_u" value="1.25"/>
+		<float name="scale_v" value="1.25"/> -->
+		<string name="filename" value="./scenes/meshes/kitchen_textures/wood.jpg"/>
+	</texture>
+
+	<texture id="crystal" type="image">
+		<string name="filename" value="./scenes/meshes/textures/crystal.jpg"/>
+	</texture>
+
+	<world name="yes!">
+		<rgb name="skybox" value="0.0"/>
+		<rgb name="ambient" value="0.0"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.0"/>
+		</medium>
+	</world>
+</scene>

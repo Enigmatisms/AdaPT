@@ -64,6 +64,7 @@ class PathTracer(TracerBase):
         self.stratified_sample  = prop['stratified_sampling']   # whether to use stratified sampling
         self.use_mis            = prop['use_mis']               # whether to use multiple importance sampling
         self.num_shadow_ray     = prop['num_shadow_ray']        # number of shadow samples to trace
+        self.brdf_two_sides     = prop.get('brdf_two_sides', False)
         
         if self.num_shadow_ray > 0:
             self.inv_num_shadow_ray = 1. / float(self.num_shadow_ray)
@@ -319,7 +320,7 @@ class PathTracer(TracerBase):
             if c2ray_norm < radius2:
                 ray_t = proj_norm
                 ray_cut = ti.sqrt(radius2 - c2ray_norm)
-                ray_t += ti.select(center_norm2 > radius2 + 1e-4, -ray_cut, ray_cut)
+                ray_t += ti.select(center_norm2 > radius2 + 1e-3, -ray_cut, ray_cut)
         else:
             p1 = self.prims[prim_idx, 0]
             v1 = self.precom_vec[prim_idx, 0]
@@ -336,7 +337,7 @@ class PathTracer(TracerBase):
         obj_id  = -1
         prim_id = -1
         sphere_flag = False
-        min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
+        min_depth = ti.select(min_depth > 0.0, min_depth - 1e-3, 1e7)
         node_idx = 0
         inv_ray = 1. / ray
         coord_u = 0.
@@ -356,7 +357,7 @@ class PathTracer(TracerBase):
                     if aabb_intersect == False or t_near > min_depth: 
                         continue
                     ray_t, obj_idx, prim_idx, obj_type, u, v = self.bvh_intersect(bvh_i, ray, start_p)
-                    if ray_t > 1e-4 and ray_t < min_depth:
+                    if ray_t > 1e-3 and ray_t < min_depth:
                         min_depth   = ray_t
                         obj_id      = obj_idx
                         prim_id     = prim_idx
@@ -393,7 +394,7 @@ class PathTracer(TracerBase):
         """ Ray intersection with BVH, to prune unnecessary computation """
         node_idx = 0
         hit_flag = False
-        min_depth = ti.select(min_depth > 0.0, min_depth - 1e-4, 1e7)
+        min_depth = ti.select(min_depth > 0.0, min_depth - 1e-3, 1e7)
         inv_ray = 1. / ray
         while node_idx < self.node_num:
             aabb_intersect, t_near = self.lin_nodes[node_idx].aabb_test(inv_ray, start_p)
@@ -409,7 +410,7 @@ class PathTracer(TracerBase):
                     aabb_intersect, t_near = self.lin_bvhs[bvh_i].aabb_test(inv_ray, start_p)
                     if aabb_intersect == False or t_near > min_depth: continue
                     ray_t, _i, _p, _o, _u, _v = self.bvh_intersect(bvh_i, ray, start_p)
-                    if ray_t > 1e-4 and ray_t < min_depth:
+                    if ray_t > 1e-3 and ray_t < min_depth:
                         hit_flag = True
                         break
             if hit_flag: break
@@ -437,6 +438,11 @@ class PathTracer(TracerBase):
                 ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].medium.sample_new_rays(incid)
         else:                       # surface sampling
             if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
+                if ti.static(self.brdf_two_sides):
+                    dot_res = tm.dot(incid, it.n_s)
+                    if dot_res > 0.:                    # two sides
+                        it.n_s *= -1
+                        it.n_g *= -1
                 ret_dir, ret_spec, ret_pdf = self.brdf_field[it.obj_id].sample_new_rays(it, incid)
             else:                                       # directly sample surface
                 ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].sample_surf_rays(it, incid, self.world.medium, mode)
@@ -454,6 +460,11 @@ class PathTracer(TracerBase):
                 ret_spec.fill(self.bsdf_field[it.obj_id].medium.eval(incid, out))
         else:                       # surface interaction
             if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
+                if ti.static(self.brdf_two_sides):
+                    dot_res = tm.dot(incid, it.n_s)
+                    if dot_res > 0.:                    # two sides
+                        it.n_s *= -1
+                        it.n_g *= -1
                 ret_spec = self.brdf_field[it.obj_id].eval(it, incid, out)
             else:                                       # directly evaluate surface
                 ret_spec = self.bsdf_field[it.obj_id].eval_surf(it, incid, out, self.world.medium, mode)
@@ -464,6 +475,11 @@ class PathTracer(TracerBase):
         """ Outdir: actual incident ray direction, incid: ray (from camera) """
         pdf = 0.
         if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
+            if ti.static(self.brdf_two_sides):
+                dot_res = tm.dot(incid, it.n_s)
+                if dot_res > 0.:                    # two sides
+                    it.n_s *= -1
+                    it.n_g *= -1
             pdf = self.brdf_field[it.obj_id].get_pdf(it, outdir, incid)
         else:
             pdf = self.bsdf_field[it.obj_id].get_pdf(it, outdir, incid, self.world.medium)

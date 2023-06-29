@@ -17,7 +17,8 @@ from taichi.math import vec3, mat3
 from typing import List
 from la.cam_transform import *
 from scipy.spatial.transform import Rotation as Rot
-from tracer.tracer_base import TracerBase
+from tracer.path_tracer import PathTracer
+from utils.tools import TicToc
 
 from parsers.obj_desc import ObjDescriptor
 from parsers.xml_parser import scene_parsing
@@ -32,9 +33,12 @@ MAX_HEIGHT = 1024
 MAX_WIDTH  = 1024
 
 @ti.data_oriented
-class Visualizer(TracerBase):
+class Visualizer(PathTracer):
     """ Emitter is not supported. We only import mesh / sphere object in here """
-    def __init__(self, objects: List[ObjDescriptor], prop: dict):
+    def __init__(self, array_info, objects: List[ObjDescriptor], prop: dict):
+        self.clock = TicToc()
+        self.w_aabb_min = vec3([-40, -10, -40])       
+        self.w_aabb_max = vec3([40, 50, 40])     
         self.w          = ti.field(ti.i32, ())
         self.h          = ti.field(ti.i32, ())
         self.focal      = ti.field(ti.f32, ())
@@ -73,6 +77,7 @@ class Visualizer(TracerBase):
         self.obj_info  = ti.field(int, (self.num_objects, 3))
         self.load_primitives(**array_info)
         self.initialze(objects)
+        self.bvh_process(array_info, objects, prop)
 
     def load_primitives(
         self, primitives: np.ndarray, indices: np.ndarray, 
@@ -170,7 +175,7 @@ if __name__ == "__main__":
     input_folder = os.path.join(options.input_path, options.scene)
     _, array_info, all_objs, configs = scene_parsing(input_folder, options.name)  # complex_cornell
 
-    viz = Visualizer(all_objs, configs)
+    viz = Visualizer(array_info, all_objs, configs)
     init_R = Rot.from_matrix(viz.cam_r[None].to_numpy()).as_euler('zxy', degrees = True)
 
     # GGUI initializations 
