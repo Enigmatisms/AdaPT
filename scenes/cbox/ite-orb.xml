@@ -1,0 +1,181 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- A test file for mitsuba-like scene xml file parser -->
+<!-- Author: Qianyue He / Original credit goes to Wenzel Jakob -->
+<!-- Only Steady state rendering are supported -->
+<!-- Only RGB or rgb spectrums are supported -->
+<scene version="1.1">
+	<sensor type="perspective">
+		<float name="near_clip" value="0.001"/>
+		<float name="far_clip" value="2000"/>
+		<float name="fov" value="34.39"/>
+        <integer name="sample_count" value="128"/>
+        <integer name="max_bounce" value="24"/>
+        <integer name="num_shadow_ray" value="1"/>       
+
+        <string name="accelerator" value="bvh"/>       
+        <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
+        <boolean name="anti_alias" value="true"/>       	
+        <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
+        <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
+		
+		<transform name="toWorld">
+			<lookat target="-0.35198289 0.69472888 -0.83015466" origin="-0.65732837 1.04474008 -1.7157371" up="0, 1, 0"/>
+		</transform>
+
+		<integer name="start_t" value="1"/>       
+        <integer name="end_t" value="100"/>       
+        <integer name="start_s" value="0"/>       
+        <integer name="end_s" value="100"/>   
+
+		<film type="film">
+			<integer name="width" value="681"/>
+			<integer name="height" value="629"/>
+			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
+			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
+			<integer name="crop_rx" value="0"/>		<!-- Crop half radius for x-axis -->
+			<integer name="crop_ry" value="0"/>		<!-- Crop half radius for y-axis -->
+		</film>
+	</sensor>
+
+	<brdf type="lambertian" id="light">
+		<rgb name="k_d" value="#555555"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="blinn-phong" id="glossy">
+		<rgb name="k_d" value="#AA9182"/>
+		<rgb name="k_g" value="50.0"/>
+		<rgb name="k_s" value="#232323"/>
+	</brdf>
+
+	<brdf type="fresnel-blend" id="fresnel">
+		<rgb name="k_d" value="#C8CACA"/>
+		<rgb name="k_s" value="#333333"/>
+		<rgb name="k_g" r="12" g="1500"/>
+	</brdf>
+
+	<brdf type="blinn-phong" id="floor">
+		<rgb name="k_d" value="#A29D9A"/>
+		<rgb name="k_g" value="10.0"/>
+		<rgb name="k_s" value="#232323"/>
+	</brdf>
+
+	<brdf type="lambertian" id="white">
+		<rgb name="k_d" value="#BDBDBD"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="specular" id="mirror">
+		<rgb name="k_d" value="#DEDEDE"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="mod-phong" id="new-glossy">
+		<rgb name="k_d" value="#CCCCCC"/>
+		<rgb name="k_g" value="15.0"/>
+		<rgb name="k_s" value="#323232"/>
+	</brdf>
+
+	<bsdf type="det-refraction" id="glass">
+		<rgb name="k_d" value="#EAEAEA"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.5"/>
+		</medium>
+	</bsdf>
+
+	<emitter type="area" id="area">
+		<rgb name="emission" value="50.0, 50.0, 50.0"/>
+		<rgb name="scaler" value="1.0"/>
+	</emitter>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/ite-orb/emitter.obj"/>
+		<transform name="toWorld">
+			<translate x="0" y="-0.001" z="0"/>
+		</transform>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/ite-orb/floor.obj"/>
+		<ref type="material" id="floor"/>
+		<ref type="texture" id="back-door"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/ite-orb/left.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="0"/>
+		</transform>
+		<ref type="material" id="glossy"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/ite-orb/mid.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="0"/>
+		</transform>
+		<ref type="material" id="fresnel"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/ite-orb/right.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
+		</transform>
+		<ref type="material" id="glass"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/ite-orb/back-left.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="0"/>
+		</transform>
+		<ref type="material" id="new-glossy"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/ite-orb/back-mid.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="0"/>
+		</transform>
+		<ref type="material" id="white"/>
+		<ref type="texture" id="crystal"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/ite-orb/back-right.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="-0"/>
+		</transform>
+		<ref type="material" id="mirror"/>
+	</shape>
+
+	<texture id="back-door" type="image">
+		<!-- <float name="scale_u" value="1.25"/>
+		<float name="scale_v" value="1.25"/> -->
+		<string name="filename" value="./scenes/meshes/kitchen_textures/wood.jpg"/>
+	</texture>
+
+	<texture id="crystal" type="image">
+		<string name="filename" value="./scenes/meshes/textures/crystal.jpg"/>
+	</texture>
+
+	<world name="yes!">
+		<rgb name="skybox" value="0.0"/>
+		<rgb name="ambient" value="0.0"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.0"/>
+		</medium>
+	</world>
+</scene>

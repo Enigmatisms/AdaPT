@@ -67,6 +67,7 @@ class Visualizer(TracerBase):
         self.dense_nodes = ti.root.dense(ti.i, self.num_prims)
         self.dense_nodes.place(self.normals)
         self.dense_nodes.dense(ti.j, 3).place(self.prims, self.precom_vec)      # for simple shapes, this would be efficient
+        self.has_v_normal = False
 
         # pos0: start_idx, pos1: number of primitives, pos2: obj_id (being triangle / sphere? Others to be added, like cylinder, etc.)
         self.obj_info  = ti.field(int, (self.num_objects, 3))
@@ -80,11 +81,12 @@ class Visualizer(TracerBase):
         """ Load primitives via faster API """
         self.prims.from_numpy(primitives)
         # sphere primitives are padded
-        prim_vecs = np.concatenate([
+        prim_vecs = np.stack([
             primitives[..., 1, :] - primitives[..., 0, :],
             primitives[..., 2, :] - primitives[..., 0, :],
             primitives[..., 0, :]], axis = -2)
-        prim_vecs[indices, :2, :] = primitives[indices, :2, :]
+        if indices is not None:
+            prim_vecs[indices, :2, :] = primitives[indices, :2, :]
         self.precom_vec.from_numpy(prim_vecs)
         self.normals.from_numpy(n_g)
 
@@ -132,9 +134,9 @@ class Visualizer(TracerBase):
     def render(self):
         for i, j in self.pixels:
             ray = self.pix2ray(i, j)
-            obj_id, normal, _d, _u, _v = self.ray_intersect(ray, self.cam_t[None])
-            if obj_id >= 0:
-                self.pixels[i, j].fill(ti.abs(tm.dot(ray, normal)))
+            it = self.ray_intersect(ray, self.cam_t[None])
+            if it.obj_id >= 0:
+                self.pixels[i, j].fill(ti.abs(tm.dot(ray, it.n_g)))
             else:
                 self.pixels[i, j].fill(0.0)
 

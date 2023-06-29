@@ -79,7 +79,7 @@ class Texture_np:
         for float_n in float_nodes:
             name = float_n.get("name")
             if name in {"scale_u", "scale_v"}:
-                self.__setattr__(name, get(float_n, name))
+                self.__setattr__(name, get(float_n, "value"))
             else:
                 CONSOLE.log(f"[yellow]:warning: Warning: <{name}> not used in loading textures")
 
