@@ -10,6 +10,10 @@ This renderer is implemented based on **MY OWN** understanding of path tracing a
 
 For more example scenes, please refer to [Enigmatisms/AdaptiveGallery](https://github.com/Enigmatisms/AdaptiveGallery)
 
+Bathroom scene (~400k primitives, 8 bounces, source can be found [here]()):
+
+<p align="center"><img src="https://github.com/Enigmatisms/AdaptiveGallery/assets/46109954/8515ab2f-d008-44db-812e-6c99786bb602"/></p>
+
 Material orb scene (~500k primitives, 24 bounces, CUDA backend 16 fps):
 
 <p align="center"><img src="https://github.com/Enigmatisms/AdaPT/assets/46109954/79754d30-1ce6-4ab2-a382-42010ed7c5b5"/></p>
