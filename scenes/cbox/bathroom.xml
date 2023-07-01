@@ -7,9 +7,10 @@
 	<sensor type="perspective">
 		<float name="near_clip" value="0.001"/>
 		<float name="far_clip" value="2000"/>
-		<float name="fov" value="62.927"/>
+		<float name="fov" value="67.561"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="24"/>
+        <integer name="max_bounce" value="8"/>
+        <integer name="max_depth" value="10"/>
         <integer name="num_shadow_ray" value="1"/>       
 
         <string name="accelerator" value="bvh"/>       
@@ -20,7 +21,7 @@
         <boolean name="brdf_two_sides" value="true"/>		<!-- Whether to use two sided BRDF -->
 		
 		<transform name="toWorld">
-			<lookat target="10.13163817 14.07076217 28.6112411" origin="10.57173729 14.19812107 29.50011253" up="0, 1, 0"/>
+			<lookat target="-1.67968856 23.18902344 24.76705033" origin="-1.44134676 23.70004654 25.59291267" up="0, 1, 0"/>
 		</transform>
 
 		<integer name="start_t" value="1"/>       
@@ -29,8 +30,8 @@
         <integer name="end_s" value="100"/>   
 
 		<film type="film">
-			<integer name="width" value="1024"/>
-			<integer name="height" value="814"/>
+			<integer name="width" value="871"/>
+			<integer name="height" value="802"/>
 			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
 			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
 			<integer name="crop_rx" value="0"/>		<!-- Crop half radius for x-axis -->
@@ -45,42 +46,112 @@
 	</brdf>
 
 	<brdf type="lambertian" id="white">
-		<rgb name="k_d" value="#BDBDBD"/>
+		<rgb name="k_d" value="#BFBFBF"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="blueish">
+		<rgb name="k_d" value="#B1B6BA"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="cabinet">
+		<rgb name="k_d" value="#A4A4A4"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="bathtub">
+		<rgb name="k_d" value="#C4C4C4"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="fresnel-blend" id="skirting">
+		<rgb name="k_d" value="#CACACA"/>
+		<!-- <rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/> -->
+		<rgb name="k_s" value="#333333"/>
+		<rgb name="k_g" r="10" g="1000"/>
+	</brdf>
+
+	<brdf type="blinn-phong" id="water-sink">
+		<rgb name="k_d" value="#CDCDCD"/>
+		<rgb name="k_g" value="25.0"/>
+		<rgb name="k_s" value="212121"/>
+	</brdf>
+
+	<brdf type="mod-phong" id="statues">
+		<rgb name="k_d" value="#2C2C2C"/>
+		<rgb name="k_g" value="12.0"/>
+		<rgb name="k_s" value="#424242"/>
+	</brdf>
+
+	<brdf type="mod-phong" id="polished-wood">
+		<rgb name="k_d" value="#BCBCBC"/>
+		<rgb name="k_g" value="40.0"/>
+		<rgb name="k_s" value="#323232"/>
 	</brdf>
 
 	<brdf type="specular" id="mirror">
-		<rgb name="k_d" value="#DEDEDE"/>
+		<rgb name="k_d" value="#EAEAEA"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<emitter type="area" id="area">
-		<rgb name="emission" value="50.0, 50.0, 50.0"/>
-		<rgb name="scaler" value="0.5"/>
+	<bsdf type="det-refraction" id="glass">
+		<rgb name="k_d" value="#EAEAEA"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.5"/>
+		</medium>
+	</bsdf>
+
+	<emitter type="area" id="ceiling">
+		<rgb name="emission" value="50.0, 48.0, 45.0"/>
+		<rgb name="scaler" value="0.25"/>
+	</emitter>
+
+	<emitter type="area" id="mirror">
+		<rgb name="emission" value="50.0, 48.0, 45.0"/>
+		<rgb name="scaler" value="0.1"/>
+	</emitter>
+
+	<emitter type="area" id="window">
+		<rgb name="emission" value="50.0, 48.0, 45.0"/>
+		<rgb name="scaler" value="0.4"/>
+	</emitter>
+
+	<emitter type="area" id="cabinet">
+		<rgb name="emission" value="50.0, 48.0, 45.0"/>
+		<rgb name="scaler" value="0.45"/>
 	</emitter>
 
 	<!-- Shapes -->
 
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/bathtub.obj"/>
-		<transform name="toWorld">
-			<translate x="0" y="-0.001" z="0"/>
-		</transform>
-		<ref type="material" id="white"/>
+		<ref type="material" id="bathtub"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/basin.obj"/>
+		<ref type="material" id="skirting"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/cabinet-lights.obj"/>
 		<ref type="material" id="light"/>
-		<ref type="emitter" id="area"/>
-		<!-- <ref type="texture" id="back-door"/> -->
+		<ref type="emitter" id="cabinet"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/cabinets.obj"/>
-		<ref type="material" id="white"/>
+		<ref type="material" id="cabinet"/>
 	</shape>
 
 	<shape type="obj">
@@ -91,12 +162,18 @@
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/ceiling-lights.obj"/>
 		<ref type="material" id="light"/>
-		<ref type="emitter" id="area"/>
+		<ref type="emitter" id="ceiling"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/floor.obj"/>
-		<ref type="material" id="white"/>
+		<ref type="material" id="polished-wood"/>
+		<ref type="texture" id="floor"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/glasses.obj"/>
+		<ref type="material" id="glass"/>
 	</shape>
 
 	<shape type="obj">
@@ -112,13 +189,13 @@
 
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/lotion.obj"/>
-		<ref type="material" id="white"/>
+		<ref type="material" id="statues"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/mirror-lights.obj"/>
 		<ref type="material" id="light"/>
-		<ref type="emitter" id="area"/>
+		<ref type="emitter" id="mirror"/>
 	</shape>
 
 	<shape type="obj">
@@ -128,22 +205,27 @@
 
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/right-wall.obj"/>
+		<ref type="material" id="blueish"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/rug.obj"/>
 		<ref type="material" id="white"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/skirting.obj"/>
-		<ref type="material" id="white"/>
+		<ref type="material" id="skirting"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/statues.obj"/>
-		<ref type="material" id="white"/>
+		<ref type="material" id="statues"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/stepper.obj"/>
-		<ref type="material" id="white"/>
+		<ref type="material" id="skirting"/>
 	</shape>
 
 	<shape type="obj">
@@ -157,6 +239,11 @@
 	</shape>
 
 	<shape type="obj">
+		<string name="filename" value="../complex/bathroom/obj/tub-plug.obj"/>
+		<ref type="material" id="mirror"/>
+	</shape>
+
+	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/wash-sinks.obj"/>
 		<ref type="material" id="white"/>
 	</shape>
@@ -164,24 +251,23 @@
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/window.obj"/>
 		<ref type="material" id="white"/>
-		<ref type="emitter" id="area"/>
+		<ref type="emitter" id="window"/>
 	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../complex/bathroom/obj/wood.obj"/>
-		<ref type="material" id="white"/>
+		<ref type="material" id="polished-wood"/>
+		<ref type="texture" id="wood"/>
 	</shape>
 
 	<!-- Textures -->
 
-	<texture id="back-door" type="image">
-		<!-- <float name="scale_u" value="1.25"/>
-		<float name="scale_v" value="1.25"/> -->
-		<string name="filename" value="./scenes/meshes/kitchen_textures/wood.jpg"/>
+	<texture id="wood" type="image">
+		<string name="filename" value="./scenes/complex/bathroom/textures/wood.jpg"/>
 	</texture>
 
-	<texture id="crystal" type="image">
-		<string name="filename" value="./scenes/meshes/textures/crystal.jpg"/>
+	<texture id="floor" type="image">
+		<string name="filename" value="./scenes/complex/bathroom/textures/dark-oak.jpg"/>
 	</texture>
 
 	<world name="yes!">
