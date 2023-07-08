@@ -3,6 +3,10 @@
     Blinn-Phong / Lambertian / Mirror specular / Modified Phong / Fresnel Blend
     @author: Qianyue He
     @date: 2023-1-23
+
+    Note 2023.7.8: as I understand (if correct)
+    - Specular + OrenNayar = Smooth plastic
+    - Specular + Glossy = Coated metal
 """
 import sys
 sys.path.append("..")
@@ -134,6 +138,10 @@ class BRDF:
         return ray_out_d, spec, pdf
 
     # ======================  Modified Phong =======================
+    """ Modified Phong BRDF
+        Lafortune & Willems, using the modified phong reflectance model for physically based rendering, 1994
+    """
+
     @ti.func
     def eval_mod_phong(self, it: ti.template(), ray_in: vec3, ray_out: vec3):
         dot_normal = tm.dot(it.n_s, ray_out)
@@ -143,6 +151,7 @@ class BRDF:
             dot_view = ti.max(0.0, -tm.dot(ray_in, reflect_d))      # ray_in is on the opposite dir of reflected dir
             glossy = tm.pow(dot_view, self.k_g) * self.k_s
             spec = 0.5 * (self.k_g + 2.) * glossy * INV_PI * dot_normal
+            spec += self.eval_lambertian(it, ray_out)
         return spec 
 
     @ti.func
@@ -244,8 +253,23 @@ class BRDF:
     def sample_specular(self, it: ti.template(), ray_in: vec3):
         ray_out_d, _ = inci_reflect_dir(ray_in, it.n_s)
         return ray_out_d, ti.select(it.is_tex_invalid(), self.k_d, it.tex), 1.0
+    
+    # ======================= Mixture model =====================
+
+
+    # ===========================================================
 
     # ================================================================
+
+    # ======================= Oren-Nayar (PBR Rough) =============================
+
+
+    # ============================================================================
+
+    # ======================= Torrance–Sparrow (PBR Glossy) =============================
+
+
+    # ===================================================================================
 
     @ti.func
     def eval(self, it: ti.template(), incid: vec3, out: vec3) -> vec3:
