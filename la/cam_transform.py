@@ -68,8 +68,15 @@ def rotation_between(fixed: vec3, target: vec3) -> mat3:
 
 @ti.func
 def delocalize_rotate(anchor: vec3, local_dir: vec3):
+    """ From local frame to global frame """
     R = rotation_between(vec3([0, 1, 0]), anchor)
     return R @ local_dir, R
+
+@ti.func
+def localize_rotate(anchor: vec3, global_dir: vec3):
+    """ From global frame to local frame """
+    R = rotation_between(anchor, vec3([0, 1, 0]))
+    return R @ global_dir
 
 @ti.func
 def world_frame(local_anchor, global_anchor, local_dir):

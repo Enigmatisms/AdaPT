@@ -19,6 +19,7 @@ from taichi.math import vec3, mat3
 
 from la.geo_optics import *
 from la.cam_transform import *
+from sampler.microfacet import *
 from sampler.general_sampling import *
 from parsers.general_parser import rgb_parse
 from renderer.constants import INV_PI, ZERO_V3, INVALID
@@ -235,38 +236,71 @@ class BRDF:
         return ray_out_d, spec, pdf
     
     # ======================= Lambertian ========================
+    # We keep the 'normal' parameter for Lambertian and Specular, for they will be used in microfacet models
     @ti.func
-    def eval_lambertian(self, it: ti.template(), ray_out: vec3):
-        cosine_term = tm.max(0.0, tm.dot(it.n_s, ray_out))
+    def eval_lambertian(self, it: ti.template(), normal: vec3, ray_out: vec3):
+        cosine_term = tm.max(0.0, tm.dot(normal, ray_out))
         diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
         return diffuse_color * INV_PI * cosine_term
-
+    
     @ti.func
-    def sample_lambertian(self, it: ti.template()):
+    def sample_lambertian(self, it: ti.template(), normal: vec3):
         local_new_dir, pdf = cosine_hemisphere()
-        ray_out_d, _ = delocalize_rotate(it.n_s, local_new_dir)
-        spec = self.eval_lambertian(it, ray_out_d)
+        ray_out_d, _ = delocalize_rotate(normal, local_new_dir)
+        spec = self.eval_lambertian(it, ray_out_d, normal)
         return ray_out_d, spec, pdf
 
     # ======================= Mirror-Specular ========================
     @ti.func
-    def sample_specular(self, it: ti.template(), ray_in: vec3):
-        ray_out_d, _ = inci_reflect_dir(ray_in, it.n_s)
+    def sample_specular(self, it: ti.template(), ray_in: vec3, normal: vec3):
+        ray_out_d, _ = inci_reflect_dir(ray_in, normal)
         return ray_out_d, ti.select(it.is_tex_invalid(), self.k_d, it.tex), 1.0
     
-    # ======================= Mixture model =====================
-
-
-    # ===========================================================
-
     # ================================================================
 
     # ======================= Oren-Nayar (PBR Rough) =============================
 
+    
 
     # ============================================================================
 
-    # ======================= Torrance–Sparrow (PBR Glossy) =============================
+    # ======================= Microfacet Torrance–Sparrow (PBR Glossy) =============================
+
+    @ti.func
+    def sample_pbr_glossy(self, it: ti.template(), incid: vec3):
+        """ Note that for Torrance Sparrow and Oren-Nayar, alpha is converted from roughness and stored in k_g
+            Also, incid ray points inwards
+        """
+        local_wh = trow_reitz_sample_wh(-incid, self.k_g[0], self.k_g[1])
+        half_vector, _ = delocalize_rotate(it.n_s, local_wh)
+        dot_val = -tm.dot(incid, half_vector)
+        ret_spec = ZERO_V3
+        pdf = 1.0
+        if dot_val > 0:
+            ray_out_d, _ = inci_reflect_dir(incid, it.n_s)
+            # it.n_s dot incid should be negative
+            if tm.dot(it.n_s, ray_out_d) * tm.dot(it.n_s, incid) < 0:
+                # eval
+                ret_spec = 0
+                pass
+            pdf = trow_reitz_pdf(incid, half_vector, it.n_s)
+            pdf /= 4 * dot_val
+        return ray_out_d, ret_spec, pdf
+    
+    @ti.func
+    def eval_pbr_glossy(self, it:ti.template(), ray_in: vec3, ray_out: vec3):
+        cos_theta_o = ti.abs(tm.dot(it.n_s, ray_out))
+        cos_theta_i = ti.abs(tm.dot(it.n_s, ray_in))
+        if cos_theta_o > EPS and cos_theta_o > EPS:
+            wh = ray_out - ray_in
+            if ti.abs(wh[0]) > EPS or ti.abs(wh[1]) > EPS or ti.abs(wh[2]) > EPS:
+                wh = wh.normalized()
+                # dealing with Fresnel effect
+        pass
+
+    @ti.func
+    def eval_torrance_sparrow():
+        pass
 
 
     # ===================================================================================
@@ -305,9 +339,9 @@ class BRDF:
         if self._type == 0:         # Blinn-Phong
             ret_dir, ret_spec, pdf = self.sample_blinn_phong(it, incid)
         elif self._type == 1:       # Lambertian
-            ret_dir, ret_spec, pdf = self.sample_lambertian(it)
+            ret_dir, ret_spec, pdf = self.sample_lambertian(it, it.n_s)
         elif self._type == 2:       # Specular - specular has no cosine attenuation
-            ret_dir, ret_spec, pdf = self.sample_specular(it, incid)
+            ret_dir, ret_spec, pdf = self.sample_specular(it, incid, it.n_s)
         elif self._type == 4:       # Modified-Phong
             ret_dir, ret_spec, pdf = self.sample_mod_phong(it, incid)
         elif self._type == 5:       # Fresnel-Blend

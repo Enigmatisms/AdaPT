@@ -31,6 +31,8 @@ def fresnel_equation(n_in: float, n_out: float, cos_inc: float, cos_ref: float):
     """ 
         Fresnel Equation for calculating specular ratio
         Since Schlick's Approximation is not clear about n1->n2, n2->n1 (different) effects
+
+        This Fresnel equation is for dielectric, not for conductor
     """
     n1cos_i = n_in * cos_inc
     n2cos_i = n_out * cos_inc
