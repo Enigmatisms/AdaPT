@@ -39,7 +39,7 @@ Bunny scenes are not uploaded in the repo (90k+ primitives).
 
 ##### Console output
 
-Powered by rich console. Note that the loading speed bottleneck (in the figure) no longer exist after [PR #19](https://github.com/Enigmatisms/AdaPT/pull/19) ! 
+Powered by rich console. Note that the loading speed bottleneck (in the figure) no longer exists after [PR #19](https://github.com/Enigmatisms/AdaPT/pull/19) ! 
 
 ![Screenshot from 2023-05-31 12-36-59](https://github.com/Enigmatisms/AdaPT/assets/46109954/963448af-da1b-422d-bcf7-e44aa4808973)
 
