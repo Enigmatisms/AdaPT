@@ -11,7 +11,8 @@ from taichi.math import vec3, mat3
 from numpy import ndarray as Arr
 from scipy.spatial.transform import Rotation as Rot
 
-__all__ = ['fov2focal', 'np_rotation_between', 'rotation_between', 'delocalize_rotate', 'world_frame']
+__all__ = ['fov2focal', 'np_rotation_between', 'rotation_between', 
+           'delocalize_rotate', 'localize_rotate', 'world_frame']
 
 colv3 = ti.types.matrix(3, 1, float)        # column vector
 rowv3 = ti.types.matrix(1, 3, float)        # row vector

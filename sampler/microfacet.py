@@ -15,7 +15,7 @@ from taichi.math import vec3, vec4
 from la.cam_transform import localize_rotate
 from renderer.constants import PI2, PI_DIV2
 
-__all__ = ["trow_reitz_D", "trow_reitz_G", "trow_reitz_sample_wh", "trow_reitz_pdf"]
+__all__ = ["trow_reitz_D", "trow_reitz_G", "trow_reitz_sample_wh", "trow_reitz_pdf", "convert_to_raw"]
 
 __EPS__ = 1e-5
 
@@ -112,6 +112,7 @@ def __trow_reitz_sample(cos_theta: float) -> SampledValues:
 @ti.func
 def trow_reitz_sample(incid: vec3, normal: vec3, alpha_x: float, alpha_y: float):
     """ This is the callable Trowbridge-Reitz sampling function
+        this normal vector is 
         TODO: please be careful about the incident direction (should be pointing outwards)
     """
     coeff = vec3([alpha_x, alpha_y, 1])
@@ -142,8 +143,9 @@ def trow_reitz_G(incid: vec3, outdir: vec3, alphas: vec3):
     return 1. / (1. + trow_reitz_lambda(incid, alphas) + trow_reitz_lambda(outdir, alphas))
 
 @ti.func
-def trow_reitz_sample_wh(incid: vec3, alpha_x: float, alpha_y: float):
-    """ We follow a backward path trace convention, but to be more 'intuitive'
+def trow_reitz_sample_wh_whole(incid: vec3, alpha_x: float, alpha_y: float):
+    """ This function might not be used (only useful when we sample outside of the visible area)
+        We follow a backward path trace convention, but to be more 'intuitive'
         incid is actually the ray (starting from camera) direction (for UDPT)
     """
     cos_theta = 0
@@ -166,7 +168,18 @@ def trow_reitz_sample_wh(incid: vec3, alpha_x: float, alpha_y: float):
     cos_phi = tm.cos(phi)
     sin_theta = ti.sqrt(ti.max(0., 1. - cos_theta * cos_theta))
     wh = vec3([cos_phi * sin_theta, cos_theta, sin_phi * sin_theta])
+    raw_vec = vec4([cos_theta, sin_theta, cos_phi, sin_phi])
     if tm.dot(wh, incid) < 0:
+        raw_vec = vec4([-cos_theta, sin_theta, -cos_phi, -sin_phi])
+        wh = -wh
+    return wh, raw_vec
+
+@ti.func
+def trow_reitz_sample_wh(incid: vec3, normal: vec3, alpha_x: float, alpha_y: float):
+    dot_incid = tm.dot(incid, normal)
+    flip = dot_incid > 0
+    wh = trow_reitz_sample(ti.select(flip, incid, -incid), alpha_x, alpha_y)
+    if flip:
         wh = -wh
     return wh
 

@@ -9,7 +9,7 @@ import taichi.math as tm
 from taichi.math import vec3
 
 __all__ = ['inci_reflect_dir', 'exit_reflect_dir', 'schlick_fresnel', 
-           'fresnel_equation', 'snell_refraction', 'is_total_reflection']
+           'fresnel_equation', 'snell_refraction', 'is_total_reflection', 'fresnel_eval']
 
 @ti.func
 def inci_reflect_dir(ray: vec3, normal: vec3):
@@ -25,6 +25,21 @@ def exit_reflect_dir(ray: vec3, normal: vec3):
 def schlick_fresnel(r_s: vec3, dot_val: float):
     """ Schlick's Fresnel Fraction Approximation [1993] """
     return r_s + (1 - r_s) * tm.pow(1. - dot_val, 5)
+
+@ti.experimental.real_func
+def fresnel_eval(cos_v: float, n_in: float, n_tr: float) -> float:
+    """ Evaluate Fresnel Equation with only one cosine value input 
+        n_in: incident (outside) medium IOR
+        n_tr: transmission (inside) medium IOR
+    """
+    if cos_v < 0:       # if the ray points outwards
+        cos_v = -cos_v
+        n_in, n_tr = n_tr, n_in
+    # refraction cosine
+    sin_v = ti.sqrt(ti.max(0, 1. - cos_v * cos_v))
+    sin_t = n_in / n_tr * sin_v
+    cos_tr = ti.sqrt(ti.max(0, 1. - sin_t * sin_t))
+    return fresnel_equation(n_in, n_tr, cos_v, cos_tr)
 
 @ti.func
 def fresnel_equation(n_in: float, n_out: float, cos_inc: float, cos_ref: float):
