@@ -32,14 +32,16 @@ def fresnel_eval(cos_v: float, n_in: float, n_tr: float) -> float:
         n_in: incident (outside) medium IOR
         n_tr: transmission (inside) medium IOR
     """
-    if cos_v < 0:       # if the ray points outwards
-        cos_v = -cos_v
-        n_in, n_tr = n_tr, n_in
+    neg_cos_v = cos_v < 0
+    # if the ray points outwards
+    cos_value = ti.select(neg_cos_v, -cos_v, cos_v)
+    ior_in = ti.select(neg_cos_v, n_tr, n_in)
+    ior_tr = ti.select(neg_cos_v, n_in, n_tr)
     # refraction cosine
-    sin_v = ti.sqrt(ti.max(0, 1. - cos_v * cos_v))
-    sin_t = n_in / n_tr * sin_v
+    sin_v = ti.sqrt(ti.max(0, 1. - cos_value * cos_value))
+    sin_t = ior_in / ior_tr * sin_v
     cos_tr = ti.sqrt(ti.max(0, 1. - sin_t * sin_t))
-    return fresnel_equation(n_in, n_tr, cos_v, cos_tr)
+    return fresnel_equation(ior_in, ior_tr, cos_value, cos_tr)
 
 @ti.func
 def fresnel_equation(n_in: float, n_out: float, cos_inc: float, cos_ref: float):

@@ -80,6 +80,18 @@
 		<rgb name="k_s" value="#232323"/>
 	</brdf>
 
+	<brdf type="microfacet" id="pbr-glossy">
+		<rgb name="k_d" value="#AA9182"/>
+		<rgb name="roughness" r="0.05" g="0.05" b="0.0"/>
+		<rgb name="ref_ior" r="1.0" g="10"/>
+	</brdf>
+
+	<brdf type="oren-nayar" id="pbr-diffuse">
+		<rgb name="k_d" value="#BDBDBD"/>
+		<rgb name="sigma" value="30.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
 	<bsdf type="det-refraction" id="glass">
 		<rgb name="k_d" value="#EAEAEA"/>
 		<medium type="transparent">
@@ -123,7 +135,8 @@
 		<transform name="toWorld">
 			<rotate type="euler" r="0.0" p="0.0" y="0"/>
 		</transform>
-		<ref type="material" id="new-glossy"/>
+		<ref type="material" id="pbr-glossy"/>
+		<!-- <ref type="material" id="white"/> -->
 	</shape>
 
 	<texture id="wood" type="image">

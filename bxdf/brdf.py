@@ -22,7 +22,7 @@ from la.cam_transform import *
 from sampler.microfacet import *
 from sampler.general_sampling import *
 from parsers.general_parser import rgb_parse
-from renderer.constants import INV_PI, ZERO_V3, BRDFTag
+from renderer.constants import INV_PI, ZERO_V3, DEG2RAD, BRDFTag
 
 from rich.console import Console
 CONSOLE = Console(width = 128)
@@ -38,8 +38,8 @@ class BRDF_np:
         @date: 2023-1-23
     """
     __all_albedo_name       = {"reflectance", "albedo", "k_d"}
-    __all_glossiness_name   = {"glossiness", "shininess", "k_g"}
-    __all_specular_name     = {"specular", "k_s"}
+    __all_glossiness_name   = {"glossiness", "shininess", "roughness", "sigma", "k_g"}
+    __all_specular_name     = {"specular", "ref_ior", "k_s"}
     # Attention: microfacet support will not be added recently
     __type_mapping          = {"blinn-phong": 0, "lambertian": 1, "specular": 2, "microfacet": 3, 
                                "mod-phong": 4, "fresnel-blend": 5, "oren-nayar": 6}
@@ -76,16 +76,48 @@ class BRDF_np:
             elif name in BRDF_np.__all_glossiness_name:
                 self.k_g = rgb_parse(rgb_node)
                 self.kg_default = False
+                if self.type_id == BRDFTag.MICROFACET:
+                    if name in BRDF_np.__all_glossiness_name / "roughness":
+                        CONSOLE.log(f":warning: Warning: Microfacet BRDF model should have attribute."
+                                    f"'roughness' instead of '{name}' as k_g.")
+                    elif name in BRDF_np.__all_specular_name / "":
+                        CONSOLE.log(f":warning: Warning: Microfacet BRDF model should have attribute."
+                                    f"'ref_ior' (Index of Refraction) instead of '{name}' as k_s.")
+                elif self.type_id == BRDFTag.OREN_NAYAR:
+                    if name in BRDF_np.__all_glossiness_name / "sigma":
+                        CONSOLE.log(f":warning: Warning: Oren-Nayar BRDF model should have attribute."
+                                    f"'sigma' instead of '{name}' as k_g.")
+                if name == "roughness":
+                    # convert from roughness to alpha values (for now, only used in microfacet BRDF)
+                    if (self.k_g > 1).any() or (self.k_g < 0).any():
+                        CONSOLE.log(f":warning: Warning: roughness for microfacet BRDF <{self.id}>"
+                                    " should be in range [0, 1]. Clamped to [0, 1].")
+                        self.k_g = self.k_g.clip(0, 1)
+                    self.k_g = BRDF_np.roughness_to_alpha(self.k_g)
+                elif name == "sigma":
+                    # convert from spherical guassian parameter to Oren-Nayar parameter
+                    sigma = self.k_g[0] * DEG2RAD
+                    sigma2 = sigma * sigma
+                    self.k_g[0] = 1 - (sigma2 / (2 * (sigma2 + 0.33)))
+                    self.k_g[1] = 0.45 * sigma2 / (sigma2 + 0.09)
+                    
         if not no_setup:
             self.setup()
+
+    @staticmethod
+    def roughness_to_alpha(roughness: np.ndarray) -> np.ndarray:
+        """ From PBRT-v3 core/microfacet.h: TrowbridgeReitzDistribution::RoughnessToAlpha """
+        x = np.log(np.maximum(roughness, 1e-3))
+        return 1.62142 + 0.819955 * x + 0.1734 * x * x + 0.0171201 * (x ** 3) + \
+               0.000640711 * (x ** 4)
 
     def setup(self):
         if self.type not in BRDF_np.__type_mapping:
             raise NotImplementedError(f"Unknown BRDF type: {self.type}")
         self.type_id = BRDF_np.__type_mapping[self.type]
-        if self.type_id == 2:
+        if self.type_id == BRDFTag.SPECULAR:
             self.is_delta = True
-        elif self.type_id == 5:             # precomputed coefficient for Fresnel Blend BRDF
+        elif self.type_id == BRDFTag.FRESNEL_BLEND:             # precomputed coefficient for Fresnel Blend BRDF
             self.k_g[2] = np.sqrt((self.k_g[0] + 1) * (self.k_g[1] + 1)) / (8. * np.pi)
 
     def export(self):
@@ -157,7 +189,7 @@ class BRDF:
             dot_view = ti.max(0.0, -tm.dot(ray_in, reflect_d))      # ray_in is on the opposite dir of reflected dir
             glossy = tm.pow(dot_view, self.k_g) * self.k_s
             spec = 0.5 * (self.k_g + 2.) * glossy * INV_PI * dot_normal
-            spec += self.eval_lambertian(it, ray_out)
+            spec += self.eval_lambertian(it, it.n_s, ray_out)
         return spec 
 
     @ti.func
@@ -168,7 +200,7 @@ class BRDF:
         spec = vec3([0, 0, 0])
         pdf = ti.select(it.is_tex_invalid(), self.k_d, it.tex).max()    # the max element of diffuse color is the pdf of sampling diffusive component
         if eps < pdf:                       # diffusive sampling
-            ray_out_d, spec, lmbt_pdf = self.sample_lambertian(it)   # we use "texture" anyway, since it is converted
+            ray_out_d, spec, lmbt_pdf = self.sample_lambertian(it, it.n_s)   # we use "texture" anyway, since it is converted
             pdf *= lmbt_pdf
         elif eps < pdf + self.k_s.max():    # specular sampling
             local_new_dir, pdf = mod_phong_hemisphere(self.mean[2])
@@ -235,7 +267,7 @@ class BRDF:
         ray_half, R = delocalize_rotate(it.n_s, local_new_dir)
         ray_out_d, pdf, is_valid = self.fresnel_blend_dir(incid, ray_half, it.n_s, power_coeff)
         if ti.random(float) > 0.5:
-            ray_out_d, _s, _p = self.sample_lambertian(it)
+            ray_out_d, _s, _p = self.sample_lambertian(it, it.n_s)
         pdf = 0.5 * (pdf + ti.abs(tm.dot(ray_out_d, it.n_s)) * INV_PI)
         spec = ti.select(is_valid, self.eval_fresnel_blend(it, incid, ray_out_d, R), ZERO_V3)
         return ray_out_d, spec, pdf
@@ -252,7 +284,7 @@ class BRDF:
     def sample_lambertian(self, it: ti.template(), normal: vec3):
         local_new_dir, pdf = cosine_hemisphere()
         ray_out_d, _ = delocalize_rotate(normal, local_new_dir)
-        spec = self.eval_lambertian(it, ray_out_d, normal)
+        spec = self.eval_lambertian(it, normal, ray_out_d)
         return ray_out_d, spec, pdf
 
     # ======================= Mirror-Specular ========================
@@ -276,8 +308,8 @@ class BRDF:
 
         sin_theta_i = raw_wi[1]
         sin_theta_o = raw_wo[1]
-        max_cos = 0
-        if sin_theta_i > 1e-4 and sin_theta_o > 1e-4:
+        max_cos = 0.
+        if sin_theta_i > 1e-5 and sin_theta_o > 1e-5:
             cos_phi_i = raw_wi[2]
             sin_phi_i = raw_wi[3] 
 
@@ -298,24 +330,26 @@ class BRDF:
             sin_alpha = sin_theta_i
             tan_beta = sin_theta_o / abs_cos_wo
         diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
-        return diffuse_color * INV_PI * (self.k_g[0] + self.k_g[1] * max_cos * sin_alpha * tan_beta)
+        return diffuse_color * INV_PI * (self.k_g[0] + self.k_g[1] * max_cos * sin_alpha * tan_beta) * ti.abs(raw_wo[0])
 
     # ============================================================================
 
     # ======================= Microfacet Torrance–Sparrow (PBR Glossy) =============================
 
     @ti.func
-    def sample_pbr_glossy(self, it: ti.template(), incid: vec3):
+    def sample_microfacet(self, it: ti.template(), incid: vec3):
         """ Note that for Torrance Sparrow and Oren-Nayar, alpha is converted from roughness and stored in k_g
             Also, incid ray points inwards
         """
-        local_wh, raw_vec = trow_reitz_sample_wh(-incid, self.k_g[0], self.k_g[1])
+        # It is pretty strange that sometimes we need to invert the direction
+        local_wh, raw_vec = trow_reitz_sample_wh(incid, it.n_s, self.k_g[0], self.k_g[1])
         half_vector, _ = delocalize_rotate(it.n_s, local_wh)
         dot_val = -tm.dot(incid, half_vector)
         ret_spec = ZERO_V3
         pdf = 1.0
+        ray_out_d = vec3([0, 1, 0])
         if dot_val > 0:
-            ray_out_d, _ = inci_reflect_dir(incid, it.n_s)
+            ray_out_d, _ = inci_reflect_dir(incid, half_vector)
             # it.n_s dot incid should be negative
             cos_theta_o = tm.dot(it.n_s, ray_out_d)
             cos_theta_i = tm.dot(it.n_s, incid)
@@ -324,35 +358,39 @@ class BRDF:
                 cos_theta_i = ti.abs(cos_theta_i)
                 cos_theta_o = ti.abs(cos_theta_o)
                 if cos_theta_o > EPS and cos_theta_i > EPS:
-                    ret_spec = self.eval_pbr_glossy_with_raw(it, half_vector, raw_vec, incid, ray_out_d)
-                    ret_spec /= (4 * cos_theta_o * cos_theta_i)
-                    pdf = trow_reitz_pdf(incid, half_vector, it.n_s)
-                    pdf /= 4 * dot_val
+                    ret_spec = self.eval_microfacet_with_raw(it, half_vector, raw_vec, incid, ray_out_d)
+                    ret_spec /= (4. * cos_theta_o * cos_theta_i)
+                    pdf = trow_reitz_pdf(-incid, half_vector, self.k_g, it.n_s)
+                    pdf /= 4. * dot_val
         return ray_out_d, ret_spec, pdf
     
     @ti.func
-    def eval_pbr_glossy_with_raw(self, it:ti.template(), wh: vec3, raw_vec: vec4, ray_in: vec3, ray_out: vec3):
-        """ The output of this function is not divided by 4 * cos_i * cos_o """
+    def eval_microfacet_with_raw(self, it:ti.template(), wh: vec3, raw_vec: vec4, ray_in: vec3, ray_out: vec3):
+        """ The output of this function is not divided by 4 * cos_i * cos_o 
+            Remember, all eval funcs will carry the cosine-term (except delta BRDF) 
+        """
         ret_spec = ZERO_V3
         if ti.abs(wh[0]) > EPS or ti.abs(wh[1]) > EPS or ti.abs(wh[2]) > EPS:
             wh = wh.normalized()
             dot_hk = tm.dot(wh, ray_out)
-            fresnel = fresnel_eval(dot_hk, self.mean[0], self.mean[1])
+            fresnel = fresnel_eval(dot_hk, self.k_s[0], self.k_s[1])
             diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
+            cosine_term = ti.abs(tm.dot(it.n_s, ray_out))
             ret_spec = diffuse_color * trow_reitz_D(raw_vec, self.k_g) * \
-                trow_reitz_G(-ray_in, ray_out, self.k_g) * fresnel
+                trow_reitz_G(-ray_in, ray_out, self.k_g, it.n_s) * fresnel * cosine_term
         return ret_spec
 
     @ti.func
-    def eval_pbr_glossy(self, it:ti.template(), ray_in: vec3, ray_out: vec3):
+    def eval_microfacet(self, it:ti.template(), ray_in: vec3, ray_out: vec3):
         ret_spec = ZERO_V3
         cos_theta_o = tm.dot(it.n_s, ray_out)
         cos_theta_i = tm.dot(it.n_s, ray_in)
-        if cos_theta_o * cos_theta_i < 0:
+        cos_mult = cos_theta_o * cos_theta_i
+        if cos_mult < 0.:
             wh = (ray_out - ray_in).normalized()
             raw_vec = convert_to_raw(wh, it.n_s)
-            ret_spec = self.eval_pbr_glossy_with_raw(it, raw_vec, ray_in, ray_out)
-            ret_spec /= (4 * cos_theta_o * cos_theta_i)
+            ret_spec = self.eval_microfacet_with_raw(it, wh, raw_vec, ray_in, ray_out)
+            ret_spec /= -4. * cos_mult
         return ret_spec 
 
     # ===================================================================================
@@ -368,16 +406,16 @@ class BRDF:
             if self._type == BRDFTag.BLING_PHONG:         # Blinn-Phong
                 ret_spec = self.eval_blinn_phong(it, incid, out)
             elif self._type == BRDFTag.LAMBERTIAN:       # Lambertian
-                ret_spec = self.eval_lambertian(it, out)
+                ret_spec = self.eval_lambertian(it, it.n_s, out)
             elif self._type == BRDFTag.MICROFACET:
-                ret_spec = self.eval_pbr_glossy(it, incid, out)
+                ret_spec = self.eval_microfacet(it, incid, out)
             elif self._type == BRDFTag.MOD_PHONG:
                 ret_spec = self.eval_mod_phong(it, incid, out)
             elif self._type == BRDFTag.FRESNEL_BLEND:
                 R = rotation_between(vec3([0, 1, 0]), it.n_s)
                 ret_spec = self.eval_fresnel_blend(it, incid, out, R)
             elif self._type == BRDFTag.OREN_NAYAR:
-                ret_spec = self.eval_oren_nayar(it, out)
+                ret_spec = self.eval_oren_nayar(it, incid, out)
         return ret_spec
     
     @ti.func
@@ -392,14 +430,14 @@ class BRDF:
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
         pdf      = 1.0
-        if self._type == BRDFTag.BLING_PHONG or self._type == BRDFTag.OREN_NAYAR:         # diffuse sampling
+        if self._type == BRDFTag.BLING_PHONG:         # bling-phong glossy sampling
             ret_dir, ret_spec, pdf = self.sample_blinn_phong(it, incid)
-        elif self._type == BRDFTag.LAMBERTIAN:       # Lambertian
+        elif self._type == BRDFTag.LAMBERTIAN or self._type == BRDFTag.OREN_NAYAR:       # Lambertian
             ret_dir, ret_spec, pdf = self.sample_lambertian(it, it.n_s)
         elif self._type == BRDFTag.SPECULAR:         # Specular - specular has no cosine attenuation
             ret_dir, ret_spec, pdf = self.sample_specular(it, incid, it.n_s)
         elif self._type == BRDFTag.MICROFACET:       # Microfacet
-            ret_dir, ret_spec, pdf = self.sample_pbr_glossy(it, incid)
+            ret_dir, ret_spec, pdf = self.sample_microfacet(it, incid)
         elif self._type == BRDFTag.MOD_PHONG:        # Modified-Phong
             ret_dir, ret_spec, pdf = self.sample_mod_phong(it, incid)
         elif self._type == BRDFTag.FRESNEL_BLEND:    # Fresnel-Blend
@@ -424,11 +462,11 @@ class BRDF:
         if dot_outdir * dot_indir < 0.:         # same hemisphere         
             if self._type == BRDFTag.BLING_PHONG:
                 pdf = dot_outdir * INV_PI       # dot is cosine term
-            elif self._type == BRDFTag.LAMBERTIAN:
+            elif self._type == BRDFTag.LAMBERTIAN or self._type == BRDFTag.OREN_NAYAR:
                 pdf = dot_outdir * INV_PI
             elif self._type == BRDFTag.MICROFACET:
-                # TODO: to be finished
-                pdf = 0.
+                wh = (outdir - incid).normalized()
+                pdf = trow_reitz_pdf(-incid, wh, self.k_g, it.n_s) / (-4. * tm.dot(wh, incid))
             elif self._type == BRDFTag.MOD_PHONG:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, it.n_s)
@@ -444,6 +482,4 @@ class BRDF:
                 cos_phi2, sin_phi2 = self.fresnel_cos2_sin2(half_vec, it.n_s, R, dot_half)
                 pdf = self.k_g[2] * tm.pow(dot_half, self.k_g[0] * cos_phi2 + self.k_g[1] * sin_phi2) / ti.abs(tm.dot(incid, half_vec))
                 pdf = 0.5 * (pdf + dot_outdir * INV_PI)
-            elif self._type == BRDFTag.OREN_NAYAR:
-                pdf = 0.
         return pdf

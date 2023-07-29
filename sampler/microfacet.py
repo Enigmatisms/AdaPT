@@ -34,25 +34,26 @@ def trow_reitz_D(raw_vec: vec4, alphas: vec3):
             half vector back to these values
             raw_vec: [cos_theta, sin_theta, cos_phi, sin_phi]
     """
-    pdf = 0
-    if raw_vec[0] > 0:
+    pdf = 0.
+    if raw_vec[0] > 0.:
         wh_dot2 = raw_vec[0] * raw_vec[0]
         wh_dot4 = wh_dot2 * wh_dot2
         tan_theta2 = raw_vec[1] * raw_vec[1] / wh_dot2
         alpha_x, alpha_y, _ = alphas
-        pdf = ti.exp(-tan_theta2 * (raw_vec[2] / (alpha_x * alpha_x) +
-                                  raw_vec[3] / (alpha_y * alpha_y))) / \
-           (ti.pi * alpha_x * alpha_y * wh_dot4)
+        e = (raw_vec[2] * raw_vec[2] / (alpha_x * alpha_x) + raw_vec[3] * raw_vec[3] / (alpha_y * alpha_y)) * tan_theta2
+        pdf = 1. / (tm.pi * alpha_x * alpha_y * wh_dot4 * (1. + e) * (1. + e))
     return pdf
 
 @ti.func
-def convert_to_raw(d_in: vec3, normal: vec3) -> vec4:
+def convert_to_raw(d_in: vec3, normal: ti.template(), localize: bool = True) -> vec4:
     """ Sometimes... we won't have a raw_vec, therefore we need to produce it
         get cos_theta / sin_theta / cos_phi / sin_phi via d_in w.r.t to the normal
         note that sin_theta lies in [0, 1], cos_theta, however, is in [-1, 1]
     """
     # vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta])
-    local_dir = localize_rotate(normal, d_in)
+    local_dir = d_in
+    if localize:
+        local_dir = localize_rotate(normal, d_in)
     cos_theta = local_dir[1]
     sin_theta = ti.sqrt(ti.max(0., 1. - cos_theta * cos_theta))
     cos_phi = 1.
@@ -63,9 +64,12 @@ def convert_to_raw(d_in: vec3, normal: vec3) -> vec4:
     return vec4([cos_theta, sin_theta, cos_phi, sin_phi])
 
 @ti.func
-def trow_reitz_lambda(raw_vec: vec4, alphas: vec3):
-    """ Lambda for Trowbridge-Reitz """
-    value = 0
+def trow_reitz_lambda(dir_vec: vec3, alphas: ti.template(), normal: ti.template()):
+    """ Lambda for Trowbridge-Reitz.
+        dir_vec is vec3 which points outwards
+    """
+    value = 0.
+    raw_vec = convert_to_raw(dir_vec, normal)
     abs_cos_theta = ti.abs(raw_vec[0])
     if abs_cos_theta > __EPS__:
         abs_tan_theta = raw_vec[1] / abs_cos_theta
@@ -110,12 +114,12 @@ def __trow_reitz_sample(cos_theta: float) -> SampledValues:
     return SampledValues(slope_x = slope_x, slope_y = slope_y)
 
 @ti.func
-def trow_reitz_sample(incid: vec3, normal: vec3, alpha_x: float, alpha_y: float):
+def trow_reitz_sample(incid: vec3, normal: ti.template(), alpha_x: float, alpha_y: float):
     """ This is the callable Trowbridge-Reitz sampling function
         this normal vector is 
         TODO: please be careful about the incident direction (should be pointing outwards)
     """
-    coeff = vec3([alpha_x, alpha_y, 1])
+    coeff = vec3([alpha_x, 1., alpha_y])
     stretch_incid = (incid * coeff).normalized()
 
     cos_theta, _, cos_phi, sin_phi = convert_to_raw(stretch_incid, normal)
@@ -134,13 +138,13 @@ def trow_reitz_sample(incid: vec3, normal: vec3, alpha_x: float, alpha_y: float)
     return vec3([-slope_x, 1., -slope_y]).normalized()
 
 @ti.func
-def trow_reitz_G1(direct: vec3, alphas: vec3):
-    return 1. / (1. + trow_reitz_lambda(direct, alphas))
+def trow_reitz_G1(direct: vec3, alphas: ti.template(), normal: ti.template()):
+    return 1. / (1. + trow_reitz_lambda(direct, alphas, normal))
 
 @ti.func
-def trow_reitz_G(incid: vec3, outdir: vec3, alphas: vec3):
+def trow_reitz_G(incid: vec3, outdir: vec3, alphas: ti.template(), normal: ti.template()):
     """ TODO: check the direction for the incid/outdir, which should point outwards """
-    return 1. / (1. + trow_reitz_lambda(incid, alphas) + trow_reitz_lambda(outdir, alphas))
+    return 1. / (1. + trow_reitz_lambda(incid, alphas, normal) + trow_reitz_lambda(outdir, alphas, normal))
 
 @ti.func
 def trow_reitz_sample_wh_whole(incid: vec3, alpha_x: float, alpha_y: float):
@@ -148,43 +152,45 @@ def trow_reitz_sample_wh_whole(incid: vec3, alpha_x: float, alpha_y: float):
         We follow a backward path trace convention, but to be more 'intuitive'
         incid is actually the ray (starting from camera) direction (for UDPT)
     """
-    cos_theta = 0
+    cos_theta = 0.
     u1 = ti.random(float)
     u2 = ti.random(float)
     phi = PI2 * u2
     if alpha_x == alpha_y:
         tan_theta2 = alpha_x * alpha_x * u1 / (1. - u1)
-        cos_theta = 1. / ti.sqrt(1 + tan_theta2)
+        cos_theta = 1. / ti.sqrt(1. + tan_theta2)
     else:
         phi = tm.atan2(alpha_y * ti.tan(PI2 * u2 + PI_DIV2), alpha_x)
         if u2 > 0.5:
-            phi += ti.pi
+            phi += tm.pi
         alpha_x2 = alpha_x * alpha_x
         alpha_y2 = alpha_y * alpha_y
         alpha2 = 1. / (cos_phi * cos_phi / alpha_x2 + sin_phi * sin_phi / alpha_y2)
-        tan_theta2 = alpha2 * u1 / (1 - u1)
-        cos_theta = 1 / ti.sqrt(1 + tan_theta2)
+        tan_theta2 = alpha2 * u1 / (1. - u1)
+        cos_theta = 1. / ti.sqrt(1. + tan_theta2)
     sin_phi = tm.sin(phi)
     cos_phi = tm.cos(phi)
     sin_theta = ti.sqrt(ti.max(0., 1. - cos_theta * cos_theta))
     wh = vec3([cos_phi * sin_theta, cos_theta, sin_phi * sin_theta])
     raw_vec = vec4([cos_theta, sin_theta, cos_phi, sin_phi])
-    if tm.dot(wh, incid) < 0:
+    if tm.dot(wh, incid) < 0.:
         raw_vec = vec4([-cos_theta, sin_theta, -cos_phi, -sin_phi])
         wh = -wh
     return wh, raw_vec
 
 @ti.func
-def trow_reitz_sample_wh(incid: vec3, normal: vec3, alpha_x: float, alpha_y: float):
+def trow_reitz_sample_wh(incid: vec3, normal: ti.template(), alpha_x: float, alpha_y: float):
     dot_incid = tm.dot(incid, normal)
-    flip = dot_incid > 0
-    wh = trow_reitz_sample(ti.select(flip, incid, -incid), alpha_x, alpha_y)
+    flip = dot_incid > 0.
+    wh = trow_reitz_sample(ti.select(flip, incid, -incid), normal, alpha_x, alpha_y)
     if flip:
         wh = -wh
-    return wh
+    raw_vec = convert_to_raw(wh, normal, localize = False)
+    return wh, raw_vec
 
 @ti.func
-def trow_reitz_pdf(incid: vec3, wh: vec3, normal: vec3):
+def trow_reitz_pdf(incid: vec3, wh: vec3, alphas: ti.template(), normal: ti.template()):
     """ wo in the pbr-book actually means incident ray (ray from camera) """
-    return trow_reitz_D(wh) * trow_reitz_G1(incid) * ti.abs(tm.dot(wh, incid)) / \
+    wh_raw_vec = convert_to_raw(wh, normal)
+    return trow_reitz_D(wh_raw_vec, alphas) * trow_reitz_G1(incid, alphas, normal) * ti.abs(tm.dot(wh, incid)) / \
         ti.abs(tm.dot(normal, incid))
