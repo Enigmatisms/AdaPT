@@ -82,8 +82,8 @@
 
 	<brdf type="microfacet" id="pbr-glossy">
 		<rgb name="k_d" value="#AA9182"/>
-		<rgb name="roughness" r="0.05" g="0.05" b="0.0"/>
-		<rgb name="ref_ior" r="1.0" g="10"/>
+		<rgb name="roughness" r="0.001" g="0.001" b="0.0"/>
+		<rgb name="ref_ior" r="1.0" g="15"/>
 	</brdf>
 
 	<brdf type="oren-nayar" id="pbr-diffuse">

@@ -7,12 +7,12 @@
 import numpy as np
 import taichi as ti
 import taichi.math as tm
-from taichi.math import vec3, mat3
+from taichi.math import vec3, vec4, mat3
 from numpy import ndarray as Arr
 from scipy.spatial.transform import Rotation as Rot
 
 __all__ = ['fov2focal', 'np_rotation_between', 'rotation_between', 
-           'delocalize_rotate', 'localize_rotate', 'world_frame']
+           'delocalize_rotate', 'localize_rotate', 'world_frame', 'convert_to_raw']
 
 colv3 = ti.types.matrix(3, 1, float)        # column vector
 rowv3 = ti.types.matrix(1, 3, float)        # row vector
@@ -66,6 +66,25 @@ def rotation_between(fixed: vec3, target: vec3) -> mat3:
     else:
         ret_R = ti.Matrix.diag(3, tm.sign(cos_theta))
     return ret_R
+
+@ti.func
+def convert_to_raw(d_in: vec3, normal: ti.template(), localize: bool = True):
+    """ Sometimes... we won't have a raw_vec, therefore we need to produce it
+        get cos_theta / sin_theta / cos_phi / sin_phi via d_in w.r.t to the normal
+        note that sin_theta lies in [0, 1], cos_theta, however, is in [-1, 1]
+    """
+    # vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta])
+    local_dir = d_in
+    if localize:
+        local_dir = localize_rotate(normal, d_in)
+    cos_theta = local_dir[1]
+    sin_theta = ti.sqrt(ti.max(0., 1. - cos_theta * cos_theta))
+    cos_phi = 1.
+    sin_phi = 0.
+    if sin_theta > 1e-5:
+        cos_phi = local_dir[0] / sin_theta
+        sin_phi = local_dir[2] / sin_theta
+    return vec4([cos_theta, sin_theta, cos_phi, sin_phi])
 
 @ti.func
 def delocalize_rotate(anchor: vec3, local_dir: vec3):

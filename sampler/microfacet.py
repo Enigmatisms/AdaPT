@@ -12,10 +12,10 @@
 import taichi as ti
 import taichi.math as tm
 from taichi.math import vec3, vec4
-from la.cam_transform import localize_rotate
+from la.cam_transform import convert_to_raw
 from renderer.constants import PI2, PI_DIV2
 
-__all__ = ["trow_reitz_D", "trow_reitz_G", "trow_reitz_sample_wh", "trow_reitz_pdf", "convert_to_raw"]
+__all__ = ["trow_reitz_D", "trow_reitz_G", "trow_reitz_sample_wh", "trow_reitz_pdf"]
 
 __EPS__ = 1e-5
 
@@ -43,25 +43,6 @@ def trow_reitz_D(raw_vec: vec4, alphas: vec3):
         e = (raw_vec[2] * raw_vec[2] / (alpha_x * alpha_x) + raw_vec[3] * raw_vec[3] / (alpha_y * alpha_y)) * tan_theta2
         pdf = 1. / (tm.pi * alpha_x * alpha_y * wh_dot4 * (1. + e) * (1. + e))
     return pdf
-
-@ti.func
-def convert_to_raw(d_in: vec3, normal: ti.template(), localize: bool = True) -> vec4:
-    """ Sometimes... we won't have a raw_vec, therefore we need to produce it
-        get cos_theta / sin_theta / cos_phi / sin_phi via d_in w.r.t to the normal
-        note that sin_theta lies in [0, 1], cos_theta, however, is in [-1, 1]
-    """
-    # vec3([tm.cos(phi) * sin_theta, cos_theta, tm.sin(phi) * sin_theta])
-    local_dir = d_in
-    if localize:
-        local_dir = localize_rotate(normal, d_in)
-    cos_theta = local_dir[1]
-    sin_theta = ti.sqrt(ti.max(0., 1. - cos_theta * cos_theta))
-    cos_phi = 1.
-    sin_phi = 0.
-    if sin_theta > __EPS__:
-        cos_phi = local_dir[0] / sin_theta
-        sin_phi = local_dir[2] / sin_theta
-    return vec4([cos_theta, sin_theta, cos_phi, sin_phi])
 
 @ti.func
 def trow_reitz_lambda(dir_vec: vec3, alphas: ti.template(), normal: ti.template()):

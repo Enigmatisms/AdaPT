@@ -8,6 +8,9 @@
     - Specular + OrenNayar = Smooth plastic
     - Specular + Glossy = Coated metal
 """
+
+__ENABLE_MICROFACET__ = False
+
 import sys
 sys.path.append("..")
 
@@ -19,10 +22,12 @@ from taichi.math import vec3, vec4, mat3
 
 from la.geo_optics import *
 from la.cam_transform import *
-from sampler.microfacet import *
 from sampler.general_sampling import *
 from parsers.general_parser import rgb_parse
 from renderer.constants import INV_PI, ZERO_V3, DEG2RAD, BRDFTag
+
+if ti.static(__ENABLE_MICROFACET__):
+    from sampler.microfacet import *
 
 from rich.console import Console
 CONSOLE = Console(width = 128)
@@ -46,7 +51,7 @@ class BRDF_np:
     
     def __init__(self, elem: xet.Element, no_setup = False):
         self.type: str = elem.get("type")
-        self.type_id = -1
+        self.type_id = BRDF_np.__type_mapping[self.type]
         self.id: str = elem.get("id")
         self.k_d = np.ones(3, np.float32)
         self.k_s = np.zeros(3, np.float32)
@@ -56,6 +61,12 @@ class BRDF_np:
         self.ks_default = True
         self.kg_default = True
         self.uv_coords = None
+        if not __ENABLE_MICROFACET__ and self.type_id == BRDFTag.MICROFACET:
+            CONSOLE.log(f":warning: Warning: BRDF <{self.id}> is microfacet while microfacet BRDF is not enabled.")
+            CONSOLE.log(f"Falling back to Lambertian BRDF for BRDF <{self.id}>")
+            CONSOLE.log("Try setting `__ENABLE_MICROFACET__ = True`, while this might slow down JIT compilation.")
+            self.type = "lambertian"
+            self.type_id = BRDFTag.LAMBERTIAN
 
         texture_nodes = elem.findall("texture")
         if len(texture_nodes) > 1:
@@ -114,7 +125,6 @@ class BRDF_np:
     def setup(self):
         if self.type not in BRDF_np.__type_mapping:
             raise NotImplementedError(f"Unknown BRDF type: {self.type}")
-        self.type_id = BRDF_np.__type_mapping[self.type]
         if self.type_id == BRDFTag.SPECULAR:
             self.is_delta = True
         elif self.type_id == BRDFTag.FRESNEL_BLEND:             # precomputed coefficient for Fresnel Blend BRDF
@@ -336,62 +346,78 @@ class BRDF:
 
     # ======================= Microfacet Torrance–Sparrow (PBR Glossy) =============================
 
-    @ti.func
-    def sample_microfacet(self, it: ti.template(), incid: vec3):
-        """ Note that for Torrance Sparrow and Oren-Nayar, alpha is converted from roughness and stored in k_g
-            Also, incid ray points inwards
-        """
-        # It is pretty strange that sometimes we need to invert the direction
-        local_wh, raw_vec = trow_reitz_sample_wh(incid, it.n_s, self.k_g[0], self.k_g[1])
-        half_vector, _ = delocalize_rotate(it.n_s, local_wh)
-        dot_val = -tm.dot(incid, half_vector)
-        ret_spec = ZERO_V3
-        pdf = 1.0
-        ray_out_d = vec3([0, 1, 0])
-        if dot_val > 0:
-            ray_out_d, _ = inci_reflect_dir(incid, half_vector)
-            # it.n_s dot incid should be negative
-            cos_theta_o = tm.dot(it.n_s, ray_out_d)
-            cos_theta_i = tm.dot(it.n_s, incid)
+    if ti.static(__ENABLE_MICROFACET__):
+        @ti.func
+        def sample_microfacet(self, it: ti.template(), incid: vec3):
+            """ Note that for Torrance Sparrow and Oren-Nayar, alpha is converted from roughness and stored in k_g
+                Also, incid ray points inwards
+            """
+            # It is pretty strange that sometimes we need to invert the direction
+            local_wh, raw_vec = trow_reitz_sample_wh(incid, it.n_s, self.k_g[0], self.k_g[1])
+            half_vector, _ = delocalize_rotate(it.n_s, local_wh)
+            dot_val = -tm.dot(incid, half_vector)
+            ret_spec = ZERO_V3
+            pdf = 1.0
+            ray_out_d = vec3([0, 1, 0])
+            if dot_val > 0:
+                ray_out_d, _ = inci_reflect_dir(incid, half_vector)
+                # it.n_s dot incid should be negative
+                cos_theta_o = tm.dot(it.n_s, ray_out_d)
+                cos_theta_i = tm.dot(it.n_s, incid)
 
-            if cos_theta_o * cos_theta_i < 0:
-                cos_theta_i = ti.abs(cos_theta_i)
-                cos_theta_o = ti.abs(cos_theta_o)
-                if cos_theta_o > EPS and cos_theta_i > EPS:
-                    ret_spec = self.eval_microfacet_with_raw(it, half_vector, raw_vec, incid, ray_out_d)
-                    ret_spec /= (4. * cos_theta_o * cos_theta_i)
-                    pdf = trow_reitz_pdf(-incid, half_vector, self.k_g, it.n_s)
-                    pdf /= 4. * dot_val
-        return ray_out_d, ret_spec, pdf
-    
-    @ti.func
-    def eval_microfacet_with_raw(self, it:ti.template(), wh: vec3, raw_vec: vec4, ray_in: vec3, ray_out: vec3):
-        """ The output of this function is not divided by 4 * cos_i * cos_o 
-            Remember, all eval funcs will carry the cosine-term (except delta BRDF) 
-        """
-        ret_spec = ZERO_V3
-        if ti.abs(wh[0]) > EPS or ti.abs(wh[1]) > EPS or ti.abs(wh[2]) > EPS:
-            wh = wh.normalized()
-            dot_hk = tm.dot(wh, ray_out)
-            fresnel = fresnel_eval(dot_hk, self.k_s[0], self.k_s[1])
-            diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
-            cosine_term = ti.abs(tm.dot(it.n_s, ray_out))
-            ret_spec = diffuse_color * trow_reitz_D(raw_vec, self.k_g) * \
-                trow_reitz_G(-ray_in, ray_out, self.k_g, it.n_s) * fresnel * cosine_term
-        return ret_spec
+                if cos_theta_o * cos_theta_i < 0:
+                    cos_theta_i = ti.abs(cos_theta_i)
+                    cos_theta_o = ti.abs(cos_theta_o)
+                    if cos_theta_o > EPS and cos_theta_i > EPS:
+                        ret_spec = self.eval_microfacet_with_raw(it, half_vector, raw_vec, incid, ray_out_d)
+                        ret_spec /= (4. * cos_theta_o * cos_theta_i)
+                        pdf = trow_reitz_pdf(-incid, half_vector, self.k_g, it.n_s)
+                        pdf /= 4. * dot_val
+            return ray_out_d, ret_spec, pdf
 
-    @ti.func
-    def eval_microfacet(self, it:ti.template(), ray_in: vec3, ray_out: vec3):
-        ret_spec = ZERO_V3
-        cos_theta_o = tm.dot(it.n_s, ray_out)
-        cos_theta_i = tm.dot(it.n_s, ray_in)
-        cos_mult = cos_theta_o * cos_theta_i
-        if cos_mult < 0.:
-            wh = (ray_out - ray_in).normalized()
-            raw_vec = convert_to_raw(wh, it.n_s)
-            ret_spec = self.eval_microfacet_with_raw(it, wh, raw_vec, ray_in, ray_out)
-            ret_spec /= -4. * cos_mult
-        return ret_spec 
+        @ti.func
+        def eval_microfacet_with_raw(self, it:ti.template(), wh: vec3, raw_vec: vec4, ray_in: vec3, ray_out: vec3):
+            """ The output of this function is not divided by 4 * cos_i * cos_o 
+                Remember, all eval funcs will carry the cosine-term (except delta BRDF) 
+            """
+            ret_spec = ZERO_V3
+            if ti.abs(wh[0]) > EPS or ti.abs(wh[1]) > EPS or ti.abs(wh[2]) > EPS:
+                wh = wh.normalized()
+                dot_hk = tm.dot(wh, ray_out)
+                fresnel = fresnel_eval(dot_hk, self.k_s[0], self.k_s[1])
+                diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
+                cosine_term = ti.abs(tm.dot(it.n_s, ray_out))
+                ret_spec = diffuse_color * trow_reitz_D(raw_vec, self.k_g) * \
+                    trow_reitz_G(-ray_in, ray_out, self.k_g, it.n_s) * fresnel * cosine_term
+            return ret_spec
+
+        @ti.func
+        def eval_microfacet(self, it:ti.template(), ray_in: vec3, ray_out: vec3):
+            ret_spec = ZERO_V3
+            cos_theta_o = tm.dot(it.n_s, ray_out)
+            cos_theta_i = tm.dot(it.n_s, ray_in)
+            cos_mult = cos_theta_o * cos_theta_i
+            if cos_mult < 0.:
+                wh = (ray_out - ray_in).normalized()
+                raw_vec = convert_to_raw(wh, it.n_s)
+                ret_spec = self.eval_microfacet_with_raw(it, wh, raw_vec, ray_in, ray_out)
+                ret_spec /= -4. * cos_mult
+            return ret_spec 
+    else:
+        """ Since microfacet functions can slow down JIT compilation (multiple times)
+            Normally I do not enable microfacet BRDF, so use FresnelBlend / Modified Phong instead
+        """
+        @ti.func
+        def sample_microfacet(self, _it: ti.template(), _incid: vec3):
+            return vec3([0, 1, 0]), ZERO_V3, 1.0
+        
+        @ti.func
+        def eval_microfacet_with_raw(self, _it:ti.template(), _wh: vec3, _raw_vec: vec4, _ray_in: vec3, _ray_out: vec3):
+            return ZERO_V3
+        
+        @ti.func
+        def eval_microfacet(self, _it:ti.template(), _ray_in: vec3, _ray_out: vec3):
+            return ZERO_V3
 
     # ===================================================================================
 
@@ -464,9 +490,6 @@ class BRDF:
                 pdf = dot_outdir * INV_PI       # dot is cosine term
             elif self._type == BRDFTag.LAMBERTIAN or self._type == BRDFTag.OREN_NAYAR:
                 pdf = dot_outdir * INV_PI
-            elif self._type == BRDFTag.MICROFACET:
-                wh = (outdir - incid).normalized()
-                pdf = trow_reitz_pdf(-incid, wh, self.k_g, it.n_s) / (-4. * tm.dot(wh, incid))
             elif self._type == BRDFTag.MOD_PHONG:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, it.n_s)
@@ -482,4 +505,9 @@ class BRDF:
                 cos_phi2, sin_phi2 = self.fresnel_cos2_sin2(half_vec, it.n_s, R, dot_half)
                 pdf = self.k_g[2] * tm.pow(dot_half, self.k_g[0] * cos_phi2 + self.k_g[1] * sin_phi2) / ti.abs(tm.dot(incid, half_vec))
                 pdf = 0.5 * (pdf + dot_outdir * INV_PI)
+            else:
+                if ti.static(__ENABLE_MICROFACET__):
+                    if self._type == BRDFTag.MICROFACET:
+                        wh = (outdir - incid).normalized()
+                        pdf = trow_reitz_pdf(-incid, wh, self.k_g, it.n_s) / (-4. * tm.dot(wh, incid))
         return pdf

@@ -22,6 +22,7 @@ from emitters.abtract_source import LightSource, TaichiSource
 
 from bxdf.brdf import BRDF
 from bxdf.bsdf import BSDF, BSDF_np
+from bxdf.mixture import BxDFMixture
 from bxdf.texture import Texture, Texture_np
 from parsers.opts import get_options
 from parsers.obj_desc import ObjDescriptor
@@ -80,6 +81,7 @@ class PathTracer(TracerBase):
         self.src_field  = TaichiSource.field()
         self.brdf_field = BRDF.field()
         self.bsdf_field = BSDF.field()
+        self.mix_field  = BxDFMixture.field()
 
         # These four texture mappings might be accessed with the same pattern
         self.albedo_map    = Texture.field()
@@ -92,9 +94,12 @@ class PathTracer(TracerBase):
 
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
         self.obj_nodes = ti.root.bitmasked(ti.i, self.num_objects)
-        self.obj_nodes.place(self.brdf_field)                              # BRDF Taichi storage
+        self.mix_nodes = ti.root.pointer(ti.i, self.num_objects)
+        self.obj_nodes.place(self.brdf_field)                               # BRDF Taichi storage
+        self.mix_nodes.place(self.mix_field)                                # BRDF Taichi storage
         ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
         ti.root.dense(ti.i, self.num_objects).place(self.albedo_map, self.normal_map, self.bump_map, self.roughness_map)
+
 
         if prop["packed_textures"] is None:
             self.albedo_img    = ti.Vector.field(3, float, (1, 1))
@@ -459,6 +464,7 @@ class PathTracer(TracerBase):
             else:                   # is_mi implys is_scattering = True
                 ret_spec.fill(self.bsdf_field[it.obj_id].medium.eval(incid, out))
         else:                       # surface interaction
+            # TODO: evaluation will be mixture based
             if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
                 if ti.static(self.brdf_two_sides):
                     dot_res = tm.dot(incid, it.n_s)
