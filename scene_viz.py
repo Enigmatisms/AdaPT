@@ -173,7 +173,7 @@ if __name__ == "__main__":
     ti.init(arch = ti.vulkan, default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path)
     vertex_field = ti.Vector.field(3, float, 8)
     input_folder = os.path.join(options.input_path, options.scene)
-    _, array_info, all_objs, configs = scene_parsing(input_folder, options.name)  # complex_cornell
+    _, array_info, all_objs, _, configs = scene_parsing(input_folder, options.name)  # complex_cornell
 
     viz = Visualizer(array_info, all_objs, configs)
     init_R = Rot.from_matrix(viz.cam_r[None].to_numpy()).as_euler('zxy', degrees = True)

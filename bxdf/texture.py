@@ -81,7 +81,7 @@ class Texture_np:
             if name in {"scale_u", "scale_v"}:
                 self.__setattr__(name, get(float_n, "value"))
             else:
-                CONSOLE.log(f"[yellow]:warning: Warning: <{name}> not used in loading textures")
+                CONSOLE.log(f"[yellow][yellow]Warning: [/yellow]<{name}> not used in loading textures")
 
     def export(self):
         _type = Texture_np.MODE_CHECKER if self.type == "checkerboard" else Texture_np.MODE_IMAGE

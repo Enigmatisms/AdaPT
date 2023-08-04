@@ -51,11 +51,3 @@ class LinearNode:
     @ti.func
     def get_range(self):
         return self.base, self.base + self.prim_cnt
-    
-def export_python_bvh(ti_nodes: ti.template(), ti_bvhs: ti.template(), lin_nodes: list, lin_bvhs: list):
-    for i, node in enumerate(lin_nodes):
-        ti_nodes[i] = LinearNode(mini = vec3(node.mini), maxi = vec3(node.maxi),
-            base = node.base, prim_cnt = node.prim_cnt, all_offset = node.all_offset
-        )
-    for i, bvh in enumerate(lin_bvhs):
-        ti_bvhs[i] = LinearBVH(mini = vec3(bvh.mini), maxi = vec3(bvh.maxi), obj_idx = bvh.obj_idx, prim_idx = bvh.prim_idx)

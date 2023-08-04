@@ -20,6 +20,7 @@ import taichi.math as tm
 import xml.etree.ElementTree as xet
 from taichi.math import vec3, vec4, mat3
 
+from bxdf.misc import *
 from la.geo_optics import *
 from la.cam_transform import *
 from sampler.general_sampling import *
@@ -47,7 +48,7 @@ class BRDF_np:
     __all_specular_name     = {"specular", "ref_ior", "k_s"}
     # Attention: microfacet support will not be added recently
     __type_mapping          = {"blinn-phong": 0, "lambertian": 1, "specular": 2, "microfacet": 3, 
-                               "mod-phong": 4, "fresnel-blend": 5, "oren-nayar": 6}
+                               "mod-phong": 4, "fresnel-blend": 5, "oren-nayar": 6, "thin-coat": 7}
     
     def __init__(self, elem: xet.Element, no_setup = False):
         self.type: str = elem.get("type")
@@ -62,7 +63,7 @@ class BRDF_np:
         self.kg_default = True
         self.uv_coords = None
         if not __ENABLE_MICROFACET__ and self.type_id == BRDFTag.MICROFACET:
-            CONSOLE.log(f":warning: Warning: BRDF <{self.id}> is microfacet while microfacet BRDF is not enabled.")
+            CONSOLE.log(f"[yellow]Warning: [/yellow]BRDF <{self.id}> is microfacet while microfacet BRDF is not enabled.")
             CONSOLE.log(f"Falling back to Lambertian BRDF for BRDF <{self.id}>")
             CONSOLE.log("Try setting `__ENABLE_MICROFACET__ = True`, while this might slow down JIT compilation.")
             self.type = "lambertian"
@@ -70,10 +71,10 @@ class BRDF_np:
 
         texture_nodes = elem.findall("texture")
         if len(texture_nodes) > 1:
-            CONSOLE.log(f":warning: Warning: Only one texture is supported in a BR(S)DF. Some textures might be shadowed for <{self.id}>.")
+            CONSOLE.log(f"[yellow]Warning: [/yellow]Only one texture is supported in a BR(S)DF. Some textures might be shadowed for <{self.id}>.")
         rgb_nodes = elem.findall("rgb")
         if len(rgb_nodes) == 0 and len(texture_nodes) == 0:
-            CONSOLE.log(f":warning: Warning: BSDF <{self.id}> has no surface color / textures defined.")
+            CONSOLE.log(f"[yellow]Warning: [/yellow]BSDF <{self.id}> has no surface color / textures defined.")
         for rgb_node in rgb_nodes:
             name = rgb_node.get("name")
             if name is None: 
@@ -88,20 +89,20 @@ class BRDF_np:
                 self.k_g = rgb_parse(rgb_node)
                 self.kg_default = False
                 if self.type_id == BRDFTag.MICROFACET:
-                    if name in BRDF_np.__all_glossiness_name / "roughness":
-                        CONSOLE.log(f":warning: Warning: Microfacet BRDF model should have attribute."
+                    if name in BRDF_np.__all_glossiness_name - {"roughness"}:
+                        CONSOLE.log(f"[yellow]Warning: [/yellow]Microfacet BRDF model should have attribute."
                                     f"'roughness' instead of '{name}' as k_g.")
-                    elif name in BRDF_np.__all_specular_name / "":
-                        CONSOLE.log(f":warning: Warning: Microfacet BRDF model should have attribute."
+                    elif name in BRDF_np.__all_specular_name - {"ref_ior"}:
+                        CONSOLE.log(f"[yellow]Warning: [/yellow]Microfacet BRDF model should have attribute."
                                     f"'ref_ior' (Index of Refraction) instead of '{name}' as k_s.")
                 elif self.type_id == BRDFTag.OREN_NAYAR:
-                    if name in BRDF_np.__all_glossiness_name / "sigma":
-                        CONSOLE.log(f":warning: Warning: Oren-Nayar BRDF model should have attribute."
+                    if name in BRDF_np.__all_glossiness_name - {"sigma"}:
+                        CONSOLE.log(f"[yellow]Warning: [/yellow]Oren-Nayar BRDF model should have attribute."
                                     f"'sigma' instead of '{name}' as k_g.")
                 if name == "roughness":
                     # convert from roughness to alpha values (for now, only used in microfacet BRDF)
                     if (self.k_g > 1).any() or (self.k_g < 0).any():
-                        CONSOLE.log(f":warning: Warning: roughness for microfacet BRDF <{self.id}>"
+                        CONSOLE.log(f"[yellow]Warning: [/yellow]roughness for microfacet BRDF <{self.id}>"
                                     " should be in range [0, 1]. Clamped to [0, 1].")
                         self.k_g = self.k_g.clip(0, 1)
                     self.k_g = BRDF_np.roughness_to_alpha(self.k_g)
@@ -141,6 +142,67 @@ class BRDF_np:
     
     def __repr__(self) -> str:
         return f"<{self.type.capitalize()} BRDF, default:[{int(self.kd_default), int(self.ks_default), int(self.kg_default)}]>"
+    
+# ======================= Oren-Nayar (PBR Rough) =============================
+@ti.experimental.real_func
+def eval_oren_nayar(ipt: OrenNayarInput) -> OrenNayarOutput:
+    """ Note that Oren-Nayar is physically based diffuse material 
+        Therefore, we can just sample according to the cosine-hemispherical distribution
+        Then, we only need to implement evaluating function
+    """
+    raw_wi = convert_to_raw(-ipt.ray_in, ipt.n_s)
+    raw_wo = convert_to_raw(ipt.ray_out, ipt.n_s)
+
+    sin_theta_i = raw_wi[1]
+    sin_theta_o = raw_wo[1]
+    max_cos = 0.
+    if sin_theta_i > 1e-5 and sin_theta_o > 1e-5:
+        cos_phi_i = raw_wi[2]
+        sin_phi_i = raw_wi[3] 
+
+        cos_phi_o = raw_wo[2]
+        sin_phi_o = raw_wo[3] 
+        d_cos = cos_phi_i * cos_phi_o + sin_phi_i * sin_phi_o
+        max_cos = ti.max(0., d_cos)
+
+    sin_alpha = 0.
+    tan_beta = 0.
+    abs_cos_wi = ti.abs(raw_wi[0])
+    abs_cos_wo = ti.abs(raw_wo[0])
+
+    if abs_cos_wi > abs_cos_wo:
+        sin_alpha = sin_theta_o
+        tan_beta = sin_theta_i / abs_cos_wi
+    else:
+        sin_alpha = sin_theta_i
+        tan_beta = sin_theta_o / abs_cos_wo
+    diffuse_color = ti.select(ipt.is_tex_invalid(), ipt.k_d, ipt.tex)
+    # ti.abs(raw_wo[0]) is cosine term
+    result = diffuse_color * INV_PI * (ipt.k_g[0] + ipt.k_g[1] * max_cos * sin_alpha * tan_beta) * ti.abs(raw_wo[0])
+    return OrenNayarOutput(f_val = result)
+# ============================================================================
+
+# =================== Thin coat (Fresnel coating for plastic material) ================
+@ti.experimental.real_func
+def thin_coat_fresnel(ipt: OrenNayarInput) -> float:
+    """ Evaluating the Fresnel coating: mirror specular + Oren-Nayar diffuse 
+        note that evaluation for mirror specular part is always 0
+
+        in_ref_F can be precomputed (during sampling)
+    """
+    # input Fresnel evaluation
+    dot_in = tm.dot(ipt.ray_in, ipt.n_s)
+    # We will not have total reflection for incident ray
+    refra_in, _v = snell_refraction(ipt.ray_in, ipt.n_s, dot_in, 1.0, ipt.k_g[0])
+    in_ref_F = fresnel_equation(1., ipt.k_g[0], ti.abs(dot_in), ti.abs(tm.dot(refra_in, ipt.n_s)))
+
+    # output Fresnel evaluation
+    dot_out = tm.dot(ipt.ray_out, ipt.n_s)
+    refra_out, _v = snell_refraction(ipt.ray_out, ipt.n_s, dot_out, ipt.k_g[0], 1.0)    # always valid
+    out_ref_F = fresnel_equation(ipt.k_g[0], 1.0, ti.abs(dot_out), ti.abs(tm.dot(refra_out, ipt.n_s)))
+    
+    return (1. - out_ref_F) * (1. - in_ref_F)
+# ============================================================================
 
 @ti.dataclass
 class BRDF:
@@ -305,42 +367,49 @@ class BRDF:
     
     # ================================================================
 
-    # ======================= Oren-Nayar (PBR Rough) =============================
+    # ======================= Thin coat (Fresnel coating for plastic material) =====================
 
     @ti.func
-    def eval_oren_nayar(self, it:ti.template(), ray_in: vec3, ray_out: vec3):
-        """ Note that Oren-Nayar is physically based diffuse material 
-            Therefore, we can just sample according to the cosine-hemispherical distribution
-            Then, we only need to implement evaluating function
+    def sample_thin_coat(self, it: ti.template(), incid: vec3):
+        """ Sampling the Fresnel coating 
+            NOTE that: the IOR for Fresnel coating does not account for the IOR for the outside medium
+            for example, if we have glass outside (1.5), this would mean we will have 1.5 * ior for the inside 
         """
-        raw_wi = convert_to_raw(-ray_in, it.n_s)
-        raw_wo = convert_to_raw(ray_out, it.n_s)
+        pdf = 1.0
+        spec = ZERO_V3
+        ray_out_d = vec3([0, 1, 0])
 
-        sin_theta_i = raw_wi[1]
-        sin_theta_o = raw_wo[1]
-        max_cos = 0.
-        if sin_theta_i > 1e-5 and sin_theta_o > 1e-5:
-            cos_phi_i = raw_wi[2]
-            sin_phi_i = raw_wi[3] 
-
-            cos_phi_o = raw_wo[2]
-            sin_phi_o = raw_wo[3] 
-            d_cos = cos_phi_i * cos_phi_o + sin_phi_i * sin_phi_o
-            max_cos = ti.max(0., d_cos)
-
-        sin_alpha = 0.
-        tan_beta = 0.
-        abs_cos_wi = ti.abs(raw_wi[0])
-        abs_cos_wo = ti.abs(raw_wo[0])
-
-        if abs_cos_wi > abs_cos_wo:
-            sin_alpha = sin_theta_o
-            tan_beta = sin_theta_i / abs_cos_wi
-        else:
-            sin_alpha = sin_theta_i
-            tan_beta = sin_theta_o / abs_cos_wo
-        diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
-        return diffuse_color * INV_PI * (self.k_g[0] + self.k_g[1] * max_cos * sin_alpha * tan_beta) * ti.abs(raw_wo[0])
+        dot_normal = tm.dot(incid, it.n_s)
+        # We will not have total reflection for incident ray
+        refra_in, _v = snell_refraction(incid, it.n_s, dot_normal, 1.0, self.k_g[0])
+        in_ref_F = fresnel_equation(1., self.k_g[0], ti.abs(dot_normal), ti.abs(tm.dot(refra_in, it.n_s)))
+        """ There are two Fresnel term sampling:
+            - sample: direct reflection
+            - sample: total internal reflection in the coating layer - absorbed
+        """
+        if ti.random(float) > in_ref_F:       # refracting into the thin layer
+            # Lambertian sampling
+            local_new_dir, pdf = cosine_hemisphere()
+            ray_out_d, _ = delocalize_rotate(it.n_s, local_new_dir)
+            dot_out = tm.dot(ray_out_d, it.n_s)
+            if not is_total_reflection(dot_out, self.k_g[0], 1.0):      # total reflection - set spec to 0
+                spec = self.eval_thin_coat(it, incid, ray_out_d, in_ref_F)
+                # sample the second Fresnel term: whether we will have a total reflection?
+                refra_out, _v = snell_refraction(ray_out_d, it.n_s, dot_out, self.k_g[0], 1.0)
+                out_ref_F = fresnel_equation(self.k_g[0], 1., ti.abs(dot_out), ti.abs(tm.dot(refra_out, it.n_s)))
+                if ti.random(float) > out_ref_F:        # refraction out to the world
+                    pdf *= (1. - in_ref_F) * (1. - out_ref_F)
+                    ray_out_d = refra_out
+                    # Oren-Nayar evaluation
+                    ipt = OrenNayarInput(ray_in = refra_in, ray_out = ray_out_d, n_s = it.n_s, 
+                                         tex = it.tex, k_d = self.k_d, k_g = self.k_g)
+                    ret_struct = eval_oren_nayar(ipt)
+                    spec = ret_struct.f_val
+        else:                               # reflection
+            spec = ti.select(it.is_tex_invalid(), self.k_s, it.tex)
+            ray_out_d, _ = inci_reflect_dir(incid, it.n_s)
+            pdf = in_ref_F
+        return ray_out_d, spec, pdf
 
     # ============================================================================
 
@@ -440,8 +509,13 @@ class BRDF:
             elif self._type == BRDFTag.FRESNEL_BLEND:
                 R = rotation_between(vec3([0, 1, 0]), it.n_s)
                 ret_spec = self.eval_fresnel_blend(it, incid, out, R)
-            elif self._type == BRDFTag.OREN_NAYAR:
-                ret_spec = self.eval_oren_nayar(it, incid, out)
+            elif self._type >= BRDFTag.OREN_NAYAR:
+                ipt = OrenNayarInput(ray_in = incid, ray_out = out, n_s = it.n_s, 
+                                         tex = it.tex, k_d = self.k_d, k_g = self.k_g)
+                ret_struct = eval_oren_nayar(ipt)
+                ret_spec = ret_struct.f_val
+                if self._type == BRDFTag.THIN_COAT:
+                    ret_spec *= thin_coat_fresnel(incid, out)
         return ret_spec
     
     @ti.func
@@ -462,12 +536,14 @@ class BRDF:
             ret_dir, ret_spec, pdf = self.sample_lambertian(it, it.n_s)
         elif self._type == BRDFTag.SPECULAR:         # Specular - specular has no cosine attenuation
             ret_dir, ret_spec, pdf = self.sample_specular(it, incid, it.n_s)
-        elif self._type == BRDFTag.MICROFACET:       # Microfacet
-            ret_dir, ret_spec, pdf = self.sample_microfacet(it, incid)
+        elif self._type == BRDFTag.THIN_COAT:
+            ret_dir, ret_spec, pdf = self.sample_thin_coat(it, incid)
         elif self._type == BRDFTag.MOD_PHONG:        # Modified-Phong
             ret_dir, ret_spec, pdf = self.sample_mod_phong(it, incid)
         elif self._type == BRDFTag.FRESNEL_BLEND:    # Fresnel-Blend
             ret_dir, ret_spec, pdf = self.sample_fresnel_blend(it, incid)
+        elif self._type == BRDFTag.MICROFACET:       # Microfacet
+            ret_dir, ret_spec, pdf = self.sample_microfacet(it, incid)
         else:
             print(f"Warnning: unknown or unsupported BRDF type: {self._type} during sampling.")
         # Prevent shading normal from light leaking or accidental shadowing
@@ -488,8 +564,12 @@ class BRDF:
         if dot_outdir * dot_indir < 0.:         # same hemisphere         
             if self._type == BRDFTag.BLING_PHONG:
                 pdf = dot_outdir * INV_PI       # dot is cosine term
-            elif self._type == BRDFTag.LAMBERTIAN or self._type == BRDFTag.OREN_NAYAR:
+            elif self._type == BRDFTag.LAMBERTIAN or self._type >= BRDFTag.OREN_NAYAR:
                 pdf = dot_outdir * INV_PI
+                if self._type == BRDFTag.THIN_COAT:
+                    # multiply two Fresnel terms
+                    ipt = OrenNayarInput(ray_in = incid, ray_out = outdir, n_s = it.n_s, k_g = self.k_g)
+                    pdf *= thin_coat_fresnel(incid, outdir)
             elif self._type == BRDFTag.MOD_PHONG:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, it.n_s)

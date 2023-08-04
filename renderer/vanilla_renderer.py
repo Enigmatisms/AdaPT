@@ -25,9 +25,9 @@ class Renderer(PathTracer):
     """
     def __init__(self, 
         emitters: List[LightSource], array_info: dict, 
-        objects: List[ObjDescriptor], prop: dict
+        bxdfs, objects: List[ObjDescriptor], prop: dict
     ):
-        super().__init__(emitters, array_info, objects, prop)
+        super().__init__(emitters, array_info, bxdfs, objects, prop)
         
     @ti.kernel
     def render(self, _t_start: int, _t_end: int, _s_start: int, _s_end: int, _a: int, _b: int):

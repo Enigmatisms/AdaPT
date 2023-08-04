@@ -287,5 +287,5 @@ class TracerBase:
     
 if __name__ == "__main__":
     ti.init()
-    _, array_info, all_objs, configs = scene_parsing("../scene/test/", "test.xml")
+    _, _, all_objs, _, configs = scene_parsing("../scene/test/", "test.xml")
     base = TracerBase(all_objs, configs)

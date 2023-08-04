@@ -49,3 +49,4 @@ class BRDFTag:
     MOD_PHONG     = 4
     FRESNEL_BLEND = 5
     OREN_NAYAR    = 6
+    THIN_COAT     = 7

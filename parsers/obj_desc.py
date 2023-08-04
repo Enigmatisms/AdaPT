@@ -27,7 +27,7 @@ def get_aabb(meshes: Arr, _type: int = 0) -> Arr:
 
 class ObjDescriptor:
     def __init__(
-        self, meshes, normals, bsdf, 
+        self, meshes, normals, mixture, 
         vert_normal = None,
         uv_coords = None,
         texture_group = None, 
@@ -44,10 +44,10 @@ class ObjDescriptor:
         self.uv_coords = uv_coords
         self.normals = normals
         self.vns = vert_normal
-        # TODO: maybe we should work on shading normals in the future
         self.R = R
         self.t = t
-        self.bsdf = bsdf                           # object can have BSDF (BRDF + BTDF)
+        # We do store BSDF in the object descriptor, yet the xml format can remain unchanged
+        self.mixture = mixture
 
         # Texture includes all texture mappings
         self.texture_group = texture_group

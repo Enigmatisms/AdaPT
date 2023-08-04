@@ -26,14 +26,13 @@ CONSOLE = Console(width = 128)
 
 @ti.data_oriented
 class VolumeRenderer(PathTracer):
-    """
-        Volumetric Renderer Class
+    """ Volumetric Renderer Class
     """
     def __init__(self, 
-        emitters: List[LightSource], array_info: dict, 
+        emitters: List[LightSource], array_info: dict, bxdfs,
         objects: List[ObjDescriptor], prop: dict, bvh_delay: bool = False
     ):
-        super().__init__(emitters, array_info, objects, prop, bvh_delay)
+        super().__init__(emitters, array_info, bxdfs, objects, prop, bvh_delay)
         self.world_scattering = self.world.medium._type >= 0
         
     @ti.func
@@ -44,16 +43,19 @@ class VolumeRenderer(PathTracer):
             if world_valid_scat:
                 transmittance = self.world.medium.transmittance(depth)
             elif not in_free_space:
-                # if not in_free_space, bsdf_field[idx] must be valid
-                transmittance = self.bsdf_field[idx].medium.transmittance(depth)
+                # if not in_free_space, bsdf_idx must be valid
+                bsdf_idx = self.mix_field[idx].comps[3]
+                transmittance = self.bsdf_field[bsdf_idx].medium.transmittance(depth)
         return transmittance
     
     @ti.func
     def non_null_surface(self, idx: int):
         non_null = True
         # All these idx >= 0 check is for world scattering medium
-        if idx >= 0 and not ti.is_active(self.obj_nodes, idx):      # BRDF is non-null, BSDF can be non-null
-            non_null = self.bsdf_field[idx].is_non_null()
+        if idx >= 0:
+            bsdf_idx = self.mix_field[idx].non_null_index()
+            if bsdf_idx >= 0 and not ti.is_active(self.bxdf_nodes, bsdf_idx):      # BRDF is non-null, BSDF can be non-null
+                non_null = self.bsdf_field[bsdf_idx].is_non_null()
         return non_null
 
     @ti.func
@@ -73,7 +75,8 @@ class VolumeRenderer(PathTracer):
             if world_valid_scat:        # scattering is not in the free space
                 is_mi, mfp, beta = self.world.medium.sample_mfp(depth)
             elif not in_free_space:
-                is_mi, mfp, beta = self.bsdf_field[idx].medium.sample_mfp(depth)
+                bsdf_index = self.mix_field[idx].comps[3]
+                is_mi, mfp, beta = self.bsdf_field[bsdf_index].medium.sample_mfp(depth)
             # use medium to sample / calculate transmittance
         return is_mi, mfp, beta
     

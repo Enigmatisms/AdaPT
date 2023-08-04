@@ -32,7 +32,7 @@ from renderer.constants import TRANSPORT_UNI, INV_2PI, INV_PI, INVALID
 from sampler.general_sampling import *
 from utils.tools import TicToc
 from tracer.interaction import Interaction
-from tracer.ti_bvh import LinearBVH, LinearNode, export_python_bvh
+from tracer.ti_bvh import LinearBVH, LinearNode
 
 from rich.console import Console
 CONSOLE = Console(width = 128)
@@ -53,7 +53,7 @@ class PathTracer(TracerBase):
         This tracer can yield result with global illumination effect
     """
     def __init__(self, 
-        emitters: List[LightSource], array_info: dict, 
+        emitters: List[LightSource], array_info: dict, bxdfs: List[BSDF_np], 
         objects: List[ObjDescriptor], prop: dict, bvh_delay: bool = False
     ):
         """ bvh_delay: since in taichi, field can not be constructed after a kernel is called
@@ -61,11 +61,12 @@ class PathTracer(TracerBase):
         """
         super().__init__(objects, prop)
         self.clock = TicToc()
-        self.anti_alias         = prop['anti_alias']
-        self.stratified_sample  = prop['stratified_sampling']   # whether to use stratified sampling
-        self.use_mis            = prop['use_mis']               # whether to use multiple importance sampling
-        self.num_shadow_ray     = prop['num_shadow_ray']        # number of shadow samples to trace
-        self.brdf_two_sides     = prop.get('brdf_two_sides', False)
+        self.anti_alias        = prop['anti_alias']
+        self.stratified_sample = prop['stratified_sampling']   # whether to use stratified sampling
+        self.use_mis           = prop['use_mis']               # whether to use multiple importance sampling
+        self.num_shadow_ray    = prop['num_shadow_ray']        # number of shadow samples to trace
+        self.brdf_two_sides    = prop.get('brdf_two_sides', False)
+        self.num_bxdf          = len(bxdfs)
         
         if self.num_shadow_ray > 0:
             self.inv_num_shadow_ray = 1. / float(self.num_shadow_ray)
@@ -93,11 +94,11 @@ class PathTracer(TracerBase):
         self.roughness_map = Texture.field()                                # TODO: this is useless for now
 
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
-        self.obj_nodes = ti.root.bitmasked(ti.i, self.num_objects)
+        self.bxdf_nodes = ti.root.bitmasked(ti.i, self.num_bxdf)
         self.mix_nodes = ti.root.pointer(ti.i, self.num_objects)
-        self.obj_nodes.place(self.brdf_field)                               # BRDF Taichi storage
+        self.bxdf_nodes.place(self.brdf_field)                               # BRDF Taichi storage
         self.mix_nodes.place(self.mix_field)                                # BRDF Taichi storage
-        ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
+        ti.root.bitmasked(ti.i, self.num_bxdf).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
         ti.root.dense(ti.i, self.num_objects).place(self.albedo_map, self.normal_map, self.bump_map, self.roughness_map)
 
 
@@ -125,7 +126,7 @@ class PathTracer(TracerBase):
         
         CONSOLE.log(f"Path tracer param loading in {self.clock.toc_tic():.4f} s")
         self.load_primitives(**array_info)
-        self.initialze(emitters, objects)
+        self.initialze(emitters, objects, bxdfs)
         CONSOLE.log(f"Path tracer initialization in {self.clock.toc():.4f} s")
 
         min_val = vec3([1e3, 1e3, 1e3])
@@ -146,8 +147,8 @@ class PathTracer(TracerBase):
             try:
                 from bvh_cpp import bvh_build
             except ImportError:
-                CONSOLE.log(":warning: Warning: [bold green]pybind11 BVH cpp[/bold green] is not built. Please check whether you have compiled bvh_cpp module.")
-                CONSOLE.log("[yellow]:warning: Warning: Fall back to brute force primitive traversal.")
+                CONSOLE.log("[yellow]Warning: [/yellow][bold green]pybind11 BVH cpp[/bold green] is not built. Please check whether you have compiled bvh_cpp module.")
+                CONSOLE.log("[yellow][yellow]Warning: [/yellow]Fall back to brute force primitive traversal.")
             else:
                 CONSOLE.log(":rocket: Using SAH-BVH tree accelerator.")
                 obj_info = self.prepare_for_bvh(objects)
@@ -171,8 +172,6 @@ class PathTracer(TracerBase):
                 ti.root.dense(ti.i, self.bvh_num).place(self.lin_bvhs)
                 self.convert_bvh_info(bvh_minmax, bvh_info, node_minmax, node_info)
                 CONSOLE.log(f":rocket: BVH exported in {self.clock.toc_tic():.4f} s")
-
-                # export_python_bvh(self.lin_nodes, self.lin_bvhs, py_nodes, py_bvhs)
                 CONSOLE.log(f"{self.node_num } nodes and {self.bvh_num} bvh primitives are loaded.")
                 self.__setattr__("ray_intersect", self.ray_intersect_bvh)
                 self.__setattr__("does_intersect", self.does_intersect_bvh)
@@ -184,7 +183,7 @@ class PathTracer(TracerBase):
            I do not offer strict consistency checking since this is laborious
         """
         items_to_save = ["w", "h", "crop_x", "crop_y", "crop_rx", "crop_ry", "focal"]
-        items_to_save += ["num_objects", "num_prims", "cam_orient", "src_num"]
+        items_to_save += ["num_objects", "num_prims", "cam_orient", "src_num", "num_bxdf"]
         check_point = {}
         for item in items_to_save:
             check_point[item] = getattr(self, item)
@@ -243,11 +242,16 @@ class PathTracer(TracerBase):
                 base = node_info[i, 0], prim_cnt = node_info[i, 1], all_offset = node_info[i, 2]
             )
 
-    def initialze(self, emitters: List[LightSource], objects: List[ObjDescriptor]):
-        # FIXME: Path tracer initialization is too slow
+    def initialze(self, emitters: List[LightSource], objects: List[ObjDescriptor], bsdfs: List[BSDF_np]):
         for i, emitter in enumerate(emitters):
             self.src_field[i] = emitter.export()
             self.src_field[i].obj_ref_id = -1
+
+        for i, bsdf in enumerate(bsdfs):
+            if type(bsdf) == BSDF_np:
+                self.bsdf_field[i]  = bsdf.export()
+            else:
+                self.brdf_field[i]  = bsdf.export()
 
         acc_prim_num = 0
         for i, obj in enumerate(objects):
@@ -256,10 +260,7 @@ class PathTracer(TracerBase):
             self.obj_info[i, 2] = obj.type
             acc_prim_num        += obj.tri_num
 
-            if type(obj.bsdf) == BSDF_np:
-                self.bsdf_field[i]  = obj.bsdf.export()
-            else:
-                self.brdf_field[i]  = obj.bsdf.export()
+            self.mix_field[i] = obj.mixture.export()
             
             for key, value in obj.texture_group.items():        # exporting texture group
                 if value is not None:
@@ -440,17 +441,20 @@ class PathTracer(TracerBase):
             if in_free_space:       # sample world medium
                 ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
             else:                   # sample object medium
-                ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].medium.sample_new_rays(incid)
+                bsdf_id = self.mix_field[it.obj_id].comps[3]
+                ret_dir, ret_spec, ret_pdf = self.bsdf_field[bsdf_id].medium.sample_new_rays(incid)
         else:                       # surface sampling
-            if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
+            comp_pdf, comp_id = self.mix_field[it.obj_id].sample()
+            if ti.is_active(self.bxdf_nodes, comp_id):      # active means the object is attached to BRDF
                 if ti.static(self.brdf_two_sides):
                     dot_res = tm.dot(incid, it.n_s)
                     if dot_res > 0.:                    # two sides
                         it.n_s *= -1
                         it.n_g *= -1
-                ret_dir, ret_spec, ret_pdf = self.brdf_field[it.obj_id].sample_new_rays(it, incid)
+                ret_dir, ret_spec, ret_pdf = self.brdf_field[comp_id].sample_new_rays(it, incid)
             else:                                       # directly sample surface
-                ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].sample_surf_rays(it, incid, self.world.medium, mode)
+                ret_dir, ret_spec, ret_pdf = self.bsdf_field[comp_id].sample_surf_rays(it, incid, self.world.medium, mode)
+            ret_pdf *= comp_pdf
         return ret_dir, ret_spec, ret_pdf
 
     @ti.func
@@ -462,33 +466,18 @@ class PathTracer(TracerBase):
             if in_free_space:       # evaluate world medium
                 ret_spec.fill(self.world.medium.eval(incid, out))
             else:                   # is_mi implys is_scattering = True
-                ret_spec.fill(self.bsdf_field[it.obj_id].medium.eval(incid, out))
+                bsdf_id = self.mix_field[it.obj_id].comps[3]
+                ret_spec.fill(self.bsdf_field[bsdf_id].medium.eval(incid, out))
         else:                       # surface interaction
-            # TODO: evaluation will be mixture based
-            if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
-                if ti.static(self.brdf_two_sides):
-                    dot_res = tm.dot(incid, it.n_s)
-                    if dot_res > 0.:                    # two sides
-                        it.n_s *= -1
-                        it.n_g *= -1
-                ret_spec = self.brdf_field[it.obj_id].eval(it, incid, out)
-            else:                                       # directly evaluate surface
-                ret_spec = self.bsdf_field[it.obj_id].eval_surf(it, incid, out, self.world.medium, mode)
+            ret_spec = self.mix_field[it.obj_id].eval(self.brdf_field, self.bsdf_field, 
+                                it, incid, out, self.world.medium, mode, self.brdf_two_sides)
         return ret_spec
     
     @ti.func
     def surface_pdf(self, it: ti.template(), outdir: vec3, incid: vec3):
         """ Outdir: actual incident ray direction, incid: ray (from camera) """
-        pdf = 0.
-        if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
-            if ti.static(self.brdf_two_sides):
-                dot_res = tm.dot(incid, it.n_s)
-                if dot_res > 0.:                    # two sides
-                    it.n_s *= -1
-                    it.n_g *= -1
-            pdf = self.brdf_field[it.obj_id].get_pdf(it, outdir, incid)
-        else:
-            pdf = self.bsdf_field[it.obj_id].get_pdf(it, outdir, incid, self.world.medium)
+        pdf = self.mix_field[it.obj_id].get_pdf(self.brdf_field, self.bsdf_field, 
+                                it, incid, outdir, self.world.medium, self.brdf_two_sides)
         return pdf
     
     @ti.func
@@ -498,38 +487,37 @@ class PathTracer(TracerBase):
             if in_free_space:
                 pdf = self.world.medium.eval(incid, out)
             else:
-                pdf = self.bsdf_field[it.obj_id].medium.eval(incid, out)
+                bsdf_id = self.mix_field[it.obj_id].comps[3]
+                pdf = self.bsdf_field[bsdf_id].medium.eval(incid, out)
         else:
             pdf = self.surface_pdf(it, out, incid)
         return pdf
     
     @ti.func
     def get_ior(self, idx: int, in_free_space: int):
-        # REAL FUNC
         ior = 1.
         if in_free_space: ior = self.world.medium.ior
         else: 
-            if idx >= 0: ior = self.bsdf_field[idx].medium.ior
+            if idx >= 0:
+                bsdf_id = self.mix_field[idx].comps[3]
+                if bsdf_id >= 0: ior = self.bsdf_field[bsdf_id].medium.ior
         return ior
     
     @ti.func
     def is_delta(self, idx: int):
-        # REAL FUNC
         is_delta = False
         if idx >= 0:
-            if ti.is_active(self.obj_nodes, idx):      # active means the object is attached to BRDF
-                is_delta = self.brdf_field[idx].is_delta
-            else:
-                is_delta = self.bsdf_field[idx].is_delta
+            is_delta = self.mix_field[idx].is_delta(self.brdf_field, self.bsdf_field)
         return is_delta
     
     @ti.func
     def is_scattering(self, idx: int):           # check if the object with index idx is a scattering medium
         # FIXME: if sigma_t is too small, set the scattering medium to det-refract
-        # REAL FUNC
         is_scattering = False
-        if idx >= 0 and not ti.is_active(self.obj_nodes, idx):
-            is_scattering = self.bsdf_field[idx].medium.is_scattering()
+        if idx >= 0:
+            bsdf_id = self.mix_field[idx].comps[3]
+            if bsdf_id >= 0 and not ti.is_active(self.bxdf_nodes, bsdf_id):
+                is_scattering = self.bsdf_field[bsdf_id].medium.is_scattering()
         return is_scattering
 
     @ti.func
@@ -563,5 +551,5 @@ if __name__ == "__main__":
     options = get_options()
     ti.init(arch = ti.vulkan, kernel_profiler = options.profile, default_ip = ti.int32, default_fp = ti.f32)
     input_folder = os.path.join(options.input_path, options.scene)
-    emitter_configs, array_info, all_objs, configs = scene_parsing(input_folder, options.name)  # complex_cornell
-    pt = PathTracer(emitter_configs, all_objs, configs)
+    emitter_configs, array_info, all_objs, bxdfs, configs = scene_parsing(input_folder, options.name)  # complex_cornell
+    pt = PathTracer(emitter_configs, array_info, all_objs, bxdfs, configs)

@@ -15,16 +15,9 @@ __all__ = ['cosine_hemisphere', 'uniform_hemisphere', 'sample_triangle',
 
 @ti.func
 def random_rgb(vector):
-    """ Taichi does not support dynamic indexing (it does actually, yet I don't want to set `dynamic_index = True`)"""
+    """ choose one spectrum (RGB) component randomly """
     idx = ti.random(int) % 3
-    result = 1.0
-    if idx == 0:
-        result = vector[0]
-    elif idx == 1:
-        result = vector[1]
-    else:
-        result = vector[2]
-    return ti.max(result, 1e-5)
+    return ti.max(vector[idx], 1e-5)
 
 @ti.func
 def cosine_hemisphere():
