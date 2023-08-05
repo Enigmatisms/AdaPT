@@ -157,19 +157,26 @@ class BxDFMixture:
         """ Evaluate contribution according all of the components """
         ret_spec = ZERO_V3
         dot_res = 1.0
-        index = self.comps[3]
-        if index >= 0:
-            ret_spec += bsdf[index].eval_surf(it, incid, out, medium, mode)
+        if self.single_comp == 0:
+            index = self.comps[0]
+            ret_spec = brdf[index].eval(it, incid, out)
+        elif self.single_comp == 3:
+            index = self.comps[3]
+            ret_spec = bsdf[index].eval_surf(it, incid, out, medium, mode)
+        else:
+            index = self.comps[3]
+            if index >= 0:
+                ret_spec += bsdf[index].eval_surf(it, incid, out, medium, mode)
 
-        if two_sides:
-            dot_res = tm.dot(incid, it.n_s)
-            if dot_res > 0.:                    # two sides
-                it.n_s *= -1
-                it.n_g *= -1
-        for i in range(3):
-            index = self.comps[i]
-            if index < 0: continue
-            ret_spec += brdf[index].eval(it, incid, out)
+            if two_sides:
+                dot_res = tm.dot(incid, it.n_s)
+                if dot_res > 0.:                    # two sides
+                    it.n_s *= -1
+                    it.n_g *= -1
+            for i in range(3):
+                index = self.comps[i]
+                if index < 0: continue
+                ret_spec += brdf[index].eval(it, incid, out) * self.proba[i]
         return ret_spec
 
     @ti.func
@@ -180,18 +187,25 @@ class BxDFMixture:
         """ Evaluate PDF according all of the components """
         ret_pdf = 0.
         dot_res = 1.0
-        index = self.comps[3]
-        if index >= 0:
-            ret_pdf += bsdf[index].get_pdf(it, out, incid, medium) * self.proba[3]
-        if two_sides:
-            dot_res = tm.dot(incid, it.n_s)
-            if dot_res > 0.:                    # two sides
-                it.n_s *= -1
-                it.n_g *= -1
-        for i in range(3):
-            index = self.comps[i]
-            if index < 0: continue
-            ret_pdf += brdf[index].get_pdf(it, out, incid) * self.proba[i]
+        if self.single_comp == 0:
+            index = self.comps[0]
+            ret_pdf = brdf[index].get_pdf(it, out, incid)
+        elif self.single_comp == 3:
+            index = self.comps[3]
+            ret_pdf = bsdf[index].get_pdf(it, out, incid, medium)
+        else:
+            index = self.comps[3]
+            if index >= 0:
+                ret_pdf += bsdf[index].get_pdf(it, out, incid, medium) * self.proba[3]
+            if two_sides:
+                dot_res = tm.dot(incid, it.n_s)
+                if dot_res > 0.:                    # two sides
+                    it.n_s *= -1
+                    it.n_g *= -1
+            for i in range(3):
+                index = self.comps[i]
+                if index < 0: continue
+                ret_pdf += brdf[index].get_pdf(it, out, incid) * self.proba[i]
         return ret_pdf
     
     @ti.func
@@ -199,14 +213,21 @@ class BxDFMixture:
         """ if all the component is delta then the BxDF mixture is delta """
         is_delta = True
         index = self.comps[3]
-        if index >= 0:
-            is_delta &= bsdf[index].is_delta
-        if is_delta:
-            for i in range(3):
-                index = self.comps[i]
-                if index < 0: continue
-                is_delta &= brdf[index].is_delta
-                if not is_delta: break
+        if self.single_comp == 0:
+            index = self.comps[0]
+            is_delta = brdf[index].is_delta
+        elif self.single_comp == 3:
+            index = self.comps[3]
+            is_delta = bsdf[index].is_delta
+        else:
+            if index >= 0:
+                is_delta &= bsdf[index].is_delta
+            if is_delta:
+                for i in range(3):
+                    index = self.comps[i]
+                    if index < 0: continue
+                    is_delta &= brdf[index].is_delta
+                    if not is_delta: break
         return is_delta
     
     @ti.func

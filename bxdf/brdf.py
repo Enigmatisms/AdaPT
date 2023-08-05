@@ -52,7 +52,7 @@ class BRDF_np:
     
     def __init__(self, elem: xet.Element, no_setup = False):
         self.type: str = elem.get("type")
-        self.type_id = BRDF_np.__type_mapping[self.type]
+        self.type_id = BRDF_np.__type_mapping.get(self.type, -1)
         self.id: str = elem.get("id")
         self.k_d = np.ones(3, np.float32)
         self.k_s = np.zeros(3, np.float32)
@@ -95,9 +95,9 @@ class BRDF_np:
                     elif name in BRDF_np.__all_specular_name - {"ref_ior"}:
                         CONSOLE.log(f"[yellow]Warning: [/yellow]Microfacet BRDF model should have attribute."
                                     f"'ref_ior' (Index of Refraction) instead of '{name}' as k_s.")
-                elif self.type_id == BRDFTag.OREN_NAYAR:
+                elif self.type_id in {BRDFTag.OREN_NAYAR, BRDFTag.THIN_COAT}:
                     if name in BRDF_np.__all_glossiness_name - {"sigma"}:
-                        CONSOLE.log(f"[yellow]Warning: [/yellow]Oren-Nayar BRDF model should have attribute."
+                        CONSOLE.log(f"[yellow]Warning: [/yellow]Oren-Nayar based BRDF models should have attribute."
                                     f"'sigma' instead of '{name}' as k_g.")
                 if name == "roughness":
                     # convert from roughness to alpha values (for now, only used in microfacet BRDF)
@@ -112,6 +112,7 @@ class BRDF_np:
                     sigma2 = sigma * sigma
                     self.k_g[0] = 1 - (sigma2 / (2 * (sigma2 + 0.33)))
                     self.k_g[1] = 0.45 * sigma2 / (sigma2 + 0.09)
+                    self.k_g[2] = max(1., self.k_g[2])                      # IOR for thin-coat
                     
         if not no_setup:
             self.setup()
@@ -145,13 +146,18 @@ class BRDF_np:
     
 # ======================= Oren-Nayar (PBR Rough) =============================
 @ti.experimental.real_func
-def eval_oren_nayar(ipt: OrenNayarInput) -> OrenNayarOutput:
+def eval_oren_nayar(
+    raw_wi_x: float, raw_wi_y: float, raw_wi_z: float, raw_wi_w: float, 
+    raw_wo_x: float, raw_wo_y: float, raw_wo_z: float, raw_wo_w: float, 
+    kd_x: float, kd_y: float, kd_z: float,
+    k_g0: float, k_g1: float
+) -> OrenNayarOutput:
     """ Note that Oren-Nayar is physically based diffuse material 
         Therefore, we can just sample according to the cosine-hemispherical distribution
         Then, we only need to implement evaluating function
     """
-    raw_wi = convert_to_raw(-ipt.ray_in, ipt.n_s)
-    raw_wo = convert_to_raw(ipt.ray_out, ipt.n_s)
+    raw_wi = vec4([raw_wi_x, raw_wi_y, raw_wi_z, raw_wi_w])
+    raw_wo = vec4([raw_wo_x, raw_wo_y, raw_wo_z, raw_wo_w])
 
     sin_theta_i = raw_wi[1]
     sin_theta_o = raw_wo[1]
@@ -176,30 +182,37 @@ def eval_oren_nayar(ipt: OrenNayarInput) -> OrenNayarOutput:
     else:
         sin_alpha = sin_theta_i
         tan_beta = sin_theta_o / abs_cos_wo
-    diffuse_color = ti.select(ipt.is_tex_invalid(), ipt.k_d, ipt.tex)
+    diffuse_color = vec3([kd_x, kd_y, kd_z])
     # ti.abs(raw_wo[0]) is cosine term
-    result = diffuse_color * INV_PI * (ipt.k_g[0] + ipt.k_g[1] * max_cos * sin_alpha * tan_beta) * ti.abs(raw_wo[0])
+    result = diffuse_color * INV_PI * (k_g0 + k_g1 * max_cos * sin_alpha * tan_beta) * ti.abs(raw_wo[0])
     return OrenNayarOutput(f_val = result)
 # ============================================================================
 
 # =================== Thin coat (Fresnel coating for plastic material) ================
 @ti.experimental.real_func
-def thin_coat_fresnel(ipt: OrenNayarInput) -> float:
+def thin_coat_fresnel(
+    wi_x: float, wi_y: float, wi_z: float, wo_x: float, wo_y: float, wo_z: float,
+    ns_x: float, ns_y: float, ns_z: float, ior: float
+) -> float:
     """ Evaluating the Fresnel coating: mirror specular + Oren-Nayar diffuse 
         note that evaluation for mirror specular part is always 0
 
         in_ref_F can be precomputed (during sampling)
     """
+    ray_in = vec3([wi_x, wi_y, wi_z])
+    ray_out = vec3([wo_x, wo_y, wo_z])
+    n_s = vec3([ns_x, ns_y, ns_z])
+
     # input Fresnel evaluation
-    dot_in = tm.dot(ipt.ray_in, ipt.n_s)
+    dot_in = tm.dot(ray_in, n_s)
     # We will not have total reflection for incident ray
-    refra_in, _v = snell_refraction(ipt.ray_in, ipt.n_s, dot_in, 1.0, ipt.k_g[0])
-    in_ref_F = fresnel_equation(1., ipt.k_g[0], ti.abs(dot_in), ti.abs(tm.dot(refra_in, ipt.n_s)))
+    refra_in, _v = snell_refraction(ray_in, n_s, dot_in, 1.0, ior)
+    in_ref_F = fresnel_equation(1., ior, ti.abs(dot_in), ti.abs(tm.dot(refra_in, n_s)))
 
     # output Fresnel evaluation
-    dot_out = tm.dot(ipt.ray_out, ipt.n_s)
-    refra_out, _v = snell_refraction(ipt.ray_out, ipt.n_s, dot_out, ipt.k_g[0], 1.0)    # always valid
-    out_ref_F = fresnel_equation(ipt.k_g[0], 1.0, ti.abs(dot_out), ti.abs(tm.dot(refra_out, ipt.n_s)))
+    dot_out = tm.dot(ray_out, n_s)
+    refra_out, _v = snell_refraction(ray_out, n_s, dot_out, ior, 1.0)    # always valid
+    out_ref_F = fresnel_equation(ior, 1.0, ti.abs(dot_out), ti.abs(tm.dot(refra_out, n_s)))
     
     return (1. - out_ref_F) * (1. - in_ref_F)
 # ============================================================================
@@ -393,7 +406,6 @@ class BRDF:
             ray_out_d, _ = delocalize_rotate(it.n_s, local_new_dir)
             dot_out = tm.dot(ray_out_d, it.n_s)
             if not is_total_reflection(dot_out, self.k_g[0], 1.0):      # total reflection - set spec to 0
-                spec = self.eval_thin_coat(it, incid, ray_out_d, in_ref_F)
                 # sample the second Fresnel term: whether we will have a total reflection?
                 refra_out, _v = snell_refraction(ray_out_d, it.n_s, dot_out, self.k_g[0], 1.0)
                 out_ref_F = fresnel_equation(self.k_g[0], 1., ti.abs(dot_out), ti.abs(tm.dot(refra_out, it.n_s)))
@@ -401,10 +413,15 @@ class BRDF:
                     pdf *= (1. - in_ref_F) * (1. - out_ref_F)
                     ray_out_d = refra_out
                     # Oren-Nayar evaluation
-                    ipt = OrenNayarInput(ray_in = refra_in, ray_out = ray_out_d, n_s = it.n_s, 
-                                         tex = it.tex, k_d = self.k_d, k_g = self.k_g)
-                    ret_struct = eval_oren_nayar(ipt)
-                    spec = ret_struct.f_val
+                    raw_wi = convert_to_raw(refra_in, it.n_s)
+                    raw_wo = convert_to_raw(ray_out_d, it.n_s)
+                    wi_x, wi_y, wi_z, wi_w = raw_wi
+                    wo_x, wo_y, wo_z, wo_w = raw_wo
+                    diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
+                    kd_x, kd_y, kd_z = diffuse_color
+                    ret_struct = eval_oren_nayar(wi_x, wi_y, wi_z, wi_w, wo_x, wo_y,
+                                                 wo_z, wo_w, kd_x, kd_y, kd_z, self.k_g[0], self.k_g[1])
+                    spec = ret_struct.f_val * ((1. - in_ref_F) * (1. - out_ref_F))
         else:                               # reflection
             spec = ti.select(it.is_tex_invalid(), self.k_s, it.tex)
             ray_out_d, _ = inci_reflect_dir(incid, it.n_s)
@@ -510,12 +527,21 @@ class BRDF:
                 R = rotation_between(vec3([0, 1, 0]), it.n_s)
                 ret_spec = self.eval_fresnel_blend(it, incid, out, R)
             elif self._type >= BRDFTag.OREN_NAYAR:
-                ipt = OrenNayarInput(ray_in = incid, ray_out = out, n_s = it.n_s, 
-                                         tex = it.tex, k_d = self.k_d, k_g = self.k_g)
-                ret_struct = eval_oren_nayar(ipt)
+                raw_wi = convert_to_raw(-incid, it.n_s)
+                raw_wo = convert_to_raw(out, it.n_s)
+                wi_x, wi_y, wi_z, wi_w = raw_wi
+                wo_x, wo_y, wo_z, wo_w = raw_wo
+                diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
+                kd_x, kd_y, kd_z = diffuse_color
+                ret_struct = eval_oren_nayar(wi_x, wi_y, wi_z, wi_w, wo_x, wo_y,
+                                                wo_z, wo_w, kd_x, kd_y, kd_z, self.k_g[0], self.k_g[1])
                 ret_spec = ret_struct.f_val
                 if self._type == BRDFTag.THIN_COAT:
-                    ret_spec *= thin_coat_fresnel(incid, out)
+                    wi_x, wi_y, wi_z = incid
+                    wo_x, wo_y, wo_z = out
+                    ns_x, ns_y, ns_z = it.n_s
+                    ret_spec *= thin_coat_fresnel(wi_x, wi_y, wi_z, wo_x, wo_y,
+                             wo_z, ns_x, ns_y, ns_z, self.k_g[2])
         return ret_spec
     
     @ti.func
@@ -568,8 +594,12 @@ class BRDF:
                 pdf = dot_outdir * INV_PI
                 if self._type == BRDFTag.THIN_COAT:
                     # multiply two Fresnel terms
-                    ipt = OrenNayarInput(ray_in = incid, ray_out = outdir, n_s = it.n_s, k_g = self.k_g)
-                    pdf *= thin_coat_fresnel(incid, outdir)
+                    wi_x, wi_y, wi_z = incid
+                    wo_x, wo_y, wo_z = outdir
+                    ns_x, ns_y, ns_z = it.n_s
+                    k_gv = self.k_g[2]
+                    pdf *= thin_coat_fresnel(wi_x, wi_y, wi_z, wo_x, wo_y,
+                             wo_z, ns_x, ns_y, ns_z, k_gv)
             elif self._type == BRDFTag.MOD_PHONG:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, it.n_s)
