@@ -38,3 +38,15 @@ INVALID = vec3([-1, -1, -1])
 AXIS_X  = vec3([1, 0, 0])
 AXIS_Y  = vec3([0, 1, 0])
 AXIS_Z  = vec3([0, 0, 1])
+
+
+# ================ BRDF TAG ===================
+class BRDFTag:
+    BLING_PHONG   = 0
+    LAMBERTIAN    = 1
+    SPECULAR      = 2
+    MICROFACET    = 3
+    MOD_PHONG     = 4
+    FRESNEL_BLEND = 5
+    OREN_NAYAR    = 6
+    THIN_COAT     = 7
