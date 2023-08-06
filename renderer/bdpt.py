@@ -135,7 +135,7 @@ class BDPT(VolumeRenderer):
 
         ti.block_local(self.time_cnts)
         ti.block_local(self.time_bins)
-        ti.loop_config(parallelize = 8, block_dim = 512)
+        ti.loop_config(parallelize = 8, block_dim = 128)
         for i, j in self.pixels:
             in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
             local_color = ZERO_V3

@@ -9,7 +9,8 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="12"/>
+        <integer name="max_bounce" value="6"/>
+        <integer name="max_depth" value="7"/>
         <integer name="num_shadow_ray" value="4"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
@@ -81,7 +82,7 @@
 	<brdf type="thin-coat" id="plastic">
 		<rgb name="k_d" value="#2D5167"/>
 		<rgb name="sigma" r="35.0" b="1.2"/>
-		<rgb name="k_s" value="#808080"/>
+		<rgb name="k_s" value="#404040"/>
 	</brdf>
 
 	<emitter type="area" id="area">
