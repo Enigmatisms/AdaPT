@@ -208,7 +208,7 @@ class VolumeRenderer(PathTracer):
                         emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, it.n_g)
 
                     # Step 6: sample new ray. This should distinguish between surface and medium interactions
-                    ray_d, indirect_spec, ray_pdf = self.sample_new_ray(it, ray_d, is_mi, in_free_space)
+                    ray_d, indirect_spec, ray_pdf, is_specular = self.sample_new_ray(it, ray_d, is_mi, in_free_space)
                     ray_o = hit_point
                     color += (direct_int + emit_int * emission_weight) * throughput
                     if not is_mi:
@@ -222,7 +222,7 @@ class VolumeRenderer(PathTracer):
                         hit_light = self.emitter_id[it.obj_id]
                         if ti.static(self.use_mis):
                             emitter_pdf = 0.0
-                            if hit_light >= 0 and self.is_delta(it.obj_id) == 0:
+                            if hit_light >= 0 and self.is_delta(it.obj_id) == 0 and not is_specular:
                                 emitter_pdf = self.src_field[hit_light].solid_angle_pdf(it, ray_d)
                             emission_weight = balance_heuristic(ray_pdf, emitter_pdf)
 

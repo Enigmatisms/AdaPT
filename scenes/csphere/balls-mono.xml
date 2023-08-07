@@ -78,7 +78,7 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<bsdf type="det-refraction" id="glass">
+	<bsdf type="lambertian" id="glass">
 		<rgb name="k_d" value="#FAFAFA"/>
 		<medium type="transparent">
 			<rgb name="u_a" value="0.0"/>

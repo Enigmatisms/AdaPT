@@ -100,6 +100,9 @@ class Vertex:
     
     @ti.func
     def get_interaction(self) -> Interaction:
-        # FIXME: self.normal
         return Interaction(obj_id = self.obj_id, n_s = self.n_s, n_g = self.n_g, tex = self.tex)
+    
+    @ti.func
+    def set_d_delta(self):
+        self.bool_bits |= ti.cast(0x22, ti.i8)
     

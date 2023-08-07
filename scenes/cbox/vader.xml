@@ -92,7 +92,7 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<bsdf type="det-refraction" id="glass">
+	<bsdf type="lambertian" id="glass">
 		<rgb name="k_d" value="#EAEAEA"/>
 		<medium type="transparent">
 			<rgb name="u_a" value="0.0"/>
@@ -101,6 +101,12 @@
 			<float name="ior" value="1.5"/>
 		</medium>
 	</bsdf>
+
+	<brdf type="thin-coat" id="plastic">
+		<rgb name="k_d" value="#18455c"/>
+		<rgb name="sigma" r="35.0" b="1.9"/>
+		<rgb name="k_s" value="#FFFFFF"/>
+	</brdf>
 
 	<emitter type="area" id="area1">
 		<rgb name="emission" value="50.0, 50.0, 50.0"/>
@@ -135,7 +141,7 @@
 		<transform name="toWorld">
 			<rotate type="euler" r="0.0" p="0.0" y="0"/>
 		</transform>
-		<ref type="material" id="pbr-glossy"/>
+		<ref type="material" id="plastic"/>
 		<!-- <ref type="material" id="white"/> -->
 	</shape>
 

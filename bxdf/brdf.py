@@ -16,7 +16,6 @@ import taichi.math as tm
 import xml.etree.ElementTree as xet
 from taichi.math import vec3, vec4, mat3
 
-from bxdf.misc import *
 from la.geo_optics import *
 from la.cam_transform import *
 from sampler.general_sampling import *
@@ -152,6 +151,7 @@ class BRDF:
     """
     _type:      int
     is_delta:   int          # whether the BRDF is Dirac-delta-like
+    """ Note that thin-coat can be delta / non-delta at the same time (have specular + diffuse part)"""
     k_d:        vec3            # diffusive coefficient (albedo)
     k_s:        vec3            # specular coefficient
     k_g:        vec3            # glossiness coefficient
@@ -357,51 +357,56 @@ class BRDF:
 
         dot_normal = tm.dot(incid, it.n_s)
         # We will not have total reflection for incident ray
-        refra_in, _v = snell_refraction(incid, it.n_s, dot_normal, 1.0, self.k_g[2])
-        in_ref_F = fresnel_equation(1., self.k_g[0], ti.abs(dot_normal), ti.abs(tm.dot(refra_in, it.n_s)))
+        refra_in, cos_r2 = snell_refraction(incid, it.n_s, dot_normal, 1.0, self.k_g[2])
+        in_ref_F = fresnel_equation(1., self.k_g[0], ti.abs(dot_normal), ti.sqrt(cos_r2))
         """ There are two Fresnel term sampling:
             - sample: direct reflection
             - sample: total internal reflection in the coating layer - absorbed
         """
+        is_specular = False
         if ti.random(float) > in_ref_F:       # refracting into the thin layer
             # Lambertian sampling
             local_new_dir, pdf = cosine_hemisphere()
             ray_out_d, _ = delocalize_rotate(it.n_s, local_new_dir)
             dot_out = tm.dot(ray_out_d, it.n_s)
-            if not is_total_reflection(dot_out, self.k_g[0], 1.0):      # total reflection - set spec to 0
+            if not is_total_reflection(dot_out, self.k_g[2], 1.0):      # total reflection - set spec to 0
                 # sample the second Fresnel term: whether we will have a total reflection?
-                refra_out, _v = snell_refraction(ray_out_d, it.n_s, dot_out, self.k_g[2], 1.0)
-                out_ref_F = fresnel_equation(self.k_g[0], 1., ti.abs(dot_out), ti.abs(tm.dot(refra_out, it.n_s)))
-                if ti.random(float) > out_ref_F:        # refraction out to the world
-                    fresnel_value = (1. - in_ref_F) * (1. - out_ref_F)
-                    pdf *= fresnel_value
-                    ray_out_d = refra_out
-                    # Oren-Nayar evaluation
-                    spec = self.eval_oren_nayar(it, refra_in, ray_out_d)
-                    spec *= fresnel_value
+                refra_out, cos_r2 = snell_refraction(ray_out_d, it.n_s, dot_out, self.k_g[2], 1.0)
+                out_ref_F = fresnel_equation(self.k_g[2], 1., ti.abs(dot_out), ti.sqrt(cos_r2))
+                pdf *= (1. - in_ref_F)
+                ray_out_d = refra_out
+                # Oren-Nayar evaluation
+                spec = self.eval_oren_nayar(it, refra_in, ray_out_d)
+                spec *= (1. - in_ref_F) * (1. - out_ref_F)
         else:                               # reflection
-            spec = self.k_s
+            # sample specular, we should tag it
+            spec = self.k_s * in_ref_F
             ray_out_d, _ = inci_reflect_dir(incid, it.n_s)
             pdf = in_ref_F
-        return ray_out_d, spec, pdf
+            is_specular = True
+        return ray_out_d, spec, pdf, is_specular
 
     @ti.func
     def eval_thin_coating(self, it:ti.template(), ray_in: vec3, ray_out: vec3):
         # input Fresnel evaluation
+        ret_spec = ZERO_V3
+        reflect, _ = inci_reflect_dir(ray_in, it.n_s)
         dot_in = tm.dot(ray_in, it.n_s)
         # We will not have total reflection for incident ray
-        refra_in, _v = snell_refraction(ray_in, it.n_s, dot_in, 1.0, self.k_g[2])
-        in_ref_F = fresnel_equation(1., self.k_g[2], ti.abs(dot_in), ti.abs(tm.dot(refra_in, it.n_s)))
-
-        # output Fresnel evaluation
-        dot_out = tm.dot(ray_out, it.n_s)
-        refra_out, _v = snell_refraction(ray_out, it.n_s, dot_out, self.k_g[2], 1.0)    # always valid
-        out_ref_F = fresnel_equation(self.k_g[2], 1.0, ti.abs(dot_out), ti.abs(tm.dot(refra_out, it.n_s)))
-        ret_spec = self.eval_oren_nayar(it, refra_in, refra_out) * ((1. - out_ref_F) * (1. - in_ref_F))
+        refra_in, cos_r2 = snell_refraction(ray_in, it.n_s, dot_in, 1.0, self.k_g[2])
+        in_ref_F = fresnel_equation(1., self.k_g[2], ti.abs(dot_in), ti.sqrt(cos_r2))
+        if ti.abs(tm.dot(ray_out, reflect)) > (1. - 1e-4):
+            ret_spec = self.k_s * in_ref_F
+        else:
+            # output Fresnel evaluation
+            dot_out = tm.dot(ray_out, it.n_s)
+            refra_out, cos_r2 = snell_refraction(ray_out, it.n_s, dot_out, 1.0, self.k_g[2])    # always valid
+            out_ref_F = fresnel_equation(1.0, self.k_g[2], ti.abs(dot_out), ti.sqrt(cos_r2))
+            ret_spec = self.eval_oren_nayar(it, refra_in, refra_out) * ((1. - out_ref_F) * (1. - in_ref_F))
         return ret_spec
     
     @ti.func
-    def thin_coat_fresnel(self, it: ti.template(), ray_in: vec3, ray_out: vec3) -> float:
+    def thin_coat_fresnel(self, it: ti.template(), ray_in: vec3) -> float:
         """ Evaluating the Fresnel coating: mirror specular + Oren-Nayar diffuse 
             note that evaluation for mirror specular part is always 0
 
@@ -410,15 +415,10 @@ class BRDF:
         # input Fresnel evaluation
         dot_in = tm.dot(ray_in, it.n_s)
         # We will not have total reflection for incident ray
-        refra_in, _v = snell_refraction(ray_in, it.n_s, dot_in, 1.0, self.k_g[2])
-        in_ref_F = fresnel_equation(1., self.k_g[2], ti.abs(dot_in), ti.abs(tm.dot(refra_in, it.n_s)))
-
-        # output Fresnel evaluation
-        dot_out = tm.dot(ray_out, it.n_s)
-        refra_out, _v = snell_refraction(ray_out, it.n_s, dot_out, self.k_g[2], 1.0)    # always valid
-        out_ref_F = fresnel_equation(self.k_g[2], 1.0, ti.abs(dot_out), ti.abs(tm.dot(refra_out, it.n_s)))
-        
-        return (1. - out_ref_F) * (1. - in_ref_F)
+        ratio    = 1.0 / self.k_g[2]
+        cos_r2   = 1. - ti.pow(ratio, 2) * (1. - ti.pow(dot_in, 2))        # refraction angle cosine
+        in_ref_F = fresnel_equation(1., self.k_g[2], ti.abs(dot_in), ti.sqrt(cos_r2))
+        return in_ref_F
 
     # ============================================================================
 
@@ -536,6 +536,7 @@ class BRDF:
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
         pdf      = 1.0
+        is_specular = False 
         if self._type == BRDFTag.BLING_PHONG:         # bling-phong glossy sampling
             ret_dir, ret_spec, pdf = self.sample_blinn_phong(it, incid)
         elif self._type == BRDFTag.LAMBERTIAN or self._type == BRDFTag.OREN_NAYAR:       # Lambertian
@@ -543,7 +544,7 @@ class BRDF:
         elif self._type == BRDFTag.SPECULAR:         # Specular - specular has no cosine attenuation
             ret_dir, ret_spec, pdf = self.sample_specular(it, incid, it.n_s)
         elif self._type == BRDFTag.THIN_COAT:
-            ret_dir, ret_spec, pdf = self.sample_thin_coat(it, incid)
+            ret_dir, ret_spec, pdf, is_specular = self.sample_thin_coat(it, incid)
         elif self._type == BRDFTag.MOD_PHONG:        # Modified-Phong
             ret_dir, ret_spec, pdf = self.sample_mod_phong(it, incid)
         elif self._type == BRDFTag.FRESNEL_BLEND:    # Fresnel-Blend
@@ -555,7 +556,7 @@ class BRDF:
         # Prevent shading normal from light leaking or accidental shadowing
         ret_dot = tm.dot(ret_dir, it.n_g)
         ret_spec = ti.select(ret_dot > 0, ret_spec, 0.)
-        return ret_dir, ret_spec, pdf
+        return ret_dir, ret_spec, pdf, is_specular
 
     @ti.func
     def get_pdf(self, it: ti.template(), outdir: vec3, incid: vec3):
@@ -570,11 +571,8 @@ class BRDF:
         if dot_outdir * dot_indir < 0.:         # same hemisphere         
             if self._type == BRDFTag.BLING_PHONG:
                 pdf = dot_outdir * INV_PI       # dot is cosine term
-            elif self._type == BRDFTag.LAMBERTIAN or self._type >= BRDFTag.OREN_NAYAR:
+            elif self._type == BRDFTag.LAMBERTIAN or self._type == BRDFTag.OREN_NAYAR:
                 pdf = dot_outdir * INV_PI
-                if self._type == BRDFTag.THIN_COAT:
-                    # multiply two Fresnel terms
-                    pdf *= self.thin_coat_fresnel(it, incid, outdir)
             elif self._type == BRDFTag.MOD_PHONG:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, it.n_s)
@@ -583,6 +581,10 @@ class BRDF:
                 specular_pdf    = 0.5 * (glossiness + 1.) * INV_PI * tm.pow(dot_ref_out, glossiness)
                 diffuse_color   = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
                 pdf = diffuse_color.max() * diffuse_pdf + self.k_s.max() * specular_pdf
+            elif self._type == BRDFTag.THIN_COAT:
+                reflect, _ = inci_reflect_dir(incid, it.n_s)
+                in_ref_F = self.thin_coat_fresnel(it, incid)
+                pdf = ti.select(ti.abs(tm.dot(outdir, reflect)) > (1. - 1e-3), in_ref_F, (1. - in_ref_F) * dot_outdir * INV_PI)
             elif self._type == BRDFTag.FRESNEL_BLEND:
                 half_vec = (outdir - incid).normalized()
                 dot_half = tm.dot(half_vec, it.n_s)
@@ -596,3 +598,4 @@ class BRDF:
                         wh = (outdir - incid).normalized()
                         pdf = trow_reitz_pdf(-incid, wh, self.k_g, it.n_s) / (-4. * tm.dot(wh, incid))
         return pdf
+    

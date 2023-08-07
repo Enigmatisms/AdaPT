@@ -135,7 +135,7 @@ class BDPT(VolumeRenderer):
 
         ti.block_local(self.time_cnts)
         ti.block_local(self.time_bins)
-        ti.loop_config(parallelize = 8, block_dim = 128)
+        ti.loop_config(parallelize = 8, block_dim = 512)
         for i, j in self.pixels:
             in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y
             local_color = ZERO_V3
@@ -181,7 +181,7 @@ class BDPT(VolumeRenderer):
             bool_bits = BDPT.get_bool(p_delta = True, in_fspace = self.free_space_cam), time = self.init_time,
             n_s = ZERO_V3, n_g = ZERO_V3, pos = self.cam_t, ray_in = ZERO_V3, beta = vec3([1., 1., 1.])
         )
-        return self.random_walk(i, j, max_bnc, self.cam_t, ray_d, pdf_dir, ONES_V3, TRANSPORT_RAD) + 1
+        return self.random_walk(i, j, max_bnc, self.cam_t, ray_d, self.cam_paths, pdf_dir, ONES_V3, TRANSPORT_RAD) + 1
 
     @ti.func
     def generate_light_path(self, i: int, j: int, max_bnc: int):
@@ -197,11 +197,14 @@ class BDPT(VolumeRenderer):
         if pdf_dir > 0. and ret_int.max() > 0. and vertex_pdf > 0.:      # black emitter / inpossible direction 
             beta = ret_int * ti.abs(tm.dot(ray_d, normal)) / (vertex_pdf * pdf_dir)
             # The start time of the current emission should be accounted for
-            vertex_num = self.random_walk(i, j, max_bnc, ray_o, ray_d, pdf_dir, beta, TRANSPORT_IMP, emitter.emit_time) + 1
+            vertex_num = self.random_walk(i, j, max_bnc, ray_o, ray_d, self.light_paths, pdf_dir, beta, TRANSPORT_IMP, emitter.emit_time) + 1
         return vertex_num
 
     @ti.func
-    def random_walk(self, i: int, j: int, max_bnc: int, init_ray_o, init_ray_d, pdf: float, beta, transport_mode: int, acc_time = 0.0):
+    def random_walk(
+        self, i: int, j: int, max_bnc: int, init_ray_o, init_ray_d, 
+        vertices: ti.template(), pdf: float, beta, transport_mode: int, acc_time = 0.0
+    ):
         """ Random walk to generate path 
             pdf: initial pdf for this path
             transport mode: whether it is radiance or importance, 0 is camera radiance, 1 is light importance
@@ -260,11 +263,8 @@ class BDPT(VolumeRenderer):
                 "ray_in": ray_d, "beta": throughput, "tex": it.tex            
             }
             vertex_num += 1
-            if transport_mode == TRANSPORT_IMP:         # Camera path
-                self.light_paths[i, j, vertex_num] = Vertex(**vertex_args) 
-            else:                          # Light path
-                self.cam_paths[i, j, vertex_num] = Vertex(**vertex_args) 
-
+            vertices[i, j, vertex_num] = Vertex(**vertex_args)
+            
             # Step 4: ray termination test - RR termination and max bounce. If ray terminates, we won't have to sample
             if vertex_num >= max_bnc:
                 break
@@ -274,7 +274,10 @@ class BDPT(VolumeRenderer):
 
             # Step 5: sample new ray. This should distinguish between surface and medium interactions
             old_ray_d = ray_d
-            ray_d, indirect_spec, ray_pdf = self.sample_new_ray(it, old_ray_d, is_mi, in_free_space, transport_mode)
+            ray_d, indirect_spec, ray_pdf, is_specular = self.sample_new_ray(it, old_ray_d, is_mi, in_free_space, transport_mode)
+            if is_specular:
+                vertices[i, j, vertex_num].set_d_delta()
+
             ray_o = hit_point
             pdf_bwd = ray_pdf
             if not is_mi:
@@ -288,10 +291,7 @@ class BDPT(VolumeRenderer):
                     pdf_bwd = self.surface_pdf(it, -old_ray_d, -ray_d)
             throughput *= BDPT.correct_shading_normal(it, old_ray_d, ray_d, is_mi, transport_mode)
             # ray_o is the position of the current vertex, which is used in prev vertex pdf_bwd
-            if transport_mode == TRANSPORT_IMP:         # Camera transport mode
-                self.light_paths[i, j, prev_vid].set_pdf_bwd(pdf_bwd, ray_o)
-            else:
-                self.cam_paths[i, j, prev_vid].set_pdf_bwd(pdf_bwd, ray_o)
+            vertices[i, j, prev_vid].set_pdf_bwd(pdf_bwd, ray_o)
         return vertex_num
     
     @ti.func

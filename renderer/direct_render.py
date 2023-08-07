@@ -32,7 +32,7 @@ class BlinnPhongTracer(TracerBase):
         This is a rank-3 matrix linear equation
     """
     def __init__(self, 
-        emitter: PointSource, array_info: dict, 
+        emitter: PointSource, array_info: dict,
         objects: List[ObjDescriptor], prop: dict
     ):
         super().__init__(objects, prop)
@@ -63,25 +63,25 @@ class BlinnPhongTracer(TracerBase):
     def render(self, emit_pos: vec3):
         for i, j in self.pixels:
             ray = self.pix2ray(i, j)
-            obj_id, normal, min_depth, _p, _u, _v = self.ray_intersect(ray, self.cam_t)
+            it = self.ray_intersect(ray, self.cam_t)
             # Iterate through all the meshes and find the minimum depth
-            if obj_id >= 0:
+            if it.obj_id >= 0:
                 if ti.static(REDENDER_DEPTH):
-                    self.depth_map[i, j] = min_depth
-                    self.norm_map[i, j] = normal
+                    self.depth_map[i, j] = it.min_depth
+                    self.norm_map[i, j] = it.n_s
                 # Calculate Blinn-Phong lighting model
-                hit_point  = ray * min_depth + self.cam_t
+                hit_point  = ray * it.min_depth + self.cam_t
                 to_emitter = emit_pos - hit_point
                 emitter_d  = to_emitter.norm()
                 light_dir  = to_emitter / emitter_d
                 # light_dir and ray are normalized, ray points from cam to hit point
                 # the ray direction vector in half way vector should point from hit point to cam
                 half_way = (0.5 * (light_dir - ray)).normalized()
-                spec = tm.pow(ti.max(tm.dot(half_way, normal), 0.0), self.shininess[obj_id])
+                spec = tm.pow(ti.max(tm.dot(half_way, it.n_s), 0.0), self.shininess[it.obj_id])
                 spec *= ti.min(1.0 / (1e-5 + emitter_d ** 2), 1e5)
                 if self.does_intersect(light_dir, hit_point, emitter_d):
                     spec *= 0.1
-                self.pixels[i, j] = spec * self.emit_int * self.surf_color[obj_id]
+                self.pixels[i, j] = spec * self.emit_int * self.surf_color[it.obj_id]
             else:
                 if ti.static(REDENDER_DEPTH):
                     self.depth_map[i, j] = 0.0
@@ -90,13 +90,13 @@ class BlinnPhongTracer(TracerBase):
 if __name__ == "__main__":
     profiling = False
     ti.init(arch = ti.cuda, kernel_profiler = profiling)
-    emitter_configs, meshes, configs = scene_parsing("../scenes/cbox/", "cbox-point.xml")
+    emitter_configs, array_info, all_objs, configs = scene_parsing("../scenes/cbox/", "cbox-point.xml")
     emitter = emitter_configs[0]
     emitter_pos = vec3(emitter.pos)
-    bpt = BlinnPhongTracer(emitter, meshes, configs)
+    bpt = BlinnPhongTracer(emitter, array_info, all_objs, configs)
     # Note that direct test the rendering time (once) is meaningless, executing for the first time
     # will be accompanied by JIT compiling, compilation time will be included.
-    gui = ti.GUI('BPT', (bpt.w, bpt.h))
+    gui = ti.GUI('Blinn-Phong Tracer', (bpt.w, bpt.h))
     while gui.running:
         for e in gui.get_events(gui.PRESS):
             if e.key == gui.ESCAPE:

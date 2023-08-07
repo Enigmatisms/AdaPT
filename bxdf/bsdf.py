@@ -22,7 +22,7 @@ from la.cam_transform import *
 from sampler.general_sampling import *
 from bxdf.brdf import BRDF_np
 from bxdf.medium import Medium, Medium_np
-from renderer.constants import TRANSPORT_RAD
+from renderer.constants import TRANSPORT_RAD, INV_PI
 
 __all__ = ['BSDF_np', 'BSDF']
 
@@ -32,7 +32,7 @@ class BSDF_np(BRDF_np):
         @author: Qianyue He
         @date: 2023-2-5
     """
-    __type_mapping = {"det-refraction": 0, "null": -1}
+    __type_mapping = {"det-refraction": 0, "null": -1, "lambertian": 1}
     def __init__(self, elem: xet.Element):
         super().__init__(elem, True)
         self.medium = Medium_np(elem.find("medium"))
@@ -92,8 +92,8 @@ class BSDF:
         if is_total_reflection(dot_normal, ni, nr):
             ret_dir = (incid - 2 * it.n_s * dot_normal).normalized()
         else:
-            refra_vec, _v = snell_refraction(incid, it.n_s, dot_normal, ni, nr)
-            reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_normal), ti.abs(tm.dot(refra_vec, it.n_s)))
+            refra_vec, cos_r2 = snell_refraction(incid, it.n_s, dot_normal, ni, nr)
+            reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_normal), ti.sqrt(cos_r2))
             if ti.random(float) > reflect_ratio:        # refraction
                 ret_pdf = 1. - reflect_ratio
                 ret_dir = refra_vec
@@ -120,17 +120,90 @@ class BSDF:
         else:
             # in sampling: ray_in points to the intersection, here ray_out points away from the intersection
             ref_dir = (ray_out - 2 * it.n_s * dot_out).normalized()
-            refra_vec, valid_ref = snell_refraction(ray_out, it.n_s, dot_out, ni, nr)
-            if valid_ref:
-                reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, it.n_s)))
-                if tm.dot(refra_vec, ray_in) > 1 - 5e-5:            # ray_in close to refracted dir
+            refra_vec, cos_r2 = snell_refraction(ray_out, it.n_s, dot_out, ni, nr)
+            if cos_r2 > 0.:
+                reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.sqrt(cos_r2))
+                if tm.dot(refra_vec, ray_in) > 1 - 1e-4:            # ray_in close to refracted dir
                     ret_int = diffuse_color * (1. - reflect_ratio)
                     if mode == TRANSPORT_RAD:    # consider non-symmetric effect due to different transport mode
                         ret_int *= (ni * ni) / (nr * nr)
-                elif tm.dot(ref_dir, ray_in) > 1 - 5e-5:            # ray_in close to reflected dir
+                elif tm.dot(ref_dir, ray_in) > 1 - 1e-4:            # ray_in close to reflected dir
                     ret_int = diffuse_color * reflect_ratio
             else:
-                if tm.dot(ref_dir, ray_in) > 1 - 5e-5:            # ray_in close to reflected dir
+                if tm.dot(ref_dir, ray_in) > 1 - 1e-4:            # ray_in close to reflected dir
+                    ret_int = diffuse_color
+        return ret_int
+    
+    # ========================= Lambertian transmission =======================
+    @ti.func
+    def sample_lambertian_trans(self, it: ti.template(), incid: vec3, medium: ti.template(), mode):
+        """ 
+            Deterministic refraction sampling - Surface reflection is pure mirror specular \\ 
+            other (Medium) could be incident medium or refraction medium, depending on \\
+            whether the ray is entering or exiting the current BSDF
+        """
+        dot_normal = tm.dot(incid, it.n_s)
+        entering_this = dot_normal < 0
+        ni = ti.select(entering_this, medium.ior, self.medium.ior)
+        nr = ti.select(entering_this, self.medium.ior, medium.ior)
+        ret_pdf = 1.0
+        fresnel = 1.0
+        is_delta = True
+        ret_dir = vec3([0, 1, 0])
+        ret_int = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
+        if is_total_reflection(dot_normal, ni, nr):
+            ret_dir = (incid - 2 * it.n_s * dot_normal).normalized()
+        else:
+            ratio  = ni / nr
+            cos_r2 = 1. - ti.pow(ratio, 2) * (1. - ti.pow(dot_normal, 2))        # refraction angle cosine
+            reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_normal), ti.sqrt(cos_r2))
+            if ti.random(float) > reflect_ratio:        # refraction
+                fresnel = 1. - reflect_ratio
+                local_new_dir, ret_pdf = cosine_hemisphere()
+                ret_pdf *= fresnel
+                normal = tm.sign(dot_normal) * it.n_s
+                ret_dir, _R = delocalize_rotate(normal, local_new_dir)
+                cosine_term = tm.max(0.0, tm.dot(normal, ret_dir))
+                ret_int *= INV_PI * cosine_term
+                if mode == TRANSPORT_RAD:       # non-symmetry effect
+                    ret_int *= (ni * ni) / (nr * nr)
+                is_delta = False
+            else:                                       # reflection
+                ret_dir = (incid - 2 * it.n_s * dot_normal).normalized()
+                fresnel = reflect_ratio
+                ret_pdf = reflect_ratio
+        return ret_dir, ret_int * fresnel, ret_pdf, is_delta
+    
+    @ti.func
+    def eval_lambertian_trans(self, it: ti.template(), ray_in: vec3, ray_out: vec3, medium: ti.template(), mode):
+        dot_out = tm.dot(ray_out, it.n_s)
+        entering_this = dot_out < 0
+        # notice that eval uses ray_out while sampling uses ray_in, therefore nr & ni have different order
+        ni = ti.select(entering_this, medium.ior, self.medium.ior)
+        nr = ti.select(entering_this, self.medium.ior, medium.ior)
+        ret_int = vec3([0, 0, 0])
+        diffuse_color = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
+        if is_total_reflection(dot_out, ni, nr):
+            ref_dir = (ray_out - 2 * it.n_s * dot_out).normalized()
+            if tm.dot(ref_dir, ray_in) > 1 - 1e-4:
+                ret_int = diffuse_color
+        else:
+            # in sampling: ray_in points to the intersection, here ray_out points away from the intersection
+            ref_dir = (ray_out - 2 * it.n_s * dot_out).normalized()
+            ratio      = ni / nr
+            cos_r2     = 1. - ti.pow(ratio, 2) * (1. - ti.pow(dot_out, 2))        # refraction angle cosine
+            dot_in = tm.dot(ray_in, it.n_s)
+            if cos_r2 > 0.:
+                reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.sqrt(cos_r2))
+                if dot_in * dot_out < 0:                            # reflection, ray_in and out same side
+                    if tm.dot(ref_dir, ray_in) > 1 - 1e-4:            # ray_in close to reflected dir
+                        ret_int = diffuse_color * reflect_ratio
+                else:
+                    ret_int = diffuse_color * ((1. - reflect_ratio) * INV_PI * ti.abs(dot_out))
+                    if mode == TRANSPORT_RAD:    # consider non-symmetric effect due to different transport mode
+                        ret_int *= (ni * ni) / (nr * nr)
+            else:
+                if tm.dot(ref_dir, ray_in) > 1 - 1e-4:            # ray_in close to reflected dir
                     ret_int = diffuse_color
         return ret_int
     # ========================= General operations =========================
@@ -139,23 +212,26 @@ class BSDF:
     def get_pdf(self, it: ti.template(), outdir: vec3, incid: vec3, medium: ti.template()):
         pdf = 0.
         if self._type == -1:
-            pdf = ti.select(tm.dot(incid, outdir) > 1 - 5e-5, 1., 0.)
-        elif self._type == 0:
+            pdf = ti.select(tm.dot(incid, outdir) > 1 - 1e-4, 1., 0.)
+        else:
             dot_out = tm.dot(outdir, it.n_s)
             entering_this = dot_out < 0
             # notice that eval uses ray_out while sampling uses ray_in, therefore nr & ni have different order
             ni = ti.select(entering_this, medium.ior, self.medium.ior)
             nr = ti.select(entering_this, self.medium.ior, medium.ior)
             ref_dir = (outdir - 2 * it.n_s * dot_out).normalized()
-            refra_vec, valid_refra = snell_refraction(outdir, it.n_s, dot_out, ni, nr)
-            if valid_refra:             # not total reflection, so there is not only one possible choice
-                reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.abs(tm.dot(refra_vec, it.n_s)))
-                if tm.dot(refra_vec, incid) > 1 - 5e-5:            # ray_in close to refracted dir
-                    pdf = 1. - reflect_ratio
-                elif tm.dot(ref_dir, incid) > 1 - 5e-5:            # ray_in close to reflected dir
+            refra_vec, cos_r2 = snell_refraction(outdir, it.n_s, dot_out, ni, nr)
+            if cos_r2 > 0.0:             # not total reflection, so there is not only one possible choice
+                reflect_ratio = fresnel_equation(ni, nr, ti.abs(dot_out), ti.sqrt(cos_r2))
+                if tm.dot(ref_dir, incid) > 1 - 1e-4:            # ray_in close to reflected dir
                     pdf = reflect_ratio
+                else:
+                    if self._type == 0 and tm.dot(refra_vec, incid) > 1 - 1e-4: # ray_in close to refracted dir
+                        pdf = 1. - reflect_ratio
+                    elif self._type == 1 and (tm.dot(incid, it.n_s) * dot_out > 0):
+                        pdf = (1. - reflect_ratio) * ti.abs(dot_out) * INV_PI
             else:
-                if tm.dot(ref_dir, incid) > 1 - 5e-5:
+                if tm.dot(ref_dir, incid) > 1 - 1e-4:
                     pdf = 1.
         return pdf
     
@@ -169,6 +245,8 @@ class BSDF:
         ret_spec = vec3([0, 0, 0])
         if self._type == 0:
             ret_spec = self.eval_det_refraction(it, incid, out, medium, mode)
+        elif self._type == 1:
+            ret_spec = self.eval_lambertian_trans(it, incid, out, medium, mode)
         return ret_spec
     
     @ti.func
@@ -176,7 +254,10 @@ class BSDF:
         ret_dir  = vec3([0, 0, 0])
         ret_spec = vec3([0, 0, 0])
         pdf      = 0.0
+        is_delta = False
         if self._type == 0:
             ret_dir, ret_spec, pdf = self.sample_det_refraction(it, incid, medium, mode)
-        return ret_dir, ret_spec, pdf
+        elif self._type == 1:
+            ret_dir, ret_spec, pdf, is_delta = self.sample_lambertian_trans(it, incid, medium, mode)
+        return ret_dir, ret_spec, pdf, is_delta
     

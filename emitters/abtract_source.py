@@ -103,11 +103,12 @@ class TaichiSource:
                 center    = dvs[tri_id, 0]
                 radius    = dvs[tri_id, 1][0]
                 to_hit    = (hit_pos - center).normalized()
+                # the pdf here can be viewed as being both both sa & area measure
+                # since for a unit sphere, different unit solid angle extends to the same amount of area
                 local_dir, pdf = cosine_hemisphere()
                 normal, _ = delocalize_rotate(to_hit, local_dir)
                 ret_pos   = center + normal * radius
-                # We only choose the hemisphere, therefore we have a 0.5. Also, this is both sa & area measure
-                ret_pdf   = 0.5 * pdf
+                ret_pdf   = pdf
             else:
                 mesh_num = prim_info[self.obj_ref_id, 1]
                 tri_id    = (ti.random(int) % mesh_num) + prim_info[self.obj_ref_id, 0]  # ASSUME that triangles are similar in terms of area

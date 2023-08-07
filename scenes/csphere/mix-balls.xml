@@ -13,6 +13,16 @@
         <integer name="max_depth" value="7"/>
         <integer name="num_shadow_ray" value="4"/>       
 
+		<!-- <integer name="start_t" value="2"/>       
+        <integer name="end_t" value="4"/>       
+        <integer name="start_s" value="0"/>       
+        <integer name="end_s" value="1"/>         -->
+
+		<integer name="start_t" value="1"/>       
+        <integer name="end_t" value="100"/>       
+        <integer name="start_s" value="0"/>       
+        <integer name="end_s" value="100"/>      
+
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
         <boolean name="stratified_sampling" value="true"/>
@@ -80,9 +90,9 @@
 	</brdf>
 
 	<brdf type="thin-coat" id="plastic">
-		<rgb name="k_d" value="#2D5167"/>
-		<rgb name="sigma" r="35.0" b="1.2"/>
-		<rgb name="k_s" value="#404040"/>
+		<rgb name="k_d" value="#18455c"/>
+		<rgb name="sigma" r="35.0" b="1.9"/>
+		<rgb name="k_s" value="#FFFFFF"/>
 	</brdf>
 
 	<emitter type="area" id="area">

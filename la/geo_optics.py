@@ -43,7 +43,7 @@ def fresnel_eval(cos_v: float, n_in: float, n_tr: float) -> float:
     cos_tr = ti.sqrt(ti.max(0, 1. - sin_t * sin_t))
     return fresnel_equation(ior_in, ior_tr, cos_value, cos_tr)
 
-@ti.experimental.real_func
+@ti.func
 def fresnel_equation(n_in: float, n_out: float, cos_inc: float, cos_ref: float) -> float:
     """ 
         Fresnel Equation for calculating specular ratio
@@ -68,8 +68,8 @@ def snell_refraction(incid: vec3, normal: vec3, dot_n: float, ni: float, nr: flo
     """ Refraction vector by Snell's Law, note that an extra flag will be returned """
     exiting    = tm.sign(dot_n)
     ratio      = ni / nr
-    cos_r2     = 1. - ti.pow(ratio, 2) * (1. - ti.pow(dot_n, 2))
-    valid      = cos_r2 > 0.              # for ni > nr situation, there will be total reflection
+    cos_r2     = 1. - ti.pow(ratio, 2) * (1. - ti.pow(dot_n, 2))        # refraction angle cosine
+    # for ni > nr situation, there will be total reflection
     refra_vec  = \
-        ti.select(valid, (ratio * incid - ratio * dot_n * normal + exiting * ti.sqrt(cos_r2) * normal).normalized(), vec3([0, 0, 0]))
-    return refra_vec, valid
+        ti.select(cos_r2 > 0., (ratio * incid - ratio * dot_n * normal + exiting * ti.sqrt(cos_r2) * normal).normalized(), vec3([0, 0, 0]))
+    return refra_vec, cos_r2
