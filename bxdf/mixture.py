@@ -2,6 +2,9 @@
     BxDF mixture struct 
     @author: Qianyue He
     @date: 2023.7.18
+
+    NOTE: mixture model (BxDF mixture) is only available in branch 'more'
+    since mixture model will add compile-time and run-time overhead
 """
 
 import sys

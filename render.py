@@ -64,7 +64,7 @@ def save_check_point(chkpt: dict, opts):
 if __name__ == "__main__":
     opts = get_options()
     cache_path = folder_path(f"./cached/{opts.scene}", f"Cache path for scene {opts.scene} not found. JIT compilation might take some time (~30s)...")
-    ti.init(arch = mapped_arch(opts.arch), kernel_profiler = opts.profile, device_memory_fraction = 0.8, offline_cache = not opts.no_cache, \
+    ti.init(arch = mapped_arch(opts.arch), kernel_profiler = opts.profile, device_memory_fraction = 0.9, offline_cache = not opts.no_cache, \
             default_ip = ti.i32, default_fp = ti.f32, offline_cache_file_path = cache_path, debug = opts.debug)
     input_folder = os.path.join(opts.input_path, opts.scene)
     emitter_configs, array_info, all_objs, configs = scene_parsing(input_folder, opts.name)  # complex_cornell

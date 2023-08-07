@@ -431,6 +431,7 @@ class PathTracer(TracerBase):
         ret_dir  = vec3([0, 1, 0])
         ret_spec = vec3([1, 1, 1])
         ret_pdf  = 1.0
+        is_specular = False
         if is_mi:
             if in_free_space:       # sample world medium
                 ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
@@ -443,10 +444,10 @@ class PathTracer(TracerBase):
                     if dot_res > 0.:                    # two sides
                         it.n_s *= -1
                         it.n_g *= -1
-                ret_dir, ret_spec, ret_pdf = self.brdf_field[it.obj_id].sample_new_rays(it, incid)
+                ret_dir, ret_spec, ret_pdf, is_specular = self.brdf_field[it.obj_id].sample_new_rays(it, incid)
             else:                                       # directly sample surface
-                ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].sample_surf_rays(it, incid, self.world.medium, mode)
-        return ret_dir, ret_spec, ret_pdf
+                ret_dir, ret_spec, ret_pdf, is_specular = self.bsdf_field[it.obj_id].sample_surf_rays(it, incid, self.world.medium, mode)
+        return ret_dir, ret_spec, ret_pdf, is_specular
 
     @ti.func
     def eval(self, it: ti.template(), incid: vec3, out: vec3, is_mi: int, 

@@ -100,7 +100,7 @@ class Renderer(PathTracer):
                         emit_int = self.src_field[hit_light].eval_le(hit_point - ray_o, it.n_s)
 
                     # indirect component requires sampling 
-                    ray_d, indirect_spec, ray_pdf = self.sample_new_ray(it, ray_d, False, False)
+                    ray_d, indirect_spec, ray_pdf, is_specular = self.sample_new_ray(it, ray_d, False, False)
                     ray_o = hit_point
                     color += (direct_int + emit_int * emission_weight) * contribution
                     # VERY IMPORTANT: rendering should be done according to rendering equation (approximation)
@@ -111,7 +111,7 @@ class Renderer(PathTracer):
                         hit_light = self.emitter_id[it.obj_id]
                         if ti.static(self.use_mis):
                             emitter_pdf = 0.0
-                            if hit_light >= 0 and self.is_delta(it.obj_id) == 0:
+                            if hit_light >= 0 and self.is_delta(it.obj_id) == 0 and not is_specular:
                                 emitter_pdf = self.src_field[hit_light].solid_angle_pdf(it, ray_d)
                             emission_weight = balance_heuristic(ray_pdf, emitter_pdf)
 
