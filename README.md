@@ -2,7 +2,7 @@
 
 ---
 
-**Ada** **P**ath **T**racer is a simple Monte Carlo path tracing renderer based on [Taichi Lang](https://www.taichi-lang.org/), with which you can play easily. The name `AdaPT` is given by my GF and I think this name is brilliant. 
+**Ada** **P**ath **T**racer is a simple Monte Carlo path tracing renderer based on [Taichi Lang](https://www.taichi-lang.org/), with which you can play easily. The name `AdaPT` is given by my GF and I think this name is brilliant. Currently, this renderer stops at version 1.5.x, since I think I should focus on something else until we have a better version of the backend (Taichi).
 
 This renderer is implemented based on **MY OWN** understanding of path tracing and other CG knowledge, therefore I **DO NOT** guarantee usability. The output results look decent nevertheless:
 
@@ -10,9 +10,13 @@ This renderer is implemented based on **MY OWN** understanding of path tracing a
 
 For more example scenes, please refer to [Enigmatisms/AdaptiveGallery](https://github.com/Enigmatisms/AdaptiveGallery)
 
+Sports car scene (~290k primitives, 16 bounces, with many different BxDFs):
+
+<p align="center"><img src="https://github.com/Enigmatisms/AdaPT/assets/46109954/b480b716-f6f2-4163-86d9-3b87591297de"/></p>
+
 Bathroom scene (~400k primitives, 8 bounces, source can be found [here]()):
 
-<p align="center"><img src="https://github.com/Enigmatisms/AdaptiveGallery/assets/46109954/8515ab2f-d008-44db-812e-6c99786bb602"/></p>
+<p align="center"><img src="https://github.com/Enigmatisms/AdaPT/assets/46109954/69272001-8acf-4196-9451-cfd4830e4067"/></p>
 
 Material orb scene (~500k primitives, 24 bounces, CUDA backend 16 fps):
 
