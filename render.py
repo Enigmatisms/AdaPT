@@ -116,12 +116,12 @@ if __name__ == "__main__":
             with progress:
                 for iter_cnt in progress.track(range(max_iter_num), description=""):
                     if opts.save_iter > 0 and (iter_cnt % opts.save_iter == 0):
-                        chkpt = rdr.save_check_point()
+                        chkpt = rdr.get_check_point()
                         save_check_point(chkpt, opts)
                     rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)
         except KeyboardInterrupt:
             if opts.save_iter > 0:
-                chkpt = rdr.save_check_point()
+                chkpt = rdr.get_check_point()
                 save_check_point(chkpt, opts)
             CONSOLE.log(":ok: Quit on Keyboard interruptions")
     else:
