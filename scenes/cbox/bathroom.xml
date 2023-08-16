@@ -77,7 +77,7 @@
 		<rgb name="k_g" r="10" g="1000"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="water-sink">
+	<brdf type="phong" id="water-sink">
 		<rgb name="k_d" value="#CDCDCD"/>
 		<rgb name="k_g" value="25.0"/>
 		<rgb name="k_s" value="212121"/>

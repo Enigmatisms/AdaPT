@@ -42,7 +42,7 @@ class BRDF_np:
     __all_glossiness_name   = {"glossiness", "shininess", "roughness", "sigma", "k_g"}
     __all_specular_name     = {"specular", "ref_ior", "k_s"}
     # Attention: microfacet support will not be added recently
-    __type_mapping          = {"blinn-phong": 0, "lambertian": 1, "specular": 2, "microfacet": 3, 
+    __type_mapping          = {"phong": 0, "lambertian": 1, "specular": 2, "microfacet": 3, 
                                "mod-phong": 4, "fresnel-blend": 5, "oren-nayar": 6, "thin-coat": 7}
     
     def __init__(self, elem: xet.Element, no_setup = False):
@@ -163,7 +163,7 @@ class BRDF:
     
     # ======================= Blinn-Phong ========================
     @ti.func
-    def eval_blinn_phong(self, it:ti.template(), ray_in: vec3, ray_out: vec3):
+    def eval_phong(self, it:ti.template(), ray_in: vec3, ray_out: vec3):
         """
             Normally, ray in is along the opposite direction of normal
             Attention: ray_in (in backward tracing) is actually out-going direction (in forward tracing)
@@ -182,10 +182,10 @@ class BRDF:
         return (diffuse_color + self.k_s * (0.5 * (self.k_g + 2.0) * glossy)) * INV_PI * cosine_term
 
     @ti.func
-    def sample_blinn_phong(self, it:ti.template(), incid: vec3):
+    def sample_phong(self, it:ti.template(), incid: vec3):
         local_new_dir, pdf = cosine_hemisphere()
         ray_out_d, _ = delocalize_rotate(it.n_s, local_new_dir)
-        spec = self.eval_blinn_phong(it, incid, ray_out_d)
+        spec = self.eval_phong(it, incid, ray_out_d)
         return ray_out_d, spec, pdf
 
     # ======================  Modified Phong =======================
@@ -217,15 +217,15 @@ class BRDF:
             pdf *= lmbt_pdf
         elif eps < pdf + self.k_s.max():    # specular sampling
             local_new_dir, pdf = mod_phong_hemisphere(self.mean[2])
-            reflect_view = (-2 * it.n_s * tm.dot(incid, it.n_s) + incid).normalized()
-            ray_out_d, _ = delocalize_rotate(reflect_view, local_new_dir)
+            normal, _ = delocalize_rotate(it.n_s, local_new_dir)
+            ray_out_d = (-2 * normal * tm.dot(incid, normal) + incid).normalized()
             spec = self.eval_mod_phong(it, incid, ray_out_d)
             pdf *= self.k_s.max()
         else:                               # zero contribution
             # it doesn't matter even we don't return a valid ray_out_d
             # since returned spec here is 0, contribution will be 0 and the ray will be terminated by RR or cut-off
             pdf = 1. - pdf - self.k_s.max()     # seems to be absorbed
-        # Sample around reflected view dir (while blinn-phong samples around normal)
+        # Sample around reflected view dir (while phong samples around normal)
         return ray_out_d, spec, pdf
     
     # ======================= Fresnel-Blend =======================
@@ -508,7 +508,7 @@ class BRDF:
         # For reflection, incident (in reverse direction) & outdir should be in the same hemisphere defined by the normal 
         if tm.dot(incid, it.n_g) * tm.dot(out, it.n_g) < 0:
             if self._type == BRDFTag.BLING_PHONG:         # Blinn-Phong
-                ret_spec = self.eval_blinn_phong(it, incid, out)
+                ret_spec = self.eval_phong(it, incid, out)
             elif self._type == BRDFTag.LAMBERTIAN:       # Lambertian
                 ret_spec = self.eval_lambertian(it, it.n_s, out)
             elif self._type == BRDFTag.MOD_PHONG:
@@ -538,7 +538,7 @@ class BRDF:
         pdf      = 1.0
         is_specular = False 
         if self._type == BRDFTag.BLING_PHONG:         # bling-phong glossy sampling
-            ret_dir, ret_spec, pdf = self.sample_blinn_phong(it, incid)
+            ret_dir, ret_spec, pdf = self.sample_phong(it, incid)
         elif self._type == BRDFTag.LAMBERTIAN or self._type == BRDFTag.OREN_NAYAR:       # Lambertian
             ret_dir, ret_spec, pdf = self.sample_lambertian(it, it.n_s)
         elif self._type == BRDFTag.SPECULAR:         # Specular - specular has no cosine attenuation

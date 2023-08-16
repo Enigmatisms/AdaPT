@@ -28,7 +28,7 @@
 		</film>
 	</sensor>
 
-	<brdf type="blinn-phong" id="diffuse">
+	<brdf type="phong" id="diffuse">
 		<rgb name="k_d" value="#D2D2D2"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
@@ -40,19 +40,19 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="left_wall">
+	<brdf type="phong" id="left_wall">
 		<rgb name="k_d" value="#DD2525"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="right_wall">
+	<brdf type="phong" id="right_wall">
 		<rgb name="k_d" value="#25DD25"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="light">
+	<brdf type="phong" id="light">
 		<rgb name="k_d" value="#CCCCCC"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>

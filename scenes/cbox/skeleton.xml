@@ -44,7 +44,7 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="white">
+	<brdf type="phong" id="white">
 		<rgb name="k_d" value="#AA9182"/>
 		<rgb name="k_g" value="20.0"/>
 		<rgb name="k_s" value="#535353"/>

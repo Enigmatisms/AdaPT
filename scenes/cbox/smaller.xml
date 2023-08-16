@@ -63,13 +63,13 @@
 		</medium>
 	</bsdf>
 
-	<brdf type="blinn-phong" id="floor">
+	<brdf type="phong" id="floor">
 		<rgb name="k_d" value="#A29785"/>
 		<rgb name="k_g" value="5.0"/>
 		<rgb name="k_s" value="#3C3C3C"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="tea-cup">
+	<brdf type="phong" id="tea-cup">
 		<rgb name="k_d" value="#A4C4A4"/>
 		<rgb name="k_g" value="15.0"/>
 		<rgb name="k_s" value="#322232"/>

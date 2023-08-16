@@ -65,31 +65,31 @@
 		</medium>
 	</bsdf>
 
-	<brdf type="blinn-phong" id="floor">
+	<brdf type="phong" id="floor">
 		<rgb name="k_d" value="#111111"/>
 		<rgb name="k_g" value="3.0"/>
 		<rgb name="k_s" value="#161616"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="tea-cup">
+	<brdf type="phong" id="tea-cup">
 		<rgb name="k_d" value="#A4C4A4"/>
 		<rgb name="k_g" value="10.0"/>
 		<rgb name="k_s" value="#322232"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="door-frame">
+	<brdf type="phong" id="door-frame">
 		<rgb name="k_d" value="#555555"/>
 		<rgb name="k_g" value="5.0"/>
 		<rgb name="k_s" value="#555555"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="oven-frame">
+	<brdf type="phong" id="oven-frame">
 		<rgb name="k_d" value="#222222"/>
 		<rgb name="k_g" value="5.0"/>
 		<rgb name="k_s" value="#555555"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="table">
+	<brdf type="phong" id="table">
 		<rgb name="k_d" value="#EEEEEE"/>
 		<rgb name="k_g" value="3.0"/>
 		<rgb name="k_s" value="#111111"/>

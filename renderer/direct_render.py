@@ -124,7 +124,7 @@ if __name__ == "__main__":
 
     if profiling:
         ti.profiler.print_kernel_profiler_info() 
-    ti.tools.imwrite(bpt.pixels.to_numpy(), "./blinn-phong.png")
+    ti.tools.imwrite(bpt.pixels.to_numpy(), "./phong.png")
 
     if REDENDER_DEPTH:
         depth_map = bpt.depth_map.to_numpy()

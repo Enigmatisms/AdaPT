@@ -43,7 +43,7 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="glossy">
+	<brdf type="phong" id="glossy">
 		<rgb name="k_d" value="#AA9182"/>
 		<rgb name="k_g" value="50.0"/>
 		<rgb name="k_s" value="#232323"/>
@@ -55,7 +55,7 @@
 		<rgb name="k_g" r="12" g="1500"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="floor">
+	<brdf type="phong" id="floor">
 		<rgb name="k_d" value="#A29D9A"/>
 		<rgb name="k_g" value="10.0"/>
 		<rgb name="k_s" value="#232323"/>

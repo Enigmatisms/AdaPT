@@ -28,37 +28,37 @@
 		</film>
 	</sensor>
 
-	<brdf type="blinn-phong" id="box">
+	<brdf type="phong" id="box">
 		<rgb name="k_d" value="#BCBCBC"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="large_box">
+	<brdf type="phong" id="large_box">
 		<rgb name="k_d" value="#BCBCBC"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="white">
+	<brdf type="phong" id="white">
 		<rgb name="k_d" value="#BDBDBD"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="left_wall">
+	<brdf type="phong" id="left_wall">
 		<rgb name="k_d" value="#DD2525"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="right_wall">
+	<brdf type="phong" id="right_wall">
 		<rgb name="k_d" value="#25DD25"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="light">
+	<brdf type="phong" id="light">
 		<rgb name="k_d" value="#555555"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>

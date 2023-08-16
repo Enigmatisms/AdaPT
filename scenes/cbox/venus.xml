@@ -43,13 +43,13 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="dark-silver">
+	<brdf type="phong" id="dark-silver">
 		<rgb name="k_d" value="#D3D3D3"/>
 		<rgb name="k_g" value="8.0"/>
 		<rgb name="k_s" value="#222222"/>
 	</brdf>
 
-	<brdf type="blinn-phong" id="gold">
+	<brdf type="phong" id="gold">
 		<rgb name="k_d" value="#AA9182"/>
 		<rgb name="k_g" value="20.0"/>
 		<rgb name="k_s" value="#535353"/>
