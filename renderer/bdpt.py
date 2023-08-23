@@ -218,6 +218,7 @@ class BDPT(VolumeRenderer):
         vertex_num = 0
         ray_pdf    = pdf                # PDF is of solid angle measure, therefore should be converted
         in_free_space = True
+        skip_first = (transport_mode == TRANSPORT_RAD) and (self.decomp[None] == TRANSIENT_LIT)
 
         while True:
             # Step 1: ray intersection
@@ -243,7 +244,10 @@ class BDPT(VolumeRenderer):
                 
             hit_point = ray_d * it.min_depth + ray_o
             hit_light = -1 if is_mi else self.emitter_id[it.obj_id]
-            acc_time += it.min_depth * self.get_ior(it.obj_id, in_free_space)
+            if skip_first:      # we won't record the time to camera when we are using camera unwarped (TRANSIENT_LIT) setting
+                skip_first = False
+            else:
+                acc_time += it.min_depth * self.get_ior(it.obj_id, in_free_space)
 
             # Do not place vertex on null surface (no correct answer about whether it's surface or medium)
             if not is_mi and not self.non_null_surface(it.obj_id):    # surface interaction for null surface should be skipped   
@@ -333,7 +337,7 @@ class BDPT(VolumeRenderer):
                     vertex_sampled = True
                     calc_transmittance = fr2cam.max() > 0
                     le = vertex.beta * fr2cam * sampled_v.beta
-                    ret_time = vertex.time
+                    ret_time = ti.select(decomp == TRANSIENT_LIT, vertex.time, sampled_v.time)
         elif sid == 1:          # only one light vertex is used, resample
             vertex = self.cam_paths[i, j, tid - 1]
             if vertex.is_connectible():
