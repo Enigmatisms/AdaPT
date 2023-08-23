@@ -55,9 +55,9 @@ Note that the gifs presented here are made by compressed jpeg files and optimize
 
 |         Transient balls (camera unwarped[^foot])          |         Transient cornell box (camera warped[^foot])         |
 | :------------------------------------: | :---------------------------------: |
-| ![ezgif-2-7af135f165](https://user-images.githubusercontent.com/126778364/226910459-ee6a3dbd-ad12-480d-a257-8dac1d038842.gif)|![ezgif-4-ab2bd63172](https://user-images.githubusercontent.com/126778364/226910971-3764eb68-9e29-41bd-894d-4a27e9dc49d7.gif)|
+|![ezgif-2-aa699e249c](https://github.com/Enigmatisms/AdaPT/assets/46109954/1bcc24c8-5fb0-496c-a6b4-dde5437056d3)|![ezgif-4-ab2bd63172](https://user-images.githubusercontent.com/126778364/226910971-3764eb68-9e29-41bd-894d-4a27e9dc49d7.gif)|
 
-[^foot]: 'Camera unwarped' means the transient profile shows the time when a position in the scene is *hit* by emitter ray. 'Camera warped' means the transient profile shows the total time of a position being hit by the emitter ray which should finally transmits to the camera. Starting from v1.2.1, the support for mode `transient_lit` (camera unwarped) is temporarily lifted, since there are still some problem with this mode. Any attempt to using this mode will fall back to `transient_cam` (camera warped) mode.
+[^foot]: 'Camera unwarped' means the transient profile shows the time when a position in the scene is *hit* by emitter ray. 'Camera warped' means the transient profile shows the total time of a position being hit by the emitter ray which should finally transmits to the camera.
 
 Here are the features I currently implemented and support:
 
