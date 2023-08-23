@@ -78,6 +78,13 @@ Here are the features I currently implemented and support:
 
 BTW, I am just a starter in CG (ray-tracing stuffs) and Taichi Lang, so there WILL BE BUGS or some design that's not reasonable inside of my code. Also, I haven't review and done extensive profiling & optimization of the code, therefore again --- correctness is not guaranteed **(yet the steady state rendering results are compared with mitsuba(0.6) and pbrt-v3)**! But, feel free to send issue / pull-request to me if you are interested.
 
+## [![Repography logo](https://images.repography.com/logo.svg)](https://repography.com) / Recent activity [![Time period](https://images.repography.com/41004045/Enigmatisms/AdaPT/recent-activity/fVqlnsVIVw6cNJn7ru5Ony241hiQ-LlfHO1r78JV23M/j2RaKrB53Y5oHM9SSkCt-BypoGCgGiv2DO6gNPeewxQ_badge.svg)](https://repography.com)
+
+[![Timeline graph](https://images.repography.com/41004045/Enigmatisms/AdaPT/recent-activity/fVqlnsVIVw6cNJn7ru5Ony241hiQ-LlfHO1r78JV23M/j2RaKrB53Y5oHM9SSkCt-BypoGCgGiv2DO6gNPeewxQ_timeline.svg)](https://github.com/Enigmatisms/AdaPT/commits)
+[![Issue status graph](https://images.repography.com/41004045/Enigmatisms/AdaPT/recent-activity/fVqlnsVIVw6cNJn7ru5Ony241hiQ-LlfHO1r78JV23M/j2RaKrB53Y5oHM9SSkCt-BypoGCgGiv2DO6gNPeewxQ_issues.svg)](https://github.com/Enigmatisms/AdaPT/issues)
+[![Pull request status graph](https://images.repography.com/41004045/Enigmatisms/AdaPT/recent-activity/fVqlnsVIVw6cNJn7ru5Ony241hiQ-LlfHO1r78JV23M/j2RaKrB53Y5oHM9SSkCt-BypoGCgGiv2DO6gNPeewxQ_prs.svg)](https://github.com/Enigmatisms/AdaPT/pulls)
+[![Top contributors](https://images.repography.com/41004045/Enigmatisms/AdaPT/recent-activity/fVqlnsVIVw6cNJn7ru5Ony241hiQ-LlfHO1r78JV23M/j2RaKrB53Y5oHM9SSkCt-BypoGCgGiv2DO6gNPeewxQ_users.svg)](https://github.com/Enigmatisms/AdaPT/graphs/contributors)
+
 ---
 
 ### Rendering Example
