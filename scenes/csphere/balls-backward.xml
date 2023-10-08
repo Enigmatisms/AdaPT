@@ -16,13 +16,6 @@
         <boolean name="anti_alias" value="true"/>       	
         <boolean name="stratified_sampling" value="true"/>
         <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
-
-		<!-- Transient rendering configuration -->
-        <string name="decomposition" value="transient_lit"/>	<!-- Decomposition mode -->				
-        <integer name="sample_count" value="400"/>			<!-- Number of bins -->
-        <float name="min_time" value="0.0"/>					<!-- Starting time for camera -->				
-        <float name="interval" value="0.05"/>				<!-- Width of a time bin -->			
-		<!-- End of Transient rendering configuration -->
 		
 		<transform name="toWorld">
 			<lookat target="2.78, 2.73, -7.99" origin="2.78, 2.73, -8.00" up="0, 1, 0"/>
@@ -39,14 +32,8 @@
 		<rgb name="k_d" value="#CACACA"/>
 		<!-- <rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/> -->
-		<rgb name="k_s" value="#333333"/>
+		<rgb name="k_s" value="#343434"/>
 		<rgb name="k_g" r="10" g="1000"/>
-	</brdf>
-
-	<brdf type="mod-phong" id="glossy">
-		<rgb name="k_d" value="#BCBCBC"/>
-		<rgb name="k_g" value="10.0"/>
-		<rgb name="k_s" value="#424242"/>
 	</brdf>
 
 	<brdf type="phong" id="diffuse">
@@ -67,14 +54,8 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="specular" id="mirror">
-		<rgb name="k_d" value="#DEDEDE"/>
-		<rgb name="k_g" value="1.0"/>
-		<rgb name="k_s" value="0.0"/>
-	</brdf>
-
 	<brdf type="phong" id="right_wall">
-		<rgb name="k_d" value="#25DD25"/>
+		<rgb name="k_d" value="#2525DD"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
@@ -91,15 +72,23 @@
 			<rgb name="u_a" value="0.0"/>
 			<rgb name="u_s" value="0.0"/>
 			<rgb name="par" value="0.0"/>
-			<float name="ior" value="1.5"/>
+			<float name="ior" value="1.4"/>
 		</medium>
 	</bsdf>
 
-	<emitter type="point" id="point">
+	<emitter type="area" id="area">
 		<rgb name="emission" value="70.0, 63.2, 60.3"/>
 		<rgb name="scaler" value="0.6"/>
-		<point name="center" x="2.78" y="2.73" z="-1.4"/>
 	</emitter>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
+		<transform name="toWorld">
+			<translate x="0" y="-0.001" z="0"/>
+		</transform>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area"/>
+	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
@@ -131,39 +120,21 @@
 	</shape>
 
 	<shape type="sphere">
-		<point name="center" x="4.5" y="0.6" z="1.1"/>
-		<float name="radius" value="0.6"/>
-		<ref type="material" id="mirror"/>
-	</shape>
-
-	<shape type="sphere">
-		<point name="center" x="4.2" y="0.5" z="4.1"/>
-		<float name="radius" value="0.5"/>
+		<point name="center" x="4.1" y="1.0" z="2.75"/>
+		<float name="radius" value="1.0"/>
 		<ref type="material" id="fresnel"/>
 	</shape>
 
 	<shape type="sphere">
-		<point name="center" x="3.2" y="0.4" z="0.8"/>
-		<float name="radius" value="0.4"/>
-		<ref type="material" id="white"/>
-	</shape>
-
-	<shape type="sphere">
-		<point name="center" x="2.7" y="0.4" z="3.8"/>
-		<float name="radius" value="0.4"/>
-		<ref type="material" id="white"/>
-	</shape>
-
-	<shape type="sphere">
-		<point name="center" x="0.9" y="0.5" z="0.6"/>
-		<float name="radius" value="0.5"/>
-		<ref type="material" id="glossy"/>
-	</shape>
-
-	<shape type="sphere">
-		<point name="center" x="1.7" y="1.2" z="1.9"/>
-		<float name="radius" value="1.2"/>
+		<point name="center" x="2.75" y="3.5" z="2.0"/>
+		<float name="radius" value="1.0"/>
 		<ref type="material" id="glass"/>
+	</shape>
+
+	<shape type="sphere">
+		<point name="center" x="1.3" y="1.0" z="2.75"/>
+		<float name="radius" value="1.0"/>
+		<ref type="material" id="diffuse"/>
 	</shape>
 
 	<world name="yes!">

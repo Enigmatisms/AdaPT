@@ -1,6 +1,7 @@
 *.png
 *.jpg
 *.ini
+*.npy
 *.data
 
 cached/

@@ -1,0 +1,114 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- A test file for mitsuba-like scene xml file parser -->
+<!-- Author: Qianyue He / Original credit goes to Wenzel Jakob -->
+<!-- Only Steady state rendering are supported -->
+<!-- Only RGB or rgb spectrums are supported -->
+<scene version="1.1">
+	<sensor type="perspective">
+		<float name="near_clip" value="0.001"/>
+		<float name="far_clip" value="2000"/>
+		<float name="fov" value="32.927"/>
+        <integer name="sample_count" value="128"/>
+        <integer name="max_bounce" value="16"/>
+        <integer name="max_depth" value="17"/>
+        <integer name="num_shadow_ray" value="1"/>       
+
+        <string name="accelerator" value="bvh"/>       
+        <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
+        <boolean name="anti_alias" value="true"/>       	
+        <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
+        <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
+		
+		<transform name="toWorld">
+			<lookat target="-0.02351261 -1.06246993 8.13125074" origin="0.00161174894 -1.24031043 9.11498928" up="0, 1, 0"/>
+		</transform>
+
+		<integer name="start_t" value="1"/>       
+        <integer name="end_t" value="100"/>       
+        <integer name="start_s" value="0"/>       
+        <integer name="end_s" value="100"/>   
+
+		<film type="film">
+			<integer name="width" value="867"/>
+			<integer name="height" value="750"/>
+			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
+			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
+			<integer name="crop_rx" value="0"/>		<!-- Crop half radius for x-axis -->
+			<integer name="crop_ry" value="0"/>		<!-- Crop half radius for y-axis -->
+		</film>
+	</sensor>
+
+	<brdf type="lambertian" id="light">
+		<rgb name="k_d" value="#555555"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="oren-nayar" id="pbr-diffuse">
+		<rgb name="k_d" value="#FAFAFA"/>
+		<rgb name="sigma" value="30.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<bsdf type="lambertian" id="glass">
+		<rgb name="k_d" value="#EAEAEA"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.5"/>
+		</medium>
+	</bsdf>
+
+	<brdf type="thin-coat" id="white">
+		<rgb name="k_d" value="#EAEAEA"/>
+		<rgb name="sigma" r="35.0" b="1.9"/>
+		<rgb name="k_s" value="#FFFFFF"/>
+	</brdf>
+
+	<brdf type="thin-coat" id="black">
+		<rgb name="k_d" value="#212121"/>
+		<rgb name="sigma" r="35.0" b="1.9"/>
+		<rgb name="k_s" value="#FFFFFF"/>
+	</brdf>
+
+	<emitter type="area" id="area">
+		<rgb name="emission" value="50.0, 0, 0"/>
+		<rgb name="scaler" value="0.4"/>
+	</emitter>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/starwar/black-plastics.obj"/>
+		<ref type="material" id="black"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/starwar/armors.obj"/>
+		<ref type="material" id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/starwar/walls.obj"/>
+		<ref type="material" id="pbr-diffuse"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/starwar/surface-emitters.obj"/>
+		<transform name="toWorld">
+			<rotate type="euler" r="0.0" p="0.0" y="0"/>
+		</transform>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area"/>
+	</shape>
+
+	<world name="yes!">
+		<rgb name="skybox" value="0.0"/>
+		<rgb name="ambient" value="0.0"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.0"/>
+		</medium>
+	</world>
+</scene>

@@ -31,18 +31,13 @@ from renderer.constants import TRANSPORT_UNI, INV_2PI, INV_PI, INVALID
 from sampler.general_sampling import *
 from utils.tools import TicToc
 from tracer.interaction import Interaction
-from tracer.ti_bvh import LinearBVH, LinearNode, export_python_bvh
+from tracer.ti_bvh import LinearBVH, LinearNode
 
 from rich.console import Console
 CONSOLE = Console(width = 128)
 
-"""
-    2023-5-18: There is actually tremendous amount of work to do
-    1. BRDF/BSDF should incorporate Texture, there is a way to by-pass this
-        1. Pass the UV-queried color into the functions (could be painful)
-        2. store the uv_color in the vertex (for evaluation during BDPT)
-        This is by-far the simplest solution
-    TODO: many APIs should be modified
+""" 2023-10-9:
+- Add gradient operation
 """
 
 @ti.data_oriented
@@ -64,6 +59,7 @@ class PathTracer(TracerBase):
         self.stratified_sample  = prop['stratified_sampling']   # whether to use stratified sampling
         self.use_mis            = prop['use_mis']               # whether to use multiple importance sampling
         self.num_shadow_ray     = prop['num_shadow_ray']        # number of shadow samples to trace
+        self.needs_grad         = prop.get('needs_grad', False) # Whether to allow gradient back propagation
         self.brdf_two_sides     = prop.get('brdf_two_sides', False)
         
         if self.num_shadow_ray > 0:
@@ -78,8 +74,8 @@ class PathTracer(TracerBase):
         self.src_num    = len(emitters)
         self.color      = ti.Vector.field(3, float, (self.w, self.h))       # color without normalization
         self.src_field  = TaichiSource.field()
-        self.brdf_field = BRDF.field()
-        self.bsdf_field = BSDF.field()
+        self.brdf_field = BRDF.field(needs_grad = self.needs_grad)
+        self.bsdf_field = BSDF.field(needs_grad = self.needs_grad)
 
         # These four texture mappings might be accessed with the same pattern
         self.albedo_map    = Texture.field()
@@ -92,8 +88,14 @@ class PathTracer(TracerBase):
 
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
         self.obj_nodes = ti.root.bitmasked(ti.i, self.num_objects)
-        self.obj_nodes.place(self.brdf_field)                              # BRDF Taichi storage
-        ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
+        if self.needs_grad:
+            CONSOLE.log(f":checkered_flag: Path tracer gradient back propagation enabled.")
+            self.obj_nodes.place(self.brdf_field, self.brdf_field.grad)         # Storage allocated for both values and gradients
+            ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field, self.bsdf_field.grad)
+        else:
+            CONSOLE.log(f":no_pedestrians: Path tracer gradient back propagation disabled.")
+            self.obj_nodes.place(self.brdf_field)                               # BRDF Taichi storage
+            ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
         ti.root.dense(ti.i, self.num_objects).place(self.albedo_map, self.normal_map, self.bump_map, self.roughness_map)
 
         if prop["packed_textures"] is None:

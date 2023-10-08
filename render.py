@@ -157,6 +157,12 @@ if __name__ == "__main__":
         ti.profiler.print_scoped_profiler_info()
         CONSOLE.rule()
         ti.profiler.memory_profiler.print_memory_profiler_info()
+    if opts.npy:
+        npy_name = f"{folder_path(opts.output_path)}{opts.img_name}-{opts.name[:-4]}-{opts.type}.npy"
+        img = rdr.pixels.to_numpy()
+        if rdr.do_crop == True:         # Do not apply watermark when cropping
+            img = img[rdr.start_y:rdr.end_y, rdr.start_x:rdr.end_x, :]
+        np.save(npy_name, img)
     image = apply_watermark(rdr, opts.normalize, True, not opts.no_watermark)
     save_figure = not opts.no_save_fig
     if save_figure:
