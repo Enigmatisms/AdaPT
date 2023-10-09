@@ -15,7 +15,7 @@ from bxdf.bsdf import BSDF
 @ti.kernel
 def loss_backward(rdr: ti.template(), gt: ti.template(), loss: ti.template(), size_norm: float):
     for i, j in gt:
-        loss[None] += size_norm * ((rdr.pixels[i, j] - gt[i, j]) ** 2).norm()
+        loss[None] += size_norm * ((rdr.pixels[i, j] - gt[i, j]) ** 2).sum()
         
 # TODO: ADAM optimizer to be added
 # TODO: note that world medium is not allowed to update

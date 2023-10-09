@@ -31,7 +31,7 @@ class Renderer(PathTracer):
         
     @ti.kernel
     def render(self, _t_start: int, _t_end: int, _s_start: int, _s_end: int, _a: int, _b: int):
-        self.cnt[None] += 1
+        # self.cnt[None] += 1
         ti.loop_config(parallelize = 8, block_dim = 512)
         for i, j in self.pixels:
             in_crop_range = i >= self.start_x and i < self.end_x and j >= self.start_y and j < self.end_y

@@ -12,6 +12,9 @@
         <integer name="max_bounce" value="12"/>
         <integer name="num_shadow_ray" value="1"/>       
 
+		<boolean name="needs_grad" value="true"/>										<!-- Requires gradient -->
+        <string name="gt_path" value="./outputs/pbr-cbox-pt.npy"/>						<!-- GT path -->
+
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
         <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
@@ -55,7 +58,8 @@
 	</brdf>
 
 	<brdf type="lambertian" id="right_wall">
-		<rgb name="k_d" value="#25DD25"/>
+		<bool name="needs_grad" value="true"/>
+		<rgb name="k_d" value="#0000DD"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
