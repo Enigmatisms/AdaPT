@@ -85,6 +85,10 @@ BTW, I am just a starter in CG (ray-tracing stuffs) and Taichi Lang, so there WI
 [![Pull request status graph](https://images.repography.com/41004045/Enigmatisms/AdaPT/recent-activity/fVqlnsVIVw6cNJn7ru5Ony241hiQ-LlfHO1r78JV23M/j2RaKrB53Y5oHM9SSkCt-BypoGCgGiv2DO6gNPeewxQ_prs.svg)](https://github.com/Enigmatisms/AdaPT/pulls)
 [![Top contributors](https://images.repography.com/41004045/Enigmatisms/AdaPT/recent-activity/fVqlnsVIVw6cNJn7ru5Ony241hiQ-LlfHO1r78JV23M/j2RaKrB53Y5oHM9SSkCt-BypoGCgGiv2DO6gNPeewxQ_users.svg)](https://github.com/Enigmatisms/AdaPT/graphs/contributors)
 
+Other branches:
+- `ad`: support for inverse rendering (automatic differentiable feature from Taichi), but due to the AD support of Taichi being too... lame (I think), there will be strange exceptions preventing using differentiable rendering.
+- `more`: BSDF mixture model (mixing different BSDFs). The BSDF management is entirely rewritten, but the code is slow for both runtime and compile time performance though it indeed supports more interesting features. I figure that since mixture is rarely used, we should opt for faster implementation.
+
 ---
 
 ### Rendering Example
