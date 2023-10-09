@@ -12,6 +12,9 @@
         <integer name="max_bounce" value="16"/>
         <integer name="num_shadow_ray" value="4"/>       
 
+        <boolean name="needs_grad" value="true"/>										<!-- Requires gradient -->
+        <string name="gt_path" value="./outputs/pbr-balls-backward-pt.npy"/>			<!-- GT path -->
+
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
         <boolean name="stratified_sampling" value="true"/>
@@ -55,7 +58,8 @@
 	</brdf>
 
 	<brdf type="phong" id="right_wall">
-		<rgb name="k_d" value="#2525DD"/>
+		<bool name="needs_grad" value="true"/>
+		<rgb name="k_d" value="#00FF00"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>

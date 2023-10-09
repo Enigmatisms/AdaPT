@@ -49,8 +49,9 @@ class BSDF_np(BRDF_np):
         self.type_id = BSDF_np.__type_mapping[self.type]
 
     def export(self):
+        info = self.is_delta + (self.needs_grad << 1)
         return BSDF(
-            _type = self.type_id, is_delta = self.is_delta, k_d = vec3(self.k_d), 
+            _type = self.type_id, info = info, k_d = vec3(self.k_d), 
             k_s = vec3(self.k_s), k_g = vec3(self.k_g), medium = self.medium.export()
         )
         
@@ -66,11 +67,19 @@ class BSDF:
         - transmission and reflection have independent distribution, yet transmission can be stochastic 
     """
     _type:      int
-    is_delta:   int             # whether the BRDF is Dirac-delta-like
+    info:       int             # information bit about BSDF (0x01: is_delta, 0x02: can be optimized)
     k_d:        vec3            # diffusive coefficient (albedo)
     k_s:        vec3            # specular coefficient
     k_g:        vec3            # glossiness coefficient
     medium:     Medium          # attached medium
+    
+    @ti.func
+    def is_delta(self):
+        return self.info & 0x01
+    
+    @ti.func
+    def needs_grad(self):
+        return self.info & 0x02
 
     # ========================= Deterministic Refraction =========================
     @ti.func

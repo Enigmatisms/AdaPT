@@ -88,6 +88,8 @@ class PathTracer(TracerBase):
 
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
         self.obj_nodes = ti.root.bitmasked(ti.i, self.num_objects)
+        
+        # currently, only BSDF (including media) supports inverse rendering
         if self.needs_grad:
             CONSOLE.log(f":checkered_flag: Path tracer gradient back propagation enabled.")
             self.obj_nodes.place(self.brdf_field, self.brdf_field.grad)         # Storage allocated for both values and gradients
@@ -175,6 +177,11 @@ class PathTracer(TracerBase):
                 self.__setattr__("does_intersect", self.does_intersect_bvh)
         else:
             CONSOLE.log(f":tractor: No accelerator used. Use a BVH accelerator if num prims {self.num_prims} exceeds 128.")
+
+    def zero_grad(self):
+        # reset image (for updated gradient)
+        self.pixels.fill(vec3([0, 0, 0]))
+        self.cnt[None] = 0
 
     def get_check_point(self):
         """This is a simple checkpoint saver, which can be hacked.
@@ -515,9 +522,9 @@ class PathTracer(TracerBase):
         is_delta = False
         if idx >= 0:
             if ti.is_active(self.obj_nodes, idx):      # active means the object is attached to BRDF
-                is_delta = self.brdf_field[idx].is_delta
+                is_delta = self.brdf_field[idx].is_delta()
             else:
-                is_delta = self.bsdf_field[idx].is_delta
+                is_delta = self.bsdf_field[idx].is_delta()
         return is_delta
     
     @ti.func

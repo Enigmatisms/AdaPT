@@ -14,6 +14,9 @@ def get(node: xet.Element, name: str, _type = float):
     # "0" serves as the default value to be converted (0, 0.0, False)
     return _type(node.get(name, "0"))
 
+def str2bool(x: str):
+    return True if x.lower() == "true" else False
+
 def parse_str(val_str: str, no_else_branch = False) -> Arr:
     splitter = (',', ' ')
     for split in splitter:

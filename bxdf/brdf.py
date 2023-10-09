@@ -19,7 +19,7 @@ from taichi.math import vec3, vec4, mat3
 from la.geo_optics import *
 from la.cam_transform import *
 from sampler.general_sampling import *
-from parsers.general_parser import rgb_parse
+from parsers.general_parser import rgb_parse, str2bool
 from renderer.constants import INV_PI, ZERO_V3, DEG2RAD, BRDFTag
 
 if ti.static(__ENABLE_MICROFACET__):
@@ -52,7 +52,8 @@ class BRDF_np:
         self.k_d = np.ones(3, np.float32)
         self.k_s = np.zeros(3, np.float32)
         self.k_g = np.ones(3, np.float32)
-        self.is_delta = False
+        self.is_delta   = False
+        self.needs_grad = False
         self.kd_default = True
         self.ks_default = True
         self.kg_default = True
@@ -65,11 +66,16 @@ class BRDF_np:
             self.type_id = BRDFTag.LAMBERTIAN
 
         texture_nodes = elem.findall("texture")
+        bool_nodes    = elem.findall("bool")
         if len(texture_nodes) > 1:
             CONSOLE.log(f"[yellow]Warning: [/yellow]Only one texture is supported in a BR(S)DF. Some textures might be shadowed for <{self.id}>.")
         rgb_nodes = elem.findall("rgb")
         if len(rgb_nodes) == 0 and len(texture_nodes) == 0:
             CONSOLE.log(f"[yellow]Warning: [/yellow]BSDF <{self.id}> has no surface color / textures defined.")
+        for bool_node in bool_nodes:
+            name = bool_node.get("name")
+            if name == 'needs_grad':
+                self.needs_grad = str2bool(bool_node.get("value"))
         for rgb_node in rgb_nodes:
             name = rgb_node.get("name")
             if name is None: 
@@ -130,8 +136,9 @@ class BRDF_np:
     def export(self):
         if self.type_id == -1:
             raise ValueError("It seems that this BRDF is not properly initialized with type_id = -1")
+        info = self.is_delta + (self.needs_grad << 1)
         return BRDF(
-            _type = self.type_id, is_delta = self.is_delta, 
+            _type = self.type_id, info = info, 
             k_d = vec3(self.k_d), k_s = vec3(self.k_s), k_g = vec3(self.k_g),
             mean = vec3([self.k_d.mean(), self.k_s.mean(), self.k_g.mean()])
         )
@@ -150,7 +157,7 @@ class BRDF:
         Taichi exported struct for unified BRDF storage
     """
     _type:      int
-    is_delta:   int          # whether the BRDF is Dirac-delta-like
+    info:       int             # information bit about BSDF (0x01: is_delta, 0x02: can be optimized)
     """ Note that thin-coat can be delta / non-delta at the same time (have specular + diffuse part)"""
     k_d:        vec3            # diffusive coefficient (albedo)
     k_s:        vec3            # specular coefficient
@@ -160,6 +167,14 @@ class BRDF:
         But for some others, like Microfacet (T-S / O-N), mean carries the meaning of 
         incident IOR (mean[0]) and transmission IOR (mean[1])
     """
+
+    @ti.func
+    def is_delta(self):
+        return self.info & 0x01
+    
+    @ti.func
+    def needs_grad(self):
+        return self.info & 0x02
     
     # ======================= Blinn-Phong ========================
     @ti.func

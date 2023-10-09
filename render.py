@@ -13,6 +13,7 @@ from tqdm import tqdm
 from renderer.bdpt import BDPT
 from renderer.vpt import VolumeRenderer
 from renderer.vanilla_renderer import Renderer
+from tracer.ad_utils import loss_backward, MomentumOptimizer
 from tracer.path_tracer import PathTracer
 from la.cam_transform import *
 
@@ -80,12 +81,26 @@ if __name__ == "__main__":
     max_iter_num += 1                                   # we start from 1
     iter_cnt = 0
     
-    eye_start = configs.get('start_t', 1)
-    lit_start = configs.get('start_s', 0)
+    bp_enabled = configs.get('needs_grad', False)
+    eye_start  = configs.get('start_t', 1)
+    lit_start  = configs.get('start_s', 0)
     max_bounce = configs.get('max_bounce', 16)
-    max_depth = configs.get('max_depth', 16)
-    eye_end = configs.get('end_t', max_bounce + 2)      # one more vertex for each path (starting vertex)
-    lit_end = configs.get('end_s', max_bounce + 2)      # one more vertex for each path (starting vertex)
+    max_depth  = configs.get('max_depth', 16)
+    eye_end    = configs.get('end_t', max_bounce + 2)      # one more vertex for each path (starting vertex)
+    lit_end    = configs.get('end_s', max_bounce + 2)      # one more vertex for each path (starting vertex)
+    loss       = None
+    gt         = None
+    optim      = None
+    if bp_enabled:
+        optim = MomentumOptimizer(rdr.num_objects)
+        loss  = ti.field(dtype = float, shape = (), needs_grad = True)
+        gt    = ti.field(3, float, (rdr.w, rdr.h))           # ground truth image
+        if 'gt_path' not in configs:
+            CONSOLE.log("[bold red] :skeleton: Supervised differentiable rendering requires 'gt_path' to be set in xml file.")
+            exit(1)
+        gt_np = np.load(configs['gt_path'])
+        gt.from_numpy(gt_np)
+    
     CONSOLE.log(f"Starting to loop. Max eye :eyes: vnum: {eye_end}, max light :bulb: vnum: {lit_end}.")
     if opts.type == "bdpt":
         CONSOLE.log(f"BDPT with {max_bounce} bounce(s), max depth: {max_depth}. Cam vertices [{eye_start}, {eye_end}], light vertices [{lit_start}, {lit_end}]")
@@ -135,12 +150,20 @@ if __name__ == "__main__":
                 for e in window.get_events(tui.PRESS):
                     if e.key == tui.ESCAPE:
                         window.running = False
-                rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)
+                if bp_enabled:
+                    with ti.ad.Tape(loss=loss):
+                        rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)
+                        loss_backward(rdr, gt, loss)
+                    optim.step(rdr)
+                else:
+                    rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)
                 if opts.save_iter > 0 and (iter_cnt % opts.save_iter == 0):
                     chkpt = rdr.get_check_point()
                     save_check_point(chkpt, opts)
                 canvas.set_image(rdr.pixels)
                 window.show()
+                if bp_enabled:
+                    rdr.zero_grad()
                 if window.running == False: 
                     if opts.save_iter > 0:
                         chkpt = rdr.get_check_point()
