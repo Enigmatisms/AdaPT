@@ -20,8 +20,8 @@ from la.cam_transform import *
 from tracer.tracer_base import TracerBase
 from emitters.abtract_source import LightSource, TaichiSource
 
-from bxdf.brdf import BRDF
 from bxdf.bsdf import BSDF, BSDF_np
+from bxdf.brdf import BRDF, MaterialInfo
 from bxdf.texture import Texture, Texture_np
 from parsers.opts import get_options
 from parsers.obj_desc import ObjDescriptor
@@ -74,6 +74,7 @@ class PathTracer(TracerBase):
         self.src_num    = len(emitters)
         self.color      = ti.Vector.field(3, float, (self.w, self.h))       # color without normalization
         self.src_field  = TaichiSource.field()
+        self.info_field = MaterialInfo.field()
         self.brdf_field = BRDF.field(needs_grad = self.needs_grad)
         self.bsdf_field = BSDF.field(needs_grad = self.needs_grad)
 
@@ -87,16 +88,16 @@ class PathTracer(TracerBase):
         self.roughness_map = Texture.field()                                # TODO: this is useless for now
 
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
-        self.obj_nodes = ti.root.bitmasked(ti.i, self.num_objects)
+        self.obj_nodes = ti.root.dense(ti.i, self.num_objects)
         
         # currently, only BSDF (including media) supports inverse rendering
         if self.needs_grad:
             CONSOLE.log(f":checkered_flag: Path tracer gradient back propagation enabled.")
-            self.obj_nodes.place(self.brdf_field, self.brdf_field.grad)         # Storage allocated for both values and gradients
+            self.obj_nodes.place(self.info_field, self.brdf_field, self.brdf_field.grad)         # Storage allocated for both values and gradients
             ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field, self.bsdf_field.grad)
         else:
             CONSOLE.log(f":no_pedestrians: Path tracer gradient back propagation disabled.")
-            self.obj_nodes.place(self.brdf_field)                               # BRDF Taichi storage
+            self.obj_nodes.place(self.info_field, self.brdf_field)                               # BRDF Taichi storage
             ti.root.bitmasked(ti.i, self.num_objects).place(self.bsdf_field)    # BRDF Taichi storage (no node needed)
         ti.root.dense(ti.i, self.num_objects).place(self.albedo_map, self.normal_map, self.bump_map, self.roughness_map)
 
@@ -180,7 +181,7 @@ class PathTracer(TracerBase):
 
     def zero_grad(self):
         # reset image (for updated gradient)
-        self.pixels.fill(vec3([0, 0, 0]))
+        self.color.fill(vec3([0, 0, 0]))
         self.cnt[None] = 0
 
     def get_check_point(self):
@@ -260,10 +261,12 @@ class PathTracer(TracerBase):
             self.obj_info[i, 2] = obj.type
             acc_prim_num        += obj.tri_num
 
+            bxdf, mat_info = obj.bsdf.export()
             if type(obj.bsdf) == BSDF_np:
-                self.bsdf_field[i]  = obj.bsdf.export()
+                self.bsdf_field[i] = bxdf
             else:
-                self.brdf_field[i]  = obj.bsdf.export()
+                self.brdf_field[i] = bxdf
+            self.info_field[i] = mat_info
             
             for key, value in obj.texture_group.items():        # exporting texture group
                 if value is not None:
@@ -443,19 +446,21 @@ class PathTracer(TracerBase):
         is_specular = False
         if is_mi:
             if in_free_space:       # sample world medium
-                ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
+                ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(self.world.medium_id, incid)
             else:                   # sample object medium
-                ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].medium.sample_new_rays(incid)
+                medium_id = self.info_field[it.obj_id].medium_id
+                ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].medium.sample_new_rays(medium_id, incid)
         else:                       # surface sampling
-            if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
+            material_id = self.info_field[it.obj_id].material_id
+            if self.info_field[it.obj_id].opaque:
                 if ti.static(self.brdf_two_sides):
                     dot_res = tm.dot(incid, it.n_s)
                     if dot_res > 0.:                    # two sides
                         it.n_s *= -1
                         it.n_g *= -1
-                ret_dir, ret_spec, ret_pdf, is_specular = self.brdf_field[it.obj_id].sample_new_rays(it, incid)
+                ret_dir, ret_spec, ret_pdf, is_specular = self.brdf_field[it.obj_id].sample_new_rays(it, material_id, incid)
             else:                                       # directly sample surface
-                ret_dir, ret_spec, ret_pdf, is_specular = self.bsdf_field[it.obj_id].sample_surf_rays(it, incid, self.world.medium, mode)
+                ret_dir, ret_spec, ret_pdf, is_specular = self.bsdf_field[it.obj_id].sample_surf_rays(it, material_id, incid, self.world.medium, mode)
         return ret_dir, ret_spec, ret_pdf, is_specular
 
     @ti.func
@@ -465,34 +470,37 @@ class PathTracer(TracerBase):
         if is_mi:
             # FIXME: eval_phase and phase function currently return a float
             if in_free_space:       # evaluate world medium
-                ret_spec.fill(self.world.medium.eval(incid, out))
+                ret_spec.fill(self.world.medium.eval(self.world.medium_id, incid, out))
             else:                   # is_mi implys is_scattering = True
-                ret_spec.fill(self.bsdf_field[it.obj_id].medium.eval(incid, out))
+                medium_id = self.info_field[it.obj_id].medium_id
+                ret_spec.fill(self.bsdf_field[it.obj_id].medium.eval(medium_id, incid, out))
         else:                       # surface interaction
-            if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
+            material_id = self.info_field[it.obj_id].material_id
+            if self.info_field[it.obj_id].opaque:
                 if ti.static(self.brdf_two_sides):
                     dot_res = tm.dot(incid, it.n_s)
                     if dot_res > 0.:                    # two sides
                         it.n_s *= -1
                         it.n_g *= -1
-                ret_spec = self.brdf_field[it.obj_id].eval(it, incid, out)
+                ret_spec = self.brdf_field[it.obj_id].eval(it, material_id, incid, out)
             else:                                       # directly evaluate surface
-                ret_spec = self.bsdf_field[it.obj_id].eval_surf(it, incid, out, self.world.medium, mode)
+                ret_spec = self.bsdf_field[it.obj_id].eval_surf(it, material_id, incid, out, self.world.medium, mode)
         return ret_spec
     
     @ti.func
     def surface_pdf(self, it: ti.template(), outdir: vec3, incid: vec3):
         """ Outdir: actual incident ray direction, incid: ray (from camera) """
         pdf = 0.
-        if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
+        material_id = self.info_field[it.obj_id].material_id
+        if self.info_field[it.obj_id].opaque:
             if ti.static(self.brdf_two_sides):
                 dot_res = tm.dot(incid, it.n_s)
                 if dot_res > 0.:                    # two sides
                     it.n_s *= -1
                     it.n_g *= -1
-            pdf = self.brdf_field[it.obj_id].get_pdf(it, outdir, incid)
+            pdf = self.brdf_field[it.obj_id].get_pdf(it, material_id, outdir, incid)
         else:
-            pdf = self.bsdf_field[it.obj_id].get_pdf(it, outdir, incid, self.world.medium)
+            pdf = self.bsdf_field[it.obj_id].get_pdf(it, material_id, outdir, incid, self.world.medium)
         return pdf
     
     @ti.func
@@ -500,9 +508,10 @@ class PathTracer(TracerBase):
         pdf = 0.
         if is_mi:   # evaluate phase function
             if in_free_space:
-                pdf = self.world.medium.eval(incid, out)
+                pdf = self.world.medium.eval(self.world.medium_id, incid, out)
             else:
-                pdf = self.bsdf_field[it.obj_id].medium.eval(incid, out)
+                medium_id = self.info_field[it.obj_id].medium_id
+                pdf = self.bsdf_field[it.obj_id].medium.eval(medium_id, incid, out)
         else:
             pdf = self.surface_pdf(it, out, incid)
         return pdf
@@ -521,10 +530,7 @@ class PathTracer(TracerBase):
         # REAL FUNC
         is_delta = False
         if idx >= 0:
-            if ti.is_active(self.obj_nodes, idx):      # active means the object is attached to BRDF
-                is_delta = self.brdf_field[idx].is_delta()
-            else:
-                is_delta = self.bsdf_field[idx].is_delta()
+            is_delta = self.info_field[idx].is_delta()
         return is_delta
     
     @ti.func
@@ -532,8 +538,8 @@ class PathTracer(TracerBase):
         # FIXME: if sigma_t is too small, set the scattering medium to det-refract
         # REAL FUNC
         is_scattering = False
-        if idx >= 0 and not ti.is_active(self.obj_nodes, idx):
-            is_scattering = self.bsdf_field[idx].medium.is_scattering()
+        if idx >= 0 and not self.info_field[idx].opaque:
+            is_scattering = self.info_field[idx].is_scattering()
         return is_scattering
 
     @ti.func

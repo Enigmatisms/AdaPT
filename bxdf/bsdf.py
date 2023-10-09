@@ -20,8 +20,8 @@ from taichi.math import vec3
 from la.geo_optics import *
 from la.cam_transform import *
 from sampler.general_sampling import *
-from bxdf.brdf import BRDF_np
 from bxdf.medium import Medium, Medium_np
+from bxdf.brdf import BRDF_np, MaterialInfo
 from renderer.constants import TRANSPORT_RAD, INV_PI
 
 __all__ = ['BSDF_np', 'BSDF']
@@ -50,10 +50,12 @@ class BSDF_np(BRDF_np):
 
     def export(self):
         info = self.is_delta + (self.needs_grad << 1)
+        medium, medium_id = self.medium.export()
+        mat_info = MaterialInfo(material_id = self.type_id, medium_id = medium_id, info = info, opaque = False)
         return BSDF(
-            _type = self.type_id, info = info, k_d = vec3(self.k_d), 
-            k_s = vec3(self.k_s), k_g = vec3(self.k_g), medium = self.medium.export()
-        )
+            info = info, k_d = vec3(self.k_d), 
+            k_s = vec3(self.k_s), k_g = vec3(self.k_g), medium = medium
+        ), mat_info
         
     def __repr__(self) -> str:
         return f"<{self.type.capitalize()} BSDF with {self.medium.__repr__()} >"
@@ -66,21 +68,11 @@ class BSDF:
         - implement simple BSDF first (simple refraction and mirror surface / glossy surface / lambertian surface)
         - transmission and reflection have independent distribution, yet transmission can be stochastic 
     """
-    _type:      int
-    info:       int             # information bit about BSDF (0x01: is_delta, 0x02: can be optimized)
     k_d:        vec3            # diffusive coefficient (albedo)
     k_s:        vec3            # specular coefficient
     k_g:        vec3            # glossiness coefficient
     medium:     Medium          # attached medium
     
-    @ti.func
-    def is_delta(self):
-        return self.info & 0x01
-    
-    @ti.func
-    def needs_grad(self):
-        return self.info & 0x02
-
     # ========================= Deterministic Refraction =========================
     @ti.func
     def sample_det_refraction(self, it: ti.template(), incid: vec3, medium: ti.template(), mode):
@@ -218,9 +210,9 @@ class BSDF:
     # ========================= General operations =========================
 
     @ti.func
-    def get_pdf(self, it: ti.template(), outdir: vec3, incid: vec3, medium: ti.template()):
+    def get_pdf(self, it: ti.template(), _type: int, outdir: vec3, incid: vec3, medium: ti.template()):
         pdf = 0.
-        if self._type == -1:
+        if _type == -1:
             pdf = ti.select(tm.dot(incid, outdir) > 1 - 1e-4, 1., 0.)
         else:
             dot_out = tm.dot(outdir, it.n_s)
@@ -235,38 +227,34 @@ class BSDF:
                 if tm.dot(ref_dir, incid) > 1 - 1e-4:            # ray_in close to reflected dir
                     pdf = reflect_ratio
                 else:
-                    if self._type == 0 and tm.dot(refra_vec, incid) > 1 - 1e-4: # ray_in close to refracted dir
+                    if _type == 0 and tm.dot(refra_vec, incid) > 1 - 1e-4: # ray_in close to refracted dir
                         pdf = 1. - reflect_ratio
-                    elif self._type == 1 and (tm.dot(incid, it.n_s) * dot_out > 0):
+                    elif _type == 1 and (tm.dot(incid, it.n_s) * dot_out > 0):
                         pdf = (1. - reflect_ratio) * ti.abs(dot_out) * INV_PI
             else:
                 if tm.dot(ref_dir, incid) > 1 - 1e-4:
                     pdf = 1.
         return pdf
     
-    @ti.func
-    def is_non_null(self):          # null surface is -1
-        return self._type >= 0
-    
     # ========================= Surface interactions ============================
     @ti.func
-    def eval_surf(self, it: ti.template(), incid: vec3, out: vec3, medium: ti.template(), mode) -> vec3:
+    def eval_surf(self, it: ti.template(), _type: int, incid: vec3, out: vec3, medium: ti.template(), mode) -> vec3:
         ret_spec = vec3([0, 0, 0])
-        if self._type == 0:
+        if _type == 0:
             ret_spec = self.eval_det_refraction(it, incid, out, medium, mode)
-        elif self._type == 1:
+        elif _type == 1:
             ret_spec = self.eval_lambertian_trans(it, incid, out, medium, mode)
         return ret_spec
     
     @ti.func
-    def sample_surf_rays(self, it: ti.template(), incid: vec3, medium: ti.template(), mode):
+    def sample_surf_rays(self, it: ti.template(), _type: int, incid: vec3, medium: ti.template(), mode):
         ret_dir  = vec3([0, 0, 0])
         ret_spec = vec3([0, 0, 0])
         pdf      = 0.0
         is_delta = False
-        if self._type == 0:
+        if _type == 0:
             ret_dir, ret_spec, pdf = self.sample_det_refraction(it, incid, medium, mode)
-        elif self._type == 1:
+        elif _type == 1:
             ret_dir, ret_spec, pdf, is_delta = self.sample_lambertian_trans(it, incid, medium, mode)
         return ret_dir, ret_spec, pdf, is_delta
     

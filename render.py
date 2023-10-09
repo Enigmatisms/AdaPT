@@ -94,7 +94,7 @@ if __name__ == "__main__":
     if bp_enabled:
         optim = MomentumOptimizer(rdr.num_objects)
         loss  = ti.field(dtype = float, shape = (), needs_grad = True)
-        gt    = ti.field(3, float, (rdr.w, rdr.h))           # ground truth image
+        gt    = ti.Vector.field(3, float, (rdr.w, rdr.h))           # ground truth image
         if 'gt_path' not in configs:
             CONSOLE.log("[bold red] :skeleton: Supervised differentiable rendering requires 'gt_path' to be set in xml file.")
             exit(1)
@@ -147,13 +147,14 @@ if __name__ == "__main__":
         with progress:
             for iter_cnt in progress.track(range(1, max_iter_num), description=""):
                 rdr.reset()
+                rdr.cnt[None] += 1
                 for e in window.get_events(tui.PRESS):
                     if e.key == tui.ESCAPE:
                         window.running = False
                 if bp_enabled:
                     with ti.ad.Tape(loss=loss):
                         rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)
-                        loss_backward(rdr, gt, loss)
+                        loss_backward(rdr, gt, loss, 1. / (rdr.w * rdr.h))
                     optim.step(rdr)
                 else:
                     rdr.render(eye_start, eye_end, lit_start, lit_end, max_bounce, max_depth)

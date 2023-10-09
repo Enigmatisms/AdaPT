@@ -137,11 +137,12 @@ class BRDF_np:
         if self.type_id == -1:
             raise ValueError("It seems that this BRDF is not properly initialized with type_id = -1")
         info = self.is_delta + (self.needs_grad << 1)
-        return BRDF(
-            _type = self.type_id, info = info, 
+        brdf = BRDF(
             k_d = vec3(self.k_d), k_s = vec3(self.k_s), k_g = vec3(self.k_g),
             mean = vec3([self.k_d.mean(), self.k_s.mean(), self.k_g.mean()])
         )
+        mat_info = MaterialInfo(material_id = self.type_id, medium_id = -1, info = info, opaque = True)
+        return brdf, mat_info
     
     def __repr__(self) -> str:
         return f"<{self.type.capitalize()} BRDF, default:[{int(self.kd_default), int(self.ks_default), int(self.kg_default)}]>"
@@ -152,12 +153,35 @@ class BRDF_np:
 # ============================================================================
 
 @ti.dataclass
+class MaterialInfo:
+    """ Information for BR(S)DF (int type) which can not have grad
+    """
+    material_id:    int             # id for BR(S)DF type
+    medium_id:      int             # id for medium type
+    info:           int             # information bit about BSDF (0x01: is_delta, 0x02: can be optimized)
+    opaque:         bool            # can ray penetrate the surface?
+
+    @ti.func
+    def is_delta(self):
+        return self.info & 0x01
+    
+    @ti.pyfunc
+    def needs_grad(self):
+        return self.info & 0x02
+    
+    @ti.func
+    def is_scattering(self):   # check whether the current medium is scattering medium
+        return self.medium_id >= 0
+    
+    @ti.func
+    def is_non_null(self):          # null surface is -1
+        return self.material_id >= 0
+
+@ti.dataclass
 class BRDF:
     """
         Taichi exported struct for unified BRDF storage
     """
-    _type:      int
-    info:       int             # information bit about BSDF (0x01: is_delta, 0x02: can be optimized)
     """ Note that thin-coat can be delta / non-delta at the same time (have specular + diffuse part)"""
     k_d:        vec3            # diffusive coefficient (albedo)
     k_s:        vec3            # specular coefficient
@@ -168,14 +192,6 @@ class BRDF:
         incident IOR (mean[0]) and transmission IOR (mean[1])
     """
 
-    @ti.func
-    def is_delta(self):
-        return self.info & 0x01
-    
-    @ti.func
-    def needs_grad(self):
-        return self.info & 0x02
-    
     # ======================= Blinn-Phong ========================
     @ti.func
     def eval_phong(self, it:ti.template(), ray_in: vec3, ray_out: vec3):
@@ -515,32 +531,32 @@ class BRDF:
     # ===================================================================================
 
     @ti.func
-    def eval(self, it: ti.template(), incid: vec3, out: vec3) -> vec3:
+    def eval(self, it: ti.template(), _type: int, incid: vec3, out: vec3) -> vec3:
         """ Direct component reflectance
             Every evaluation function does not output cosine weighted BSDF now
         """
         ret_spec = vec3([0, 0, 0])
         # For reflection, incident (in reverse direction) & outdir should be in the same hemisphere defined by the normal 
         if tm.dot(incid, it.n_g) * tm.dot(out, it.n_g) < 0:
-            if self._type == BRDFTag.BLING_PHONG:         # Blinn-Phong
+            if _type == BRDFTag.BLING_PHONG:         # Blinn-Phong
                 ret_spec = self.eval_phong(it, incid, out)
-            elif self._type == BRDFTag.LAMBERTIAN:       # Lambertian
+            elif _type == BRDFTag.LAMBERTIAN:       # Lambertian
                 ret_spec = self.eval_lambertian(it, it.n_s, out)
-            elif self._type == BRDFTag.MOD_PHONG:
+            elif _type == BRDFTag.MOD_PHONG:
                 ret_spec = self.eval_mod_phong(it, incid, out)
-            elif self._type == BRDFTag.FRESNEL_BLEND:
+            elif _type == BRDFTag.FRESNEL_BLEND:
                 R = rotation_between(vec3([0, 1, 0]), it.n_s)
                 ret_spec = self.eval_fresnel_blend(it, incid, out, R)
-            elif self._type == BRDFTag.OREN_NAYAR:
+            elif _type == BRDFTag.OREN_NAYAR:
                 ret_spec = self.eval_oren_nayar(it, incid, out)
-            elif self._type == BRDFTag.THIN_COAT:
+            elif _type == BRDFTag.THIN_COAT:
                 ret_spec = self.eval_thin_coating(it, incid, out)
-            elif self._type == BRDFTag.MICROFACET:
+            elif _type == BRDFTag.MICROFACET:
                 ret_spec = self.eval_microfacet(it, incid, out)
         return ret_spec
     
     @ti.func
-    def sample_new_rays(self, it:ti.template(), incid: vec3):
+    def sample_new_rays(self, it:ti.template(), _type: int, incid: vec3):
         """
             All the sampling function will return: (1) new ray (direction) \\
             (2) rendering equation transfer term (BRDF * cos term) (3) PDF
@@ -552,29 +568,29 @@ class BRDF:
         ret_spec = vec3([1, 1, 1])
         pdf      = 1.0
         is_specular = False 
-        if self._type == BRDFTag.BLING_PHONG:         # bling-phong glossy sampling
+        if _type == BRDFTag.BLING_PHONG:         # bling-phong glossy sampling
             ret_dir, ret_spec, pdf = self.sample_phong(it, incid)
-        elif self._type == BRDFTag.LAMBERTIAN or self._type == BRDFTag.OREN_NAYAR:       # Lambertian
+        elif _type == BRDFTag.LAMBERTIAN or _type == BRDFTag.OREN_NAYAR:       # Lambertian
             ret_dir, ret_spec, pdf = self.sample_lambertian(it, it.n_s)
-        elif self._type == BRDFTag.SPECULAR:         # Specular - specular has no cosine attenuation
+        elif _type == BRDFTag.SPECULAR:         # Specular - specular has no cosine attenuation
             ret_dir, ret_spec, pdf = self.sample_specular(it, incid, it.n_s)
-        elif self._type == BRDFTag.THIN_COAT:
+        elif _type == BRDFTag.THIN_COAT:
             ret_dir, ret_spec, pdf, is_specular = self.sample_thin_coat(it, incid)
-        elif self._type == BRDFTag.MOD_PHONG:        # Modified-Phong
+        elif _type == BRDFTag.MOD_PHONG:        # Modified-Phong
             ret_dir, ret_spec, pdf = self.sample_mod_phong(it, incid)
-        elif self._type == BRDFTag.FRESNEL_BLEND:    # Fresnel-Blend
+        elif _type == BRDFTag.FRESNEL_BLEND:    # Fresnel-Blend
             ret_dir, ret_spec, pdf = self.sample_fresnel_blend(it, incid)
-        elif self._type == BRDFTag.MICROFACET:       # Microfacet
+        elif _type == BRDFTag.MICROFACET:       # Microfacet
             ret_dir, ret_spec, pdf = self.sample_microfacet(it, incid)
         else:
-            print(f"Warnning: unknown or unsupported BRDF type: {self._type} during sampling.")
+            print(f"Warnning: unknown or unsupported BRDF type: {_type} during sampling.")
         # Prevent shading normal from light leaking or accidental shadowing
         ret_dot = tm.dot(ret_dir, it.n_g)
         ret_spec = ti.select(ret_dot > 0, ret_spec, 0.)
         return ret_dir, ret_spec, pdf, is_specular
 
     @ti.func
-    def get_pdf(self, it: ti.template(), outdir: vec3, incid: vec3):
+    def get_pdf(self, it: ti.template(), _type: int, outdir: vec3, incid: vec3):
         """ 
             Solid angle PDF for a specific incident direction - BRDF sampling
             Some PDF has nothing to do with backward incid (from eye to the surface), like diffusive 
@@ -584,11 +600,11 @@ class BRDF:
         dot_outdir = tm.dot(it.n_s, outdir)
         dot_indir  = tm.dot(it.n_s, incid)
         if dot_outdir * dot_indir < 0.:         # same hemisphere         
-            if self._type == BRDFTag.BLING_PHONG:
+            if _type == BRDFTag.BLING_PHONG:
                 pdf = dot_outdir * INV_PI       # dot is cosine term
-            elif self._type == BRDFTag.LAMBERTIAN or self._type == BRDFTag.OREN_NAYAR:
+            elif _type == BRDFTag.LAMBERTIAN or _type == BRDFTag.OREN_NAYAR:
                 pdf = dot_outdir * INV_PI
-            elif self._type == BRDFTag.MOD_PHONG:
+            elif _type == BRDFTag.MOD_PHONG:
                 glossiness      = self.mean[2]
                 reflect_view, _ = inci_reflect_dir(incid, it.n_s)
                 dot_ref_out     = tm.max(0., tm.dot(reflect_view, outdir))
@@ -596,11 +612,11 @@ class BRDF:
                 specular_pdf    = 0.5 * (glossiness + 1.) * INV_PI * tm.pow(dot_ref_out, glossiness)
                 diffuse_color   = ti.select(it.is_tex_invalid(), self.k_d, it.tex)
                 pdf = diffuse_color.max() * diffuse_pdf + self.k_s.max() * specular_pdf
-            elif self._type == BRDFTag.THIN_COAT:
+            elif _type == BRDFTag.THIN_COAT:
                 reflect, _ = inci_reflect_dir(incid, it.n_s)
                 in_ref_F = self.thin_coat_fresnel(it, incid)
                 pdf = ti.select(ti.abs(tm.dot(outdir, reflect)) > (1. - 1e-3), in_ref_F, (1. - in_ref_F) * dot_outdir * INV_PI)
-            elif self._type == BRDFTag.FRESNEL_BLEND:
+            elif _type == BRDFTag.FRESNEL_BLEND:
                 half_vec = (outdir - incid).normalized()
                 dot_half = tm.dot(half_vec, it.n_s)
                 R = rotation_between(vec3([0, 1, 0]), it.n_s)
@@ -609,7 +625,7 @@ class BRDF:
                 pdf = 0.5 * (pdf + dot_outdir * INV_PI)
             else:
                 if ti.static(__ENABLE_MICROFACET__):
-                    if self._type == BRDFTag.MICROFACET:
+                    if _type == BRDFTag.MICROFACET:
                         wh = (outdir - incid).normalized()
                         pdf = trow_reitz_pdf(-incid, wh, self.k_g, it.n_s) / (-4. * tm.dot(wh, incid))
         return pdf

@@ -32,7 +32,8 @@ class World_np:
         CONSOLE.log(f":earth_asia: World loading completed: \n {self}")
 
     def export(self):
-        return World(skybox = vec3(self.skybox), ambient = vec3(self.ambient), medium = self.medium.export(), C = self.C)
+        medium, medium_id = self.medium.export()
+        return World(skybox = vec3(self.skybox), ambient = vec3(self.ambient), medium = medium, medium_id = medium_id, C = self.C)
 
     def __repr__(self):
         is_scattering = np.linalg.norm(self.medium.u_e) > 1e-4
@@ -42,6 +43,6 @@ class World_np:
 class World:
     skybox:     vec3        # background color (texture is not supported yet)
     ambient:    vec3        # ambient light
-
+    medium_id:  int         # medium id
     medium:     Medium      # medium in the free space (normally, transparent or vacuum)
-    C:          float      # speed of light (could be 1. or 3e8)
+    C:          float       # speed of light (could be 1. or 3e8)

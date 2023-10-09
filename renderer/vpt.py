@@ -34,7 +34,7 @@ class VolumeRenderer(PathTracer):
         objects: List[ObjDescriptor], prop: dict, bvh_delay: bool = False
     ):
         super().__init__(emitters, array_info, objects, prop, bvh_delay)
-        self.world_scattering = self.world.medium._type >= 0
+        self.world_scattering = self.world.medium_id >= 0
         
     @ti.func
     def get_transmittance(self, idx: int, in_free_space: int, depth: float):
@@ -52,8 +52,8 @@ class VolumeRenderer(PathTracer):
     def non_null_surface(self, idx: int):
         non_null = True
         # All these idx >= 0 check is for world scattering medium
-        if idx >= 0 and not ti.is_active(self.obj_nodes, idx):      # BRDF is non-null, BSDF can be non-null
-            non_null = self.bsdf_field[idx].is_non_null()
+        if idx >= 0 and not self.info_field[idx].opaque:      # BRDF is non-null, BSDF can be non-null
+            non_null = self.info_field[idx].is_non_null()
         return non_null
 
     @ti.func

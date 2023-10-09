@@ -15,7 +15,7 @@ from bxdf.bsdf import BSDF
 @ti.kernel
 def loss_backward(rdr: ti.template(), gt: ti.template(), loss: ti.template(), size_norm: float):
     for i, j in gt:
-        loss += size_norm * ((rdr.pixels[i, j] - gt[i, j]) ** 2)
+        loss[None] += size_norm * ((rdr.pixels[i, j] - gt[i, j]) ** 2).norm()
         
 # TODO: ADAM optimizer to be added
 # TODO: note that world medium is not allowed to update
@@ -32,13 +32,14 @@ class MomentumOptimizer:
         ti.root.dense(ti.i, self.num_objects).place(self.brdf_grad, self.bsdf_grad)
         # values allowed to optimize
         self.brdf_grad_vals = {"k_d", "k_s"}
-        self.bsdf_grad_vals = {"k_d", "k_s", "u_s", "u_a", "ior"}
+        self.bsdf_grad_vals = {"k_d", "k_s"}
+        # for medium... recursive attribute query is needed.
         
     def step(self, rdr):
         """ Loss update for renderer """
         for i in range(self.num_objects):
-            if ti.is_active(rdr.brdf_field, i):
-                if not rdr.brdf_field[i].needs_grad(): continue
+            if rdr.info_field[i].opaque:
+                if not rdr.info_field[i].needs_grad(): continue
                 for item in self.brdf_grad_vals:
                     grad = getattr(self.brdf_grad[i], item) * self.alpha_old + getattr(rdr.brdf_field.grad[i], item) * (1. - self.alpha_old)
                     # update variable field value
@@ -46,7 +47,7 @@ class MomentumOptimizer:
                     # update gradient momentum
                     setattr(self.brdf_grad[i], item, grad)
             else:   # for BSDF value update
-                if not rdr.brdf_field[i].needs_grad(): continue
+                if not rdr.info_field[i].needs_grad(): continue
                 for item in self.bsdf_grad_vals:
                     grad = getattr(self.bsdf_grad[i], item) * self.alpha_old + getattr(rdr.bsdf_field.grad[i], item) * (1. - self.alpha_old)
                     setattr(rdr.bsdf_field[i], item, getattr(rdr.bsdf_field[i], item) - self.lr * grad)

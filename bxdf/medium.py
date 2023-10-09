@@ -55,27 +55,22 @@ class Medium_np:
         self.u_e = self.u_a + self.u_s
     
     def export(self):
-        phase_func = PhaseFunction(_type = self.type_id, par = vec3(self.par), pdf = vec3(self.pdf))
-        return Medium(_type = self.type_id, ior = self.ior, u_a = vec3(self.u_a), 
+        phase_func = PhaseFunction(par = vec3(self.par), pdf = vec3(self.pdf))
+        return Medium(ior = self.ior, u_a = vec3(self.u_a), 
             u_s = vec3(self.u_s), u_e = vec3(self.u_e), ph = phase_func
-        )
+        ), self.type_id
     
     def __repr__(self):
         return f"<Medium {self.type_name.capitalize()} with ior {self.ior:.3f}, extinction: {self.u_e}, scattering: {self.u_s}>"
 
 @ti.dataclass
 class Medium:
-    _type:  int
     ior:    float
     u_s:    vec3            # scattering
     u_a:    vec3            # absorption
     u_e:    vec3            # precomputed extinction
     ph:     PhaseFunction   # phase function
 
-    @ti.func
-    def is_scattering(self):   # check whether the current medium is scattering medium
-        return self._type >= 0
-    
     @ti.func
     def transmittance(self, depth: float):
         # transmitted without being scattered (PDF)
@@ -105,16 +100,16 @@ class Medium:
     # ================== medium sampling & eval =======================
     
     @ti.func
-    def sample_new_rays(self, incid: vec3):
+    def sample_new_rays(self, _type: int, incid: vec3):
         ret_spec = vec3([1, 1, 1])
         ret_dir  = incid
         ret_pdf  = 1.0
-        if self.is_scattering():   # medium interaction - evaluate phase function (currently output a float)
-            local_new_dir, ret_pdf = self.ph.sample_p(incid)     # local frame ray_dir should be transformed
+        if _type >= 0:          # medium interaction - evaluate phase function (currently output a float) (_type>=0 means is scattering)
+            local_new_dir, ret_pdf = self.ph.sample_p(_type, incid)     # local frame ray_dir should be transformed
             ret_dir, _ = delocalize_rotate(incid, local_new_dir)
             ret_spec *= ret_pdf
         return ret_dir, ret_spec, ret_pdf
     
     @ti.func
-    def eval(self, ray_in: vec3, ray_out: vec3):
-        return self.ph.eval_p(ray_in, ray_out)
+    def eval(self, _type: int, ray_in: vec3, ray_out: vec3):
+        return self.ph.eval_p(_type, ray_in, ray_out)
