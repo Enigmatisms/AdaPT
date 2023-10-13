@@ -15,7 +15,12 @@
 		<integer name="start_t" value="1"/>       
         <integer name="end_t" value="100"/>       
         <integer name="start_s" value="0"/>       
-        <integer name="end_s" value="100"/>          
+        <integer name="end_s" value="100"/>      
+
+		<string name="decomposition" value="transient_cam"/>	<!-- Decomposition mode -->				
+        <integer name="sample_count" value="10"/>			<!-- Number of bins -->
+        <float name="min_time" value="12"/>					<!-- Starting time for camera -->				
+        <float name="interval" value="0.8"/>				<!-- Width of a time bin -->			    
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	

@@ -25,6 +25,7 @@ CONSOLE = Console(width = 128)
 
 vec2i = ttype.vector(2, int)
 
+MODULATED    = False
 N_MAX_BOUNCE = 32
 T_MAX_BOUNCE = 400
 MAX_SAMPLE_CNT = 512
@@ -211,6 +212,8 @@ class BDPT(VolumeRenderer):
             Before the random walk, corresponding initial vertex should be appended already
             can not reassign function parameter (non-scalar): https://github.com/taichi-dev/taichi/pull/3607
         """
+        decmp_mode = self.decomp[None]
+        max_time   = self.max_time[None]
         last_v_pos = init_ray_o
         ray_o      = init_ray_o
         ray_d      = init_ray_d
@@ -218,7 +221,7 @@ class BDPT(VolumeRenderer):
         vertex_num = 0
         ray_pdf    = pdf                # PDF is of solid angle measure, therefore should be converted
         in_free_space = True
-        skip_first = (transport_mode == TRANSPORT_RAD) and (self.decomp[None] == TRANSIENT_LIT)
+        skip_first = (transport_mode == TRANSPORT_RAD) and (decmp_mode == TRANSIENT_LIT)
 
         while True:
             # Step 1: ray intersection
@@ -248,7 +251,9 @@ class BDPT(VolumeRenderer):
                 skip_first = False
             else:
                 acc_time += it.min_depth * self.get_ior(it.obj_id, in_free_space)
-
+            if decmp_mode != STEADY_STATE and acc_time > max_time:
+                break
+            
             # Do not place vertex on null surface (no correct answer about whether it's surface or medium)
             if not is_mi and not self.non_null_surface(it.obj_id):    # surface interaction for null surface should be skipped   
                 ray_o = hit_point
@@ -399,6 +404,8 @@ class BDPT(VolumeRenderer):
         else:
             weight = 1.0
         result = le * weight
+        if ti.static(MODULATED):
+            result *= (0.5 * (ti.sin(6. * ret_time) + 1.0)) ** 2.
         if result.max() == 0.: ret_time = 0.
         return result, raster_p, ret_time
     
