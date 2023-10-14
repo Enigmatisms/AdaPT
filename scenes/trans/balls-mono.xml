@@ -9,7 +9,7 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="16"/>
+        <integer name="max_bounce" value="12"/>
         <integer name="num_shadow_ray" value="4"/>       
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
@@ -18,8 +18,8 @@
         <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
 
 		<!-- Transient rendering configuration -->
-        <string name="decomposition" value="transient_cam"/>	<!-- Decomposition mode -->				
-        <integer name="sample_count" value="400"/>			<!-- Number of bins -->
+        <string name="decomposition" value="transient_lit"/>	<!-- Decomposition mode -->				
+        <integer name="sample_count" value="220"/>			<!-- Number of bins -->
         <float name="min_time" value="0.0"/>					<!-- Starting time for camera -->				
         <float name="interval" value="0.05"/>				<!-- Width of a time bin -->			
 		<!-- End of Transient rendering configuration -->
@@ -98,7 +98,7 @@
 	<emitter type="point" id="point">
 		<rgb name="emission" value="70.0, 63.2, 60.3"/>
 		<rgb name="scaler" value="0.6"/>
-		<point name="center" x="2.78" y="2.73" z="-1.4"/>
+		<point name="center" x="2.78" y="4.8" z="3.0"/>
 	</emitter>
 
 	<shape type="obj">
@@ -169,10 +169,10 @@
 	<world name="yes!">
 		<rgb name="skybox" value="0.0"/>
 		<rgb name="ambient" value="0.0"/>
-		<medium type="transparent">
+		<medium type="hg">
 			<rgb name="u_a" value="0.0"/>
-			<rgb name="u_s" value="0.0"/>
-			<rgb name="par" value="0.0"/>
+			<rgb name="u_s" value="0.2"/>
+			<rgb name="par" value="0.6"/>
 			<float name="ior" value="1.0"/>
 		</medium>
 	</world>

@@ -41,7 +41,7 @@ def export_transient_profile(
     CONSOLE.log(f"Transient profile post processing... ")
     for i in tqdm(range(sample_cnt)):
         rdr.copy_average(i)
-        transient_img = apply_watermark(rdr, 0.0, False)
+        transient_img = apply_watermark(rdr, 0.0, False, False)
         all_files.append(transient_img)
     all_files = np.stack(all_files, axis = 0)
     CONSOLE.log(f":floppy_disk: Exporting transient profile to folder [green]'{output_folder}'")
