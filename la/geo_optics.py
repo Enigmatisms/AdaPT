@@ -26,7 +26,7 @@ def schlick_fresnel(r_s: vec3, dot_val: float):
     """ Schlick's Fresnel Fraction Approximation [1993] """
     return r_s + (1 - r_s) * tm.pow(1. - dot_val, 5)
 
-@ti.experimental.real_func
+@ti.real_func
 def fresnel_eval(cos_v: float, n_in: float, n_tr: float) -> float:
     """ Evaluate Fresnel Equation with only one cosine value input 
         n_in: incident (outside) medium IOR

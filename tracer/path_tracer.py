@@ -329,7 +329,7 @@ class PathTracer(TracerBase):
             u, v, t = mat @ (start_p - p1)
             # u, v as barycentric coordinates should be returned
             ray_t = ti.select(u >= 0 and v >= 0 and u + v <= 1.0, t, ray_t)
-        return ray_t, obj_idx, prim_idx, is_sphere, u, v
+        return ray_t, obj_idx, prim_idx, ti.cast(is_sphere, bool), u, v
     
     @ti.func
     def ray_intersect_bvh(self, ray: vec3, start_p, min_depth = -1.0):
@@ -507,16 +507,14 @@ class PathTracer(TracerBase):
             if idx >= 0: ior = self.bsdf_field[idx].medium.ior
         return ior
     
-    @ti.func
-    def is_delta(self, idx: int):
-        # REAL FUNC
-        is_delta = False
+    @ti.real_func
+    def is_delta(self, idx: int) -> bool:
         if idx >= 0:
             if ti.is_active(self.obj_nodes, idx):      # active means the object is attached to BRDF
-                is_delta = self.brdf_field[idx].is_delta
+                return ti.cast(self.brdf_field[idx].is_delta, bool)
             else:
-                is_delta = self.bsdf_field[idx].is_delta
-        return is_delta
+                return ti.cast(self.bsdf_field[idx].is_delta, bool)
+        return False
     
     @ti.func
     def is_scattering(self, idx: int):           # check if the object with index idx is a scattering medium
