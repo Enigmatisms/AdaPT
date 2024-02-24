@@ -25,7 +25,7 @@ struct AABB {
     }
     /** Review needed: is this good to implement two overload? */
     AABB(const Eigen::Vector3f& mini, const Eigen::Vector3f& maxi): mini(mini), maxi(maxi) {}
-    AABB(Eigen::Vector3f&& mini, Eigen::Vector3f&& maxi): mini(mini), maxi(maxi) {}
+    AABB(Eigen::Vector3f&& mini, Eigen::Vector3f&& maxi): mini(std::move(mini)), maxi(std::move(maxi)) {}
     AABB(const Eigen::Matrix3f& primitive, bool is_sphere = false) {
         if (is_sphere) {
             mini = primitive.col(0) - primitive.col(1);

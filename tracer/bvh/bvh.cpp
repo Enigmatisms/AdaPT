@@ -82,7 +82,7 @@ void create_bvh_info(const std::vector<Eigen::Matrix3f>& meshes, const std::vect
 
 int recursive_bvh_SAH(BVHNode* const cur_node, std::vector<BVHInfo>& bvh_infos) {
     AABB fwd_bound, bwd_bound;
-    int seg_idx = 0, child_prim_cnt = 0;                // this index is used for indexing variable `bins`
+    int child_prim_cnt = 0;                // this index is used for indexing variable `bins`
     const int prim_num = cur_node->prim_num, base = cur_node->base, max_pos = base + prim_num;
     float min_cost = 5e9, node_prim_cnt = float(prim_num), node_inv_area = 1. / cur_node->bound.area();
 
@@ -129,7 +129,6 @@ int recursive_bvh_SAH(BVHNode* const cur_node, std::vector<BVHInfo>& bvh_infos) 
                     return bvh.centroid[dim] < pivot;
             });
             child_prim_cnt = prim_cnts[seg_bin_idx];
-            seg_idx = base + child_prim_cnt;        // bvh[seg_idx] will be in rchild
         }
         fwd_bound.clear();
         bwd_bound.clear();
@@ -138,7 +137,7 @@ int recursive_bvh_SAH(BVHNode* const cur_node, std::vector<BVHInfo>& bvh_infos) 
         for (int i = num_bins - 1; i > seg_bin_idx; i--)
             bwd_bound += idx_bins[i].bound;
     } else {                                    // equal primitive number
-        seg_idx = (base + max_pos) >> 1;
+        int seg_idx = (base + max_pos) >> 1;
         // Step 5: reordering the BVH info in the vector to make the segment contiguous (keep around half of the bvh in lchild)
         std::nth_element(bvh_infos.begin() + base, bvh_infos.begin() + seg_idx, bvh_infos.begin() + max_pos,
             [dim = max_axis] (const BVHInfo& bvh1, const BVHInfo& bvh2) {
