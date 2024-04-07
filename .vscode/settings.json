@@ -67,5 +67,8 @@
         "valarray": "cpp",
         "variant": "cpp",
         "bit": "cpp"
+    },
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportInvalidTypeForm": "none"
     }
 }
