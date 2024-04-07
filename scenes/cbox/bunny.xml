@@ -18,6 +18,11 @@
         <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
         <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
 
+		<string name="decomposition" value="transient_lit"/>	<!-- Decomposition mode -->				
+        <integer name="sample_count" value="220"/>			<!-- Number of bins -->
+        <float name="min_time" value="0.0"/>					<!-- Starting time for camera -->				
+        <float name="interval" value="0.05"/>				<!-- Width of a time bin -->			
+
         <string name="accelerator" value="bvh"/>       
 		<string name="decomposition" value="none"/>	<!-- Decomposition mode -->				
         <integer name="sample_count" value="400"/>			<!-- Number of bins -->
