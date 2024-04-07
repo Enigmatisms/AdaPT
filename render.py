@@ -11,6 +11,7 @@ import taichi.ui as tui
 from tqdm import tqdm
 
 from renderer.bdpt import BDPT
+from renderer.ssao import SSAORenderer
 from renderer.vpt import VolumeRenderer
 from renderer.vanilla_renderer import Renderer
 from tracer.path_tracer import PathTracer
@@ -29,8 +30,8 @@ from rich.console import Console
 
 CONSOLE = Console(width = 128)
 
-rdr_mapping = {"pt": Renderer, "vpt": VolumeRenderer, "bdpt": BDPT}
-name_mapping = {"pt": "", "vpt": "Volumetric ", "bdpt": "Bidirectional "}
+rdr_mapping = {"pt": Renderer, "vpt": VolumeRenderer, "bdpt": BDPT, "ao": SSAORenderer}
+name_mapping = {"pt": "", "vpt": "Volumetric ", "bdpt": "Bidirectional ", "ao": "SSAO "}
 
 def export_transient_profile(
     rdr: BDPT, sample_cnt: int, out_path: str, out_name: str, out_ext: str, 

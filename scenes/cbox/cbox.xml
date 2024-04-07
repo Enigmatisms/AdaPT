@@ -26,6 +26,10 @@
         <integer name="start_s" value="0"/>       
         <integer name="end_s" value="100"/>   
 
+        <integer name="smp_hemisphere" value="32"/>       
+        <integer name="depth_samples"  value="64"/>       
+		<float name="sample_extent" value="0.2"/>
+
 		<film type="film">
 			<integer name="width" value="512"/>
 			<integer name="height" value="512"/>

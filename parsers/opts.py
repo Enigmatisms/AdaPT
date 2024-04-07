@@ -28,7 +28,7 @@ def get_options(delayed_parse = False):
     parser.add_argument("--name",          default = "complex.xml", help = "Scene file name with extension", type = str)
     parser.add_argument("--arch",          default = 'cuda', choices=['cpu', 'gpu', 'vulkan', 'cuda'], help = "Backend-architecture")
     parser.add_argument("--save_iter",     default = -1, type = int, help = "Iteration to save check-point")
-    parser.add_argument("--type",          default = 'vpt', choices=['vpt', 'pt', 'bdpt'], help = "Algorithm to be used")
+    parser.add_argument("--type",          default = 'vpt', choices=['vpt', 'pt', 'bdpt', 'ao'], help = "Algorithm to be used")
     
     parser.add_argument("-p", "--profile", default = False, action = "store_true", help = "Whether to profile the program")
     parser.add_argument("--no_gui",        default = False, action = "store_true", help = "Whether to display GUI")
