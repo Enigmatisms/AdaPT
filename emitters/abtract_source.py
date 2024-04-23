@@ -22,6 +22,8 @@ from sampler.general_sampling import sample_triangle, cosine_hemisphere, uniform
 from rich.console import Console
 CONSOLE = Console(width = 128)
 
+HEMISPHERE_SAMPLE_SPHERE = True
+
 # point-0: PointSource, area-1: AreaSource, spot-2: SpotSource, collimated-4: CollimatedSource
 
 # =============== Emitter Type =================
@@ -102,13 +104,18 @@ class TaichiSource:
                 tri_id    = prim_info[self.obj_ref_id, 0]
                 center    = dvs[tri_id, 0]
                 radius    = dvs[tri_id, 1][0]
-                to_hit    = (hit_pos - center).normalized()
-                # the pdf here can be viewed as being both both sa & area measure
-                # since for a unit sphere, different unit solid angle extends to the same amount of area
-                local_dir, pdf = cosine_hemisphere()
-                normal, _ = delocalize_rotate(to_hit, local_dir)
+                
+                if ti.static(HEMISPHERE_SAMPLE_SPHERE):
+                    to_hit    = (hit_pos - center).normalized()
+                    # the pdf here can be viewed as being both both sa & area measure
+                    # since for a unit sphere, different unit solid angle extends to the same amount of area
+                    local_dir, pdf = uniform_sphere()
+                    normal, _ = delocalize_rotate(to_hit, local_dir)
+                    ret_pos   = center + normal * radius
+                    ret_pdf   = pdf / (radius * radius)
+                else:
+                    normal, _pdf = uniform_sphere()
                 ret_pos   = center + normal * radius
-                ret_pdf   = pdf
             else:
                 mesh_num = prim_info[self.obj_ref_id, 1]
                 tri_id    = (ti.random(int) % mesh_num) + prim_info[self.obj_ref_id, 0]  # ASSUME that triangles are similar in terms of area
