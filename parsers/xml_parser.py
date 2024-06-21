@@ -86,6 +86,10 @@ def parse_emitters(em_elem: list):
             raise ValueError(f"Source [{emitter_type}] is not implemented.")
     return sources, source_id_dict
 
+def parse_volume(directory: str, vol_list: List[xet.Element]):
+    
+    pass
+
 def parse_wavefront(
     directory: str, obj_list: List[xet.Element], 
     bsdf_dict: dict, emitter_dict: dict, texture_dict: List[Texture_np]) -> List[Arr]:
@@ -255,6 +259,7 @@ def scene_parsing(directory: str, file: str):
     shape_nodes      = root_node.findall("shape")
     sensor_node      = root_node.find("sensor")
     world_node       = root_node.find("world")
+    volume_node      = root_node.find("volume")
     assert(sensor_node)
     emitter_configs, \
     emitter_dict     = parse_emitters(emitter_nodes)
@@ -268,7 +273,7 @@ def scene_parsing(directory: str, file: str):
         Each mapping might needs a different packing, therefore we need different image packaging and texture info block
         For normal mapping, non-bidirectional renderers will be simple but not for BDPT
         roughness is of lower priority
-    - [ ] Speed up python->taichi conversion
+    - [x] Speed up python->taichi conversion
     """
     array_info, all_objs, area_lut, has_vertex_normal \
                      = parse_wavefront(directory, shape_nodes, bsdf_dict, emitter_dict, textures)

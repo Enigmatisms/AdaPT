@@ -76,13 +76,14 @@ auto loadVol2Numpy(const std::string& filename) {
     readVolumeData(filename, volume);
 
     py::array_t<float> vol_numpy(volume.size());
+    float* const data_ptr = vol_numpy.mutable_data(0);
     if (volume.channels == 1) {
         for (int z = 0; z < volume.zres; ++z) {
             int zy_base = z * volume.yres;
             for (int y = 0; y < volume.yres; ++y) {
                 int zyx_base = (zy_base + y) * volume.xres;
                 for (int x = 0; x < volume.xres; ++x) {
-                    vol_numpy[zyx_base + x] = volume.data[zyx_base + x];
+                    data_ptr[zyx_base + x] = volume.data[zyx_base + x];
                 }
             }
         }
@@ -93,9 +94,9 @@ auto loadVol2Numpy(const std::string& filename) {
                 int zyx_base = (zy_base + y) * volume.xres;
                 for (int x = 0; x < volume.xres; ++x) {
                     int index = (zyx_base + x) * 3;
-                    vol_numpy[index] = volume.data[index];
-                    vol_numpy[index + 1] = volume.data[index + 1];
-                    vol_numpy[index + 2] = volume.data[index + 2];
+                    data_ptr[index] = volume.data[index];
+                    data_ptr[index + 1] = volume.data[index + 1];
+                    data_ptr[index + 2] = volume.data[index + 2];
                 }
             }
         }
@@ -107,7 +108,6 @@ auto loadVol2Numpy(const std::string& filename) {
 }
 
 PYBIND11_MODULE(vol_loader, m) {
-
     m.doc() = "Volume grid (.vol / .vdb) loader (to numpy)\n";
 
     m.def("vol_file_to_numpy", &loadVol2Numpy, "Load volume grid from mitsuba3 .vol file (return numpy)\n"
