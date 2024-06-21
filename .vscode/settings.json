@@ -66,7 +66,12 @@
         "typeinfo": "cpp",
         "valarray": "cpp",
         "variant": "cpp",
-        "bit": "cpp"
+        "bit": "cpp",
+        "stack": "cpp",
+        "xstring": "cpp",
+        "xutility": "cpp",
+        "xlocnum": "cpp",
+        "xtr1common": "cpp"
     },
     "python.analysis.diagnosticSeverityOverrides": {
         "reportInvalidTypeForm": "none"
