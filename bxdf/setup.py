@@ -1,7 +1,7 @@
 from pybind11.setup_helpers import Pybind11Extension
 from setuptools import setup
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 cxx_std=11
 
 ext_modules = [
@@ -9,7 +9,7 @@ ext_modules = [
         ["vol_loader/vol2numpy.cpp"],
         # Example: passing in the version to the compiled code
         define_macros = [('VERSION_INFO', __version__)],
-        extra_compile_args= ['-g', '-O3'],
+        extra_compile_args= ['-g', '-O3', '-fopenmp'],
         ),
 ]
 

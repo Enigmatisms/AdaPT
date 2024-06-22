@@ -6,6 +6,7 @@
  * @date 2024-06-21
  * @copyright Copyright (c) 2024
  */
+#include <omp.h>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -71,13 +72,14 @@ bool readVolumeData(const std::string& filename, VolumeData& volume) {
 }
 
 // mitsuba3 vol to numpy
-auto loadVol2Numpy(const std::string& filename) {
+auto loadVol2Numpy(const std::string& filename, bool force_mono_color = false) {
     VolumeData volume;
     readVolumeData(filename, volume);
 
     py::array_t<float> vol_numpy(volume.size());
     float* const data_ptr = vol_numpy.mutable_data(0);
     if (volume.channels == 1) {
+        #pragma omp parallel for num_threads(4)
         for (int z = 0; z < volume.zres; ++z) {
             int zy_base = z * volume.yres;
             for (int y = 0; y < volume.yres; ++y) {
@@ -88,15 +90,23 @@ auto loadVol2Numpy(const std::string& filename) {
             }
         }
     } else if (volume.channels == 3) {
+        #pragma omp parallel for num_threads(4)
         for (int z = 0; z < volume.zres; ++z) {
             int zy_base = z * volume.yres;
             for (int y = 0; y < volume.yres; ++y) {
                 int zyx_base = (zy_base + y) * volume.xres;
-                for (int x = 0; x < volume.xres; ++x) {
-                    int index = (zyx_base + x) * 3;
-                    data_ptr[index] = volume.data[index];
-                    data_ptr[index + 1] = volume.data[index + 1];
-                    data_ptr[index + 2] = volume.data[index + 2];
+                if (!force_mono_color) {
+                    for (int x = 0; x < volume.xres; ++x) {
+                        int index = (zyx_base + x) * 3;
+                        data_ptr[index] = volume.data[index];
+                        data_ptr[index + 1] = volume.data[index + 1];
+                        data_ptr[index + 2] = volume.data[index + 2];
+                    }
+                } else {
+                    for (int x = 0; x < volume.xres; ++x) {
+                        int index = zyx_base + x;
+                        data_ptr[index] = volume.data[index * 3];
+                    }
                 }
             }
         }
@@ -111,6 +121,7 @@ PYBIND11_MODULE(vol_loader, m) {
     m.doc() = "Volume grid (.vol / .vdb) loader (to numpy)\n";
 
     m.def("vol_file_to_numpy", &loadVol2Numpy, "Load volume grid from mitsuba3 .vol file (return numpy)\n"
-        "Input: filename, input path of the file\n"
+        "Input: filename, [string] input path of the file\n"
+        "Input: force_mono_color, [bool] whether to extract only one channel from the volume data, default = False (True only for testing)\n"
     );
 }

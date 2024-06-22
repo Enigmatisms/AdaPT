@@ -240,7 +240,7 @@ class BDPT(VolumeRenderer):
 
             # Step 2: check for mean free path sampling
             # Calculate mfp, path_beta = transmittance / PDF
-            is_mi, it.min_depth, path_beta = self.sample_mfp(it.obj_id, in_free_space, it.min_depth) 
+            is_mi, it.min_depth, path_beta = self.sample_mfp(ray_o, ray_d, it.obj_id, in_free_space, it.min_depth) 
             if it.obj_id < 0 and not is_mi: break  # exiting world bound
             throughput *= path_beta             # attenuate first
             if throughput.max() < 5e-5: break
