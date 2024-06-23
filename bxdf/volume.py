@@ -186,6 +186,8 @@ class GridVolume:
     """ Maximum index for clamping, in case there's out-of-range access (xres - 1, yres - 1, zres - 1)"""
     majorant: vec3            # max_values
     """ (Scaled) Maximum value of sigma_t as majorant, for mono-chromatic, [0] is the value """
+    pdf: vec3                   # normalized majorant
+    """ PDF used for MIS (wavelength spectrum) """
     ph:     PhaseFunction   # phase function
     """ Phase function for scattering sampling """
 
@@ -246,7 +248,6 @@ class GridVolume:
         val = ZERO_V3
         if (idx >= 0).all() and (idx <= self.max_idxs).all():
             val = grid[idx[2], idx[1], idx[0]]
-        # indexing pattern z, y, x
         return val
     
     @ti.func 
@@ -315,8 +316,30 @@ class GridVolume:
     
     @ti.func 
     def sample_distance_delta_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec4:
-        return vec4([1, 1, 1, -1])
+        result = vec4([1, 1, 1, -1])
+        if self._type:
 
+            # First, choose one element according to the majorant
+            inv_maj = 1.0 / ti.max(self.majorant[2], 1e-4)
+            val = ti.random(float)
+            if val < self.pdf[0]:
+                inv_maj = 1.0 / self.majorant[0]
+            elif val < self.pdf[0] + self.pdf[1]:
+                inv_maj = 1.0 / self.majorant[1]
+
+            t = near_far[0]
+            while t < near_far[1]:
+                t -= ti.log(1.0 - ti.random(float)) * inv_maj
+                d = self.density_lookup(grid, ray_ol + t * ray_dl, vec3([
+                    ti.random(float), ti.random(float), ti.random(float)
+                ]))
+                # Scatter upon real collision
+                if ti.random(float) < d * inv_maj:
+                    result[:3]  = self.albedo
+                    result[3]   = t 
+                    break
+        return result
+    
     @ti.func
     def eval_tr_ratio_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec3:
         return ONES_V3
