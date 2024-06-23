@@ -71,7 +71,8 @@
         "xstring": "cpp",
         "xutility": "cpp",
         "xlocnum": "cpp",
-        "xtr1common": "cpp"
+        "xtr1common": "cpp",
+        "regex": "cpp"
     },
     "python.analysis.diagnosticSeverityOverrides": {
         "reportInvalidTypeForm": "none"

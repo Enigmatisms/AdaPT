@@ -40,7 +40,7 @@ class GridVolume_np:
     MONO = 1
     RGB  = 2
     __type_mapping = {"none": NONE, "mono": MONO, "rgb": RGB}
-    def __init__(self, elem: xet.Element, is_world = False):
+    def __init__(self, elem: xet.Element):
         self.albedo = np.ones(3, np.float32)
         self.par = np.zeros(3, np.float32)
         self.pdf = np.float32([1., 0., 0.])
@@ -56,6 +56,7 @@ class GridVolume_np:
 
         self.density_grid = None
 
+        self.toWorld = None
         self.scale = None
         self.rotation = np.eye(3, dtype = np.float32)
         self.offset = np.zeros(3, dtype = np.float32)
@@ -70,7 +71,7 @@ class GridVolume_np:
             "rgb": rgb_parse, 
             "float": lambda el: get(el, "value"), 
             "string": lambda el: self.setup_volume(get(el, "path", str)),
-            "transform": lambda el: transform_parse(el)
+            "transform": lambda el: self.assign_transform(*transform_parse(el))
         }
         if elem is not None:
             type_name = elem.get("type")
@@ -94,19 +95,21 @@ class GridVolume_np:
                     name = tag_elem.get("name")
                     if hasattr(self, name):
                         self.__setattr__(name, query_func(tag_elem))
-        else:
-            if not is_world:
-                raise ValueError("Grid volume can not be initialized by xml node {None}.")
-        
-        if self.scale is None:
-            self.scale = np.eye(3, dtype = np.float32)
-        else:
-            self.scale = np.diag(self.scale)
-        self.forward_t = self.rotation @ self.scale
-        if self.type_id == GridVolume_np.MONO:
-            self.density_grid *= self.density_scaling[0]
-        else:
-            self.density_grid *= self.density_scaling
+            
+            if self.scale is None:
+                self.scale = np.eye(3, dtype = np.float32)
+            else:
+                self.scale = np.diag(self.scale)
+            self.forward_t = self.rotation @ self.scale
+            if self.type_id == GridVolume_np.MONO:
+                self.density_grid *= self.density_scaling[0]
+            else:
+                self.density_grid *= self.density_scaling
+
+    def assign_transform(self, trans_r, trans_t, trans_s):
+        self.rotation = trans_r
+        self.offset   = trans_t
+        self.scale    = trans_s
 
     def setup_volume(self, path:str):
         if not os.path.exists(path):
@@ -115,9 +118,7 @@ class GridVolume_np:
         density_grid, (self.xres, self.yres, self.zres, self.channel) = vol_file_to_numpy(path, FORCE_MONO_COLOR)
         if FORCE_MONO_COLOR:
             CONSOLE.log(f"[yellow]Warning[/yellow]: FORCE_MONO_COLOR is True. This only makes sense when we are testing the code.")
-        CONSOLE.log(f"Volume grid loaded, type {self.type_name},\n \
-                    shape: (x = {self.xres}, y = {self.yres}, z = {self.zres}, c = {self.channel})")
-        return density_grid.reshape((self.zres, self.yres, self.xres))
+        return density_grid.reshape((self.zres, self.yres, self.xres, self.channel))
     
     def get_shape(self) -> Tuple[int, int, int]:
         return (self.zres, self.yres, self.xres)
@@ -132,16 +133,15 @@ class GridVolume_np:
             albedo  = vec3(self.albedo),
             inv_T   = mat3(np.linalg.inv(self.forward_t)),
             trans   = vec3(self.offset),
-            mini    = aabb_mini, 
-            maxi    = aabb_maxi,
-            max_idxs = vec3i([self.xres, self.yres, self.zres]) - 1,
-            majorant = vec3(maj) if self.type_id == GridVolume_np.RGB else maj,
+            mini    = vec3(aabb_mini), 
+            maxi    = vec3(aabb_maxi),
+            max_idxs = vec3i([self.xres, self.yres, self.zres]),
+            majorant = vec3(maj) if self.type_id == GridVolume_np.RGB else vec3([maj, maj, maj]),
             ph       = PhaseFunction(_type = self.phase_type_id, par = vec3(self.par), pdf = vec3(self.pdf))
         )
     
     def local_to_world(self, point: np.ndarray) -> np.ndarray:
         """ Take a point (shape (3) and transform it to the world space) """
-        print(point.shape, self.forward_t.shape, self.offset.shape)
         return point @ self.forward_t.T + self.offset 
     
     def get_aabb(self):
@@ -158,12 +158,14 @@ class GridVolume_np:
         ])
         world_point = self.local_to_world(all_points)
         # conservative AABB
-        return world_point.min(axis = 0) - 1e-4, world_point.max(axis = 0) + 1e-4
+        return world_point.min(axis = 0) - 0.1, world_point.max(axis = 0) + 0.1
 
     
     def __repr__(self):
+        aabb_min, aabb_max = self.get_aabb()
         return f"<Volume grid {self.type_name.upper()} with phase {self.phase_type}, albedo: {self.albedo},\n \
-                shape: (x = {self.xres}, y = {self.yres}, z = {self.zres}, c = {self.channel})>"
+                shape: (x = {self.xres}, y = {self.yres}, z = {self.zres}, c = {self.channel}),\n \
+                AABB: Min = {aabb_min}, Max = {aabb_max}>"
     
 @ti.dataclass
 class GridVolume:
@@ -181,7 +183,7 @@ class GridVolume:
     maxi:     vec3
     """ Max bound (AABB) maximum coordinate """
     max_idxs: vec3i            # max_indices
-    """ Maximum index for clamping, in case there's out-of-range access """
+    """ Maximum index for clamping, in case there's out-of-range access (xres - 1, yres - 1, zres - 1)"""
     majorant: vec3            # max_values
     """ (Scaled) Maximum value of sigma_t as majorant, for mono-chromatic, [0] is the value """
     ph:     PhaseFunction   # phase function
@@ -217,7 +219,7 @@ class GridVolume:
                 ray_d = self.inv_T @ ray_d
                 if self._type:
                     if self._type == GridVolume_np.MONO:     # single channel
-                        transm = self.eval_tr_ratio_tracking(grid, ray_o, ray_d, near_far),
+                        transm = self.eval_tr_ratio_tracking(grid, ray_o, ray_d, near_far)
                     else:
                         transm = self.eval_tr_ratio_tracking_3d(grid, ray_o, ray_d, near_far)
         return transm
@@ -238,18 +240,24 @@ class GridVolume:
         return transm
     
     @ti.func 
-    def density_lookup_3d(self, grid: ti.template(), index: vec3, u_offset: vec3) -> float:
+    def density_lookup_3d(self, grid: ti.template(), index: vec3, u_offset: vec3) -> vec3:
         """ Stochastic lookup of density (mono-chromatic volume) """
-        index = int(ti.floor(index + (u_offset - 0.5)))
+        idx = ti.cast(ti.floor(index + (u_offset - 0.5)), int)
+        val = ZERO_V3
+        if (idx >= 0).all() and (idx <= self.max_idxs).all():
+            val = grid[idx[2], idx[1], idx[0]]
         # indexing pattern z, y, x
-        return ti.select((index >= 0).all() and (index <= self.max_idxs).all(), grid[index[2], index[1], index[0]], ZERO_V3)
+        return val
     
     @ti.func 
-    def density_lookup(self, grid: ti.template(), index: vec3, u_offset: vec3) -> float:
+    def density_lookup(self, grid: ti.template(), index, u_offset: vec3) -> float:
         """ Stochastic lookup of density (RGB volume) """
-        index = int(ti.floor(index + (u_offset - 0.5)))
+        idx = ti.cast(ti.floor(index + (u_offset - 0.5)), int)
+        val = 0.0
+        if (idx >= 0).all() and (idx <= self.max_idxs).all():
+            val = grid[idx[2], idx[1], idx[0]]
         # indexing pattern z, y, x
-        return ti.select((index >= 0).all() and (index <= self.max_idxs).all(), grid[index[2], index[1], index[0]], 0)
+        return val
     
     @ti.func 
     def sample_distance_delta_tracking(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec4:
@@ -266,7 +274,6 @@ class GridVolume:
                 d = self.density_lookup(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
-
                 # Scatter upon real collision
                 if ti.random(float) < d * inv_maj:
                     result[:3]  = self.albedo
@@ -286,7 +293,6 @@ class GridVolume:
             d = self.density_lookup(grid, ray_ol + t * ray_dl, vec3([
                 ti.random(float), ti.random(float), ti.random(float)
             ]))
-
             Tr *= ti.max(0, 1.0 - d * inv_maj)
             # Russian Roulette
             if Tr < 0.1:
@@ -309,9 +315,9 @@ class GridVolume:
     
     @ti.func 
     def sample_distance_delta_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec4:
-        return ZERO_V3, -1
+        return vec4([1, 1, 1, -1])
 
     @ti.func
     def eval_tr_ratio_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec3:
-        return ZERO_V3
+        return ONES_V3
     

@@ -21,8 +21,9 @@ struct VolumeData {
     int channels;
     std::vector<float> data;
 
-    inline size_t size() const noexcept {
-        return xres * yres * zres;
+    inline size_t size(bool force_mono_color = false) const noexcept {
+        size_t ch = force_mono_color ? 1 : channels;
+        return ch * xres * yres * zres;
     }
 
     inline auto shape() const noexcept {
@@ -76,7 +77,7 @@ auto loadVol2Numpy(const std::string& filename, bool force_mono_color = false) {
     VolumeData volume;
     readVolumeData(filename, volume);
 
-    py::array_t<float> vol_numpy(volume.size());
+    py::array_t<float> vol_numpy(volume.size(force_mono_color));
     float* const data_ptr = vol_numpy.mutable_data(0);
     if (volume.channels == 1) {
         #pragma omp parallel for num_threads(4)
@@ -105,7 +106,7 @@ auto loadVol2Numpy(const std::string& filename, bool force_mono_color = false) {
                 } else {
                     for (int x = 0; x < volume.xres; ++x) {
                         int index = zyx_base + x;
-                        data_ptr[index] = volume.data[index * 3];
+                        data_ptr[index] = volume.data[index * 3 + 1];
                     }
                 }
             }
@@ -113,6 +114,9 @@ auto loadVol2Numpy(const std::string& filename, bool force_mono_color = false) {
     } else {
         std::cerr << "Grid channel: <" << volume.channels << "> is not supported, supported channels: [1, 3]" << std::endl;
     }
+
+    if (force_mono_color)
+        volume.channels = 1;
     
     return std::tuple(vol_numpy, volume.shape());
 }

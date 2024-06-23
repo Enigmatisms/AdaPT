@@ -9,13 +9,15 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="8"/>
+        <integer name="max_bounce" value="16"/>
         <integer name="num_shadow_ray" value="1"/>    
 
 		<integer name="start_t" value="1"/>       
         <integer name="end_t" value="100"/>       
         <integer name="start_s" value="0"/>       
         <integer name="end_s" value="100"/>          
+
+        <integer name="rr_threshold" value="4"/>          
 
 		<string name="accelerator" value="bvh"/>
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
@@ -28,8 +30,8 @@
 		</transform>
 
 		<film type="film">
-			<integer name="width" value="512"/>
-			<integer name="height" value="512"/>
+			<integer name="width" value="800"/>
+			<integer name="height" value="800"/>
 			<integer name="sub_samples" value="8"/>
 		</film>
 	</sensor>
@@ -46,16 +48,16 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<brdf type="lambertian" id="left_wall">
+	<brdf type="phong" id="left_wall">
 		<rgb name="k_d" value="#DD2525"/>
-		<rgb name="k_g" value="1.0"/>
-		<rgb name="k_s" value="0.0"/>
+		<rgb name="k_g" value="10.0"/>
+		<rgb name="k_s" value="#221313"/>
 	</brdf>
 
-	<brdf type="lambertian" id="right_wall">
+	<brdf type="phong" id="right_wall">
 		<rgb name="k_d" value="#25DD25"/>
-		<rgb name="k_g" value="1.0"/>
-		<rgb name="k_s" value="0.0"/>
+		<rgb name="k_g" value="10.0"/>
+		<rgb name="k_s" value="#132213"/>
 	</brdf>
 
 	<brdf type="lambertian" id="light">
@@ -66,16 +68,49 @@
 
 	<emitter type="area" id="area">
 		<rgb name="emission" value="50.0, 50.0, 50.0"/>
-		<rgb name="scaler" value="1.0"/>
+		<rgb name="scaler" value="0.1"/>
+	</emitter>
+
+	<emitter type="area" id="area_red">
+		<rgb name="emission" value="50.0, 5.0, 5.0"/>
+		<rgb name="scaler" value="0.1"/>
+	</emitter>
+
+	<emitter type="area" id="area_green">
+		<rgb name="emission" value="5.0, 50.0, 5.0"/>
+		<rgb name="scaler" value="0.125"/>
+	</emitter>
+
+	<emitter type="area" id="area_blue">
+		<rgb name="emission" value="5.0, 5.0, 50.0"/>
+		<rgb name="scaler" value="0.15"/>
 	</emitter>
 
 	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_red_light.obj"/>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area_red"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_green_light.obj"/>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area_green"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_blue_light.obj"/>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area_blue"/>
+	</shape>
+
+	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area"/>
 		<transform name="toWorld">
 			<translate x="0" y="-0.001" z="0"/>
 		</transform>
-		<ref type="material" id="light"/>
-		<ref type="emitter" id="area"/>
 	</shape>
 
 	<shape type="obj">
@@ -108,16 +143,29 @@
 	</shape>
 
 	<!-- Definition of grid volume -->
+	<!-- <volume name="janga" type="mono" phase_type="hg">
+		<string name="density_grid" path="./scenes/volume/janga-smoke-264-136-136.vol"/>
+		<rgb name="albedo" value="#F8F8F8"/>
+		<rgb name="density_scaling" value="10.0"/>
+		<rgb name="par" value="0.7"/>
+
+		<transform name="toWorld">
+			<translate x="0.5" y="-0.6" z="2.4"/>
+			<rotate type="euler" r="20" p="0.0" y="90"/>
+			<scale x="0.01" y="0.035" z="0.02"/>
+		</transform>
+	</volume> -->
+
 	<volume name="janga" type="mono" phase_type="hg">
 		<string name="density_grid" path="./scenes/volume/janga-smoke-264-136-136.vol"/>
 		<rgb name="albedo" value="#F8F8F8"/>
-		<rgb name="density_scaling" value="2.0"/>
-		<rgb name="par" value="2.0"/>
+		<rgb name="density_scaling" value="20.0"/>
+		<rgb name="par" value="0.7"/>
 
 		<transform name="toWorld">
-			<translate x="2.779" y="0.0" z="-1.5"/>
+			<translate x="0.6" y="0.0" z="1.3"/>
 			<rotate type="euler" r="0" p="0.0" y="0"/>
-			<scale x="0.01" y="0.01" z="0.01"/>
+			<scale x="0.03" y="0.03" z="0.03"/>
 		</transform>
 	</volume>
 

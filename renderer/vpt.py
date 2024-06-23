@@ -42,6 +42,7 @@ class VolumeRenderer(PathTracer):
             volume = GridVolume_np(prop["volume"][0])
             if volume.type_id == GridVolume_np.MONO:
                 self.density_grid = ti.field(float, volume.get_shape())
+                volume.density_grid = volume.density_grid.squeeze()
             elif volume.type_id == GridVolume_np.RGB:
                 self.density_grid = ti.Vector.field(3, float, volume.get_shape())
             else:
@@ -50,8 +51,9 @@ class VolumeRenderer(PathTracer):
             self.has_volume = True
             self.density_grid.from_numpy(volume.density_grid)
             self.volume = volume.export()
-            CONSOLE.log("Grid volume loaded")
+            CONSOLE.log(f"Grid volume loaded: {volume}")
         else:
+            self.volume = GridVolume_np(None).export()
             self.density_grid = ti.field(float, (1, 1, 1))
         self.world_scattering = self.world.medium._type >= 0
         
@@ -94,7 +96,7 @@ class VolumeRenderer(PathTracer):
             elif not in_free_space:
                 is_mi, mfp, beta = self.bsdf_field[idx].medium.sample_mfp(depth)
             # use medium to sample / calculate transmittance
-        if self.has_volume:     # grid volume event might override the world medium event (not physically based, but simple to implement)
+        if ti.static(self.has_volume):     # grid volume event might override the world medium event (not physically based, but simple to implement)
             result = self.volume.sample_mfp(self.density_grid, ray_o, ray_d, depth)
             if result[3] > 0:           # in case grid volume is nested with world medium
                 is_mi = 2
@@ -111,7 +113,7 @@ class VolumeRenderer(PathTracer):
             FIXME: the speed of this method should be boosted
         """
         tr = vec3([1., 1., 1.])
-        if self.has_volume:     # grid volume transmittance
+        if ti.static(self.has_volume):     # grid volume transmittance
             tr *= self.volume.transmittance(self.density_grid, cur_point, cur_ray, depth)
 
         in_free_space = True
@@ -171,7 +173,7 @@ class VolumeRenderer(PathTracer):
                     # Step 2: ray intersection
                     it = self.ray_intersect(ray_d, ray_o)
                     if it.obj_id < 0:     
-                        if not self.world_scattering: break     # nothing is hit, break
+                        if ti.static(not self.world_scattering and not self.has_volume): break     # nothing is hit, break
                         else:                                   # the world is filled with scattering medium
                             it.min_depth = self.world_bound_time(ray_o, ray_d)
                             in_free_space = True
