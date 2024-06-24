@@ -42,8 +42,6 @@ class GridVolume_np:
     __type_mapping = {"none": NONE, "mono": MONO, "rgb": RGB}
     def __init__(self, elem: xet.Element):
         self.albedo = np.ones(3, np.float32)
-        self.par = np.zeros(3, np.float32)
-        self.pdf = np.float32([1., 0., 0.])
         self.phase_type_id = -1
         self.phase_type = "hg"
         self.type_name = "none"
@@ -117,15 +115,24 @@ class GridVolume_np:
             CONSOLE.log(f"[red]Error :skull:[/red]: {path} contains no valid volume file.")
             raise RuntimeError("Volume file not found.")
         density_grid, (self.xres, self.yres, self.zres, self.channel) = vol_file_to_numpy(path, FORCE_MONO_COLOR)
-        density_grid = GridVolume_np.make_rgb_volume_from_monocolor(density_grid)
-        self.channel = 3
         if FORCE_MONO_COLOR:
             CONSOLE.log(f"[yellow]Warning[/yellow]: FORCE_MONO_COLOR is True. This only makes sense when we are testing the code.")
-        return density_grid.reshape((self.zres, self.yres, self.xres, self.channel))
+
+        density_grid = density_grid.reshape((self.zres, self.yres, self.xres, self.channel))
+        density_grid = GridVolume_np.make_colorful_volume(density_grid, self.xres, self.yres, self.zres)
+        self.channel = 3
+        return density_grid
     
     @staticmethod
-    def make_rgb_volume_from_monocolor(density_grid):
-        density_grid = np.stack([density_grid, density_grid * 0.2, density_grid * 0.2], axis = -1)
+    def make_colorful_volume(density_grid: np.ndarray, xres: int, yres: int, zres: int):
+        z_coords = np.linspace(0, 0.9, zres, dtype = np.float32).reshape(-1, 1, 1, 1) + 0.1
+        y_coords = np.linspace(0, 0.9, yres, dtype = np.float32).reshape(1, -1, 1, 1) + 0.1
+        x_coords = np.linspace(0, 0.9, xres, dtype = np.float32).reshape(1, 1, -1, 1) + 0.1
+        density_grid = np.concatenate([
+            density_grid * z_coords,
+            density_grid * y_coords,
+            density_grid * x_coords 
+        ], axis = -1)
         return density_grid
     
     def get_shape(self) -> Tuple[int, int, int]:
@@ -135,7 +142,9 @@ class GridVolume_np:
         if self.type_id == GridVolume_np.NONE:
             return GridVolume(_type = 0)
         aabb_mini, aabb_maxi = self.get_aabb()
-        maj = self.density_grid.max(axis = (0, 1, 2))         # the shape of density grid: (zres, yres, xres, channels)
+        maj = self.density_grid.max(axis = (0, 1, 2))
+        majorant = vec3(maj) if self.type_id == GridVolume_np.RGB else vec3([maj, maj, maj])         
+        # the shape of density grid: (zres, yres, xres, channels)
         return GridVolume(
             _type   = self.type_id,
             albedo  = vec3(self.albedo),
@@ -144,7 +153,8 @@ class GridVolume_np:
             mini    = vec3(aabb_mini), 
             maxi    = vec3(aabb_maxi),
             max_idxs = vec3i([self.xres, self.yres, self.zres]),
-            majorant = vec3(maj) if self.type_id == GridVolume_np.RGB else vec3([maj, maj, maj]),
+            majorant = majorant,
+            pdf      = majorant / majorant.sum(),
             ph       = PhaseFunction(_type = self.phase_type_id, par = vec3(self.par), pdf = vec3(self.pdf))
         )
     
@@ -348,11 +358,9 @@ class GridVolume:
     def sample_distance_delta_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec4:
         result = vec4([1, 1, 1, -1])
         if self._type:
-            # mis_pdf = ONES_V3
-            
             # Step 1: choose one element according to the majorant
-            channel = 2
-            maj     = self.majorant[2]
+            channel = 0
+            maj     = 1.0
             val     = ti.random(float)
             if val < self.pdf[0]:
                 maj     = self.majorant[0]
@@ -360,6 +368,9 @@ class GridVolume:
             elif val < self.pdf[0] + self.pdf[1]:
                 maj     = self.majorant[1]
                 channel = 1
+            else:
+                channel = 2
+                maj     = self.majorant[2]
             inv_maj     = 1.0 / maj
 
             t = near_far[0]
@@ -376,60 +387,39 @@ class GridVolume:
                 if ti.random(float) < n_s * inv_maj:
                     result[:3] *= self.albedo
                     result[3]   = t 
-                    # mis_pdf *= d / ti.max(EPSL_V3, self.majorant)
                     break
-                
-                maj_tr      = ti.exp(-self.majorant * dist)
-                result[:3] *= maj_tr / ti.exp(- dist * maj)
-                # mis_pdf    *= maj_tr
                 dist        = -ti.log(1.0 - ti.random(float)) * inv_maj
             if t + dist >= near_far[1]:
                 dist = near_far[1] - t
-
-            maj_tr      = ti.exp(-self.majorant * dist)
-            result[:3] *= maj_tr / ti.exp(- dist * maj)
-            # mis_pdf    *= maj_tr
-
-            # MIS
-            # mis_numerator = rgb_select(mis_pdf, channel)
-            # result[:3]   *= mis_numerator / mis_pdf.sum()
         return result
     
     @ti.func
     def eval_tr_ratio_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec3:
         Tr = ONES_V3
         if self._type:
-            # mis_pdf = ONES_V3
-
             # Step 1: choose one element according to the majorant
-            channel = 2
-            maj     = self.majorant[2]
+            maj     = 1.0
             val     = ti.random(float)
             if val < self.pdf[0]:
                 maj     = self.majorant[0]
-                channel = 0
             elif val < self.pdf[0] + self.pdf[1]:
                 maj     = self.majorant[1]
-                channel = 1
+            else:
+                maj     = self.majorant[2]
             inv_maj     = 1.0 / maj
             
             t = near_far[0]
             while True:
                 dist = -ti.log(1.0 - ti.random(float)) * inv_maj
                 
-                if t + dist >= near_far[1]: 
-                    dist = near_far[1] - t      # get the actual optical length
-                    Tr *= ti.exp(- self.majorant * dist) / ti.exp(- dist * maj)
-                    break
+                if t + dist >= near_far[1]: break
                 t += dist
                 # for mono-chromatic medium, this is 1
                 d = self.density_lookup_3d(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
 
-                majorant_tr = ti.exp(- self.majorant * dist)
-                Tr *= ti.max(ZERO_V3, 1.0 - d * inv_maj) * majorant_tr / ti.exp(- dist * maj)
-                # mis_pdf *= d * majorant_tr * self.pdf
+                Tr *= ti.max(ZERO_V3, 1.0 - d * inv_maj)
 
                 # Russian Roulette
                 if Tr.max() < 0.1:
@@ -438,9 +428,5 @@ class GridVolume:
                         Tr.fill(0)
                         break
                     Tr /= rr_max_val
-        
-            # evaluate MIS weight
-            # mis_numerator = rgb_select(mis_pdf, channel)
-            # Tr *= mis_numerator / mis_pdf.sum()
         return Tr
     
