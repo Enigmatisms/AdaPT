@@ -433,10 +433,13 @@ class PathTracer(TracerBase):
         ret_pdf  = 1.0
         is_specular = False
         if is_mi:
-            if in_free_space:       # sample world medium
-                ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
-            else:                   # sample object medium
-                ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].medium.sample_new_rays(incid)
+            if is_mi > 1:               # well this is..., I know it is ugly but...
+                ret_dir, ret_spec, ret_pdf = self.volume.sample_new_rays(incid)
+            else:
+                if in_free_space:       # sample world medium
+                    ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
+                else:                   # sample object medium
+                    ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].medium.sample_new_rays(incid)
         else:                       # surface sampling
             if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
                 if ti.static(self.brdf_two_sides):

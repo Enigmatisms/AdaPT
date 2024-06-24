@@ -86,6 +86,10 @@ def parse_emitters(em_elem: list):
             raise ValueError(f"Source [{emitter_type}] is not implemented.")
     return sources, source_id_dict
 
+def parse_volume(directory: str, vol_list: List[xet.Element]):
+    
+    pass
+
 def parse_wavefront(
     directory: str, obj_list: List[xet.Element], 
     bsdf_dict: dict, emitter_dict: dict, texture_dict: List[Texture_np]) -> List[Arr]:
@@ -111,8 +115,8 @@ def parse_wavefront(
             meshes, normals, vns, uvs = extract_obj_info(os.path.join(directory, filepath_child.get("value")))
             transform_child      = elem.find("transform")
             if transform_child is not None:
-                trans_r, trans_t    = transform_parse(transform_child)
-                meshes, normals     = apply_transform(meshes, normals, trans_r, trans_t)
+                trans_r, trans_t, trans_s = transform_parse(transform_child)
+                meshes, normals           = apply_transform(meshes, normals, trans_r, trans_t, trans_s)
             if vns is not None:
                 has_vertex_normal = True
         else:                   # CURRENTLY, only sphere is supported
@@ -255,6 +259,10 @@ def scene_parsing(directory: str, file: str):
     shape_nodes      = root_node.findall("shape")
     sensor_node      = root_node.find("sensor")
     world_node       = root_node.find("world")
+    volume_node      = root_node.findall("volume")
+    if len(volume_node) > 1:
+        CONSOLE.log(f"There are {len(volume_node)} in total, only the first volume will be kept.")
+        volume_node = volume_node[:1]
     assert(sensor_node)
     emitter_configs, \
     emitter_dict     = parse_emitters(emitter_nodes)
@@ -268,7 +276,7 @@ def scene_parsing(directory: str, file: str):
         Each mapping might needs a different packing, therefore we need different image packaging and texture info block
         For normal mapping, non-bidirectional renderers will be simple but not for BDPT
         roughness is of lower priority
-    - [ ] Speed up python->taichi conversion
+    - [x] Speed up python->taichi conversion
     """
     array_info, all_objs, area_lut, has_vertex_normal \
                      = parse_wavefront(directory, shape_nodes, bsdf_dict, emitter_dict, textures)
@@ -276,6 +284,7 @@ def scene_parsing(directory: str, file: str):
     configs['world'] = parse_world(world_node)
     configs['packed_textures']   = teximgs
     configs['has_vertex_normal'] = has_vertex_normal
+    configs['volume'] = volume_node
     emitter_configs  = update_emitter_config(emitter_configs, area_lut)
     return emitter_configs, array_info, all_objs, configs
 

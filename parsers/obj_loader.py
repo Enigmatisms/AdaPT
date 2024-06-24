@@ -92,13 +92,24 @@ def calculate_surface_area(meshes: Arr, _type = 0):
         area_sum = 4. * np.pi * radius ** 2
     return area_sum
 
-def apply_transform(meshes: Arr, normals: Arr, trans_r: Arr, trans_t: Arr) -> Arr:
+def is_uniform_scaling(scale: Arr) -> bool:
+    if scale[0] != scale[1] or scale[0] != scale[2]:
+        return False
+    return True
+
+def apply_transform(meshes: Arr, normals: Arr, trans_r: Arr, trans_t: Arr, trans_s: Arr) -> Arr:
     """
         - input normals are of shape (N, 3)
         - input meshes are of shape (N, 3, 3), and for the last two dims
             - 3(front): entry index for the vertices of triangles
             - 3(back): entry index for (x, y, z)
     """
+    if trans_s is not None:
+        if not is_uniform_scaling(trans_s):
+            CONSOLE.log("Warning: scaling for meshes should be uniform, otherwise normals should be re-computed.")
+            CONSOLE.log(f"Scaling factor is adjusted to be: {trans_s[0]}")
+            trans_s[1] = trans_s[0]
+            trans_s[2] = trans_s[0]
     if trans_r is not None:
         center  = meshes.mean(axis = 1).mean(axis = 0)
         meshes -= center                # decentralize
