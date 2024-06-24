@@ -16,7 +16,7 @@ from bxdf.medium import Medium_np
 from la.cam_transform import delocalize_rotate
 from parsers.general_parser import get, rgb_parse, transform_parse
 from sampler.general_sampling import random_rgb
-from renderer.constants import ZERO_V3, ONES_V3
+from renderer.constants import ZERO_V3, ONES_V3, EPSL_V3
 from rich.console import Console
 CONSOLE = Console(width = 128)
 
@@ -31,7 +31,7 @@ except ImportError:
 
 __all__ = ["GridVolume_np", "GridVolume"]
 
-FORCE_MONO_COLOR = True
+FORCE_MONO_COLOR = False
 
 """ TODO: add transform parsing
 """
@@ -104,6 +104,7 @@ class GridVolume_np:
             if self.type_id == GridVolume_np.MONO:
                 self.density_grid *= self.density_scaling[0]
             else:
+                print(f"Shape: {self.density_grid.shape}, {self.density_scaling}")
                 self.density_grid *= self.density_scaling
 
     def assign_transform(self, trans_r, trans_t, trans_s):
@@ -116,9 +117,16 @@ class GridVolume_np:
             CONSOLE.log(f"[red]Error :skull:[/red]: {path} contains no valid volume file.")
             raise RuntimeError("Volume file not found.")
         density_grid, (self.xres, self.yres, self.zres, self.channel) = vol_file_to_numpy(path, FORCE_MONO_COLOR)
+        density_grid = GridVolume_np.make_rgb_volume_from_monocolor(density_grid)
+        self.channel = 3
         if FORCE_MONO_COLOR:
             CONSOLE.log(f"[yellow]Warning[/yellow]: FORCE_MONO_COLOR is True. This only makes sense when we are testing the code.")
         return density_grid.reshape((self.zres, self.yres, self.xres, self.channel))
+    
+    @staticmethod
+    def make_rgb_volume_from_monocolor(density_grid):
+        density_grid = np.stack([density_grid, density_grid * 0.2, density_grid * 0.2], axis = -1)
+        return density_grid
     
     def get_shape(self) -> Tuple[int, int, int]:
         return (self.zres, self.yres, self.xres)
@@ -166,7 +174,27 @@ class GridVolume_np:
         return f"<Volume grid {self.type_name.upper()} with phase {self.phase_type}, albedo: {self.albedo},\n \
                 shape: (x = {self.xres}, y = {self.yres}, z = {self.zres}, c = {self.channel}),\n \
                 AABB: Min = {aabb_min}, Max = {aabb_max}>"
-    
+
+
+@ti.func
+def rgb_select(rgb: vec3, channel: int) -> float:
+    """ Get the value of a specified channel 
+        This implement looks dumb, but I think it has its purpose:
+        Dynamic indexing will cause the local array get moved to global memory
+        i.e. the access speed will drop significantly
+
+        I am not sure whether Taichi Lang has the problem or not, yet I know CUDA
+        has this problem
+    """
+    result = 0.0
+    if channel == 0:
+        result = rgb[0]
+    elif channel == 1:
+        result = rgb[1]
+    else:
+        result = rgb[2]
+    return result
+
 @ti.dataclass
 class GridVolume:
     """ Grid Volume Taichi End definition"""
@@ -220,8 +248,8 @@ class GridVolume:
                 ray_o = self.inv_T @ (ray_o - self.trans)
                 ray_d = self.inv_T @ ray_d
                 if self._type:
-                    if self._type == GridVolume_np.MONO:     # single channel
-                        transm = self.eval_tr_ratio_tracking(grid, ray_o, ray_d, near_far)
+                    if self._type == GridVolume_np.RGB:     # single channel
+                        transm = self.eval_tr_ratio_tracking_3d(grid, ray_o, ray_d, near_far)
                     else:
                         transm = self.eval_tr_ratio_tracking_3d(grid, ray_o, ray_d, near_far)
         return transm
@@ -235,8 +263,8 @@ class GridVolume:
                 ray_o = self.inv_T @ (ray_o - self.trans)
                 ray_d = self.inv_T @ ray_d
                 if self._type:
-                    if self._type == 1:     # single channel
-                        transm = self.sample_distance_delta_tracking(grid, ray_o, ray_d, near_far)
+                    if self._type == 2:     # single channel
+                        transm = self.sample_distance_delta_tracking_3d(grid, ray_o, ray_d, near_far)
                     else:
                         transm = self.sample_distance_delta_tracking_3d(grid, ray_o, ray_d, near_far)
         return transm
@@ -270,8 +298,8 @@ class GridVolume:
             inv_maj = 1.0 / self.majorant[0]
 
             t = near_far[0]
+            t -= ti.log(1.0 - ti.random(float)) * inv_maj
             while t < near_far[1]:
-                t -= ti.log(1.0 - ti.random(float)) * inv_maj
                 d = self.density_lookup(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
@@ -280,27 +308,29 @@ class GridVolume:
                     result[:3]  = self.albedo
                     result[3]   = t 
                     break
+                t -= ti.log(1.0 - ti.random(float)) * inv_maj
         return result
 
     @ti.func
     def eval_tr_ratio_tracking(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec3:
-        inv_maj = 1.0 / self.majorant[0]
-
-        t = near_far[0]
         Tr = 1.0
-        while True:
-            t -= ti.log(1.0 - ti.random(float)) * inv_maj
-            if t >= near_far[1]: break
-            d = self.density_lookup(grid, ray_ol + t * ray_dl, vec3([
-                ti.random(float), ti.random(float), ti.random(float)
-            ]))
-            Tr *= ti.max(0, 1.0 - d * inv_maj)
-            # Russian Roulette
-            if Tr < 0.1:
-                if ti.random(float) >= Tr:
-                    Tr = 0.0
-                    break
-                Tr = 1.0
+        if self._type:
+            inv_maj = 1.0 / self.majorant[0]
+
+            t = near_far[0]
+            while True:
+                t -= ti.log(1.0 - ti.random(float)) * inv_maj
+                if t >= near_far[1]: break
+                d = self.density_lookup(grid, ray_ol + t * ray_dl, vec3([
+                    ti.random(float), ti.random(float), ti.random(float)
+                ]))
+                Tr *= ti.max(0, 1.0 - d * inv_maj)
+                # Russian Roulette
+                if Tr < 0.1:
+                    if ti.random(float) >= Tr:
+                        Tr = 0.0
+                        break
+                    Tr = 1.0
         return vec3([Tr, Tr, Tr])
     
     @ti.func
@@ -318,29 +348,99 @@ class GridVolume:
     def sample_distance_delta_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec4:
         result = vec4([1, 1, 1, -1])
         if self._type:
-
-            # First, choose one element according to the majorant
-            inv_maj = 1.0 / ti.max(self.majorant[2], 1e-4)
-            val = ti.random(float)
+            # mis_pdf = ONES_V3
+            
+            # Step 1: choose one element according to the majorant
+            channel = 2
+            maj     = self.majorant[2]
+            val     = ti.random(float)
             if val < self.pdf[0]:
-                inv_maj = 1.0 / self.majorant[0]
+                maj     = self.majorant[0]
+                channel = 0
             elif val < self.pdf[0] + self.pdf[1]:
-                inv_maj = 1.0 / self.majorant[1]
+                maj     = self.majorant[1]
+                channel = 1
+            inv_maj     = 1.0 / maj
 
             t = near_far[0]
-            while t < near_far[1]:
-                t -= ti.log(1.0 - ti.random(float)) * inv_maj
-                d = self.density_lookup(grid, ray_ol + t * ray_dl, vec3([
+            dist = -ti.log(1.0 - ti.random(float)) * inv_maj
+            while t + dist < near_far[1]:
+                t += dist
+
+                d = self.density_lookup_3d(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
+
                 # Scatter upon real collision
-                if ti.random(float) < d * inv_maj:
-                    result[:3]  = self.albedo
+                n_s = rgb_select(d, channel)
+                if ti.random(float) < n_s * inv_maj:
+                    result[:3] *= self.albedo
                     result[3]   = t 
+                    # mis_pdf *= d / ti.max(EPSL_V3, self.majorant)
                     break
+                
+                maj_tr      = ti.exp(-self.majorant * dist)
+                result[:3] *= maj_tr / ti.exp(- dist * maj)
+                # mis_pdf    *= maj_tr
+                dist        = -ti.log(1.0 - ti.random(float)) * inv_maj
+            if t + dist >= near_far[1]:
+                dist = near_far[1] - t
+
+            maj_tr      = ti.exp(-self.majorant * dist)
+            result[:3] *= maj_tr / ti.exp(- dist * maj)
+            # mis_pdf    *= maj_tr
+
+            # MIS
+            # mis_numerator = rgb_select(mis_pdf, channel)
+            # result[:3]   *= mis_numerator / mis_pdf.sum()
         return result
     
     @ti.func
     def eval_tr_ratio_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec3:
-        return ONES_V3
+        Tr = ONES_V3
+        if self._type:
+            # mis_pdf = ONES_V3
+
+            # Step 1: choose one element according to the majorant
+            channel = 2
+            maj     = self.majorant[2]
+            val     = ti.random(float)
+            if val < self.pdf[0]:
+                maj     = self.majorant[0]
+                channel = 0
+            elif val < self.pdf[0] + self.pdf[1]:
+                maj     = self.majorant[1]
+                channel = 1
+            inv_maj     = 1.0 / maj
+            
+            t = near_far[0]
+            while True:
+                dist = -ti.log(1.0 - ti.random(float)) * inv_maj
+                
+                if t + dist >= near_far[1]: 
+                    dist = near_far[1] - t      # get the actual optical length
+                    Tr *= ti.exp(- self.majorant * dist) / ti.exp(- dist * maj)
+                    break
+                t += dist
+                # for mono-chromatic medium, this is 1
+                d = self.density_lookup_3d(grid, ray_ol + t * ray_dl, vec3([
+                    ti.random(float), ti.random(float), ti.random(float)
+                ]))
+
+                majorant_tr = ti.exp(- self.majorant * dist)
+                Tr *= ti.max(ZERO_V3, 1.0 - d * inv_maj) * majorant_tr / ti.exp(- dist * maj)
+                # mis_pdf *= d * majorant_tr * self.pdf
+
+                # Russian Roulette
+                if Tr.max() < 0.1:
+                    rr_max_val = Tr.max()
+                    if ti.random(float) >= rr_max_val:
+                        Tr.fill(0)
+                        break
+                    Tr /= rr_max_val
+        
+            # evaluate MIS weight
+            # mis_numerator = rgb_select(mis_pdf, channel)
+            # Tr *= mis_numerator / mis_pdf.sum()
+        return Tr
     

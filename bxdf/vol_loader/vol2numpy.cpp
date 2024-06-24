@@ -62,6 +62,8 @@ bool readVolumeData(const std::string& filename, VolumeData& volume) {
         return false;
     }
 
+    printf("Channel: %d\n", volume.channels);
+
     file.seekg(24, std::ios::cur); // Skip the bounding box
 
     int numVoxels = volume.xres * volume.yres * volume.zres * volume.channels;
@@ -73,7 +75,7 @@ bool readVolumeData(const std::string& filename, VolumeData& volume) {
 }
 
 // mitsuba3 vol to numpy
-auto loadVol2Numpy(const std::string& filename, bool force_mono_color = false) {
+auto loadVol2Numpy(const std::string& filename, bool force_mono_color) {
     VolumeData volume;
     readVolumeData(filename, volume);
 
@@ -118,7 +120,7 @@ auto loadVol2Numpy(const std::string& filename, bool force_mono_color = false) {
     if (force_mono_color)
         volume.channels = 1;
     
-    return std::tuple(vol_numpy, volume.shape());
+    return std::tuple<py::array_t<float>, std::tuple<int, int, int, int>>(vol_numpy, volume.shape());
 }
 
 PYBIND11_MODULE(vol_loader, m) {

@@ -9,7 +9,7 @@ ext_modules = [
         ["bvh/bvh.cpp"],
         # Example: passing in the version to the compiled code
         define_macros = [('VERSION_INFO', __version__)],
-        extra_compile_args= ['-g', '-O3'],
+        extra_compile_args= ['-g', '-O2'],
         ),
 ]
 
@@ -18,7 +18,7 @@ setup(
     version=__version__,
     author="Qianyue He",
     description="BVH constructed via C++ backend",
-    include_dirs="/usr/include/eigen3/",
+    include_dirs="E:\\eigen-3.4.0",
     long_description="",
     ext_modules=ext_modules,
     extras_require={"test": "pytest"},
