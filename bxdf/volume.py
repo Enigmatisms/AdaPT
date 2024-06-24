@@ -64,12 +64,14 @@ class GridVolume_np:
         # phase function
         self.par = np.zeros(3, np.float32)
         self.pdf = np.float32([1., 0., 0.])
+        self.mono2rgb = False
 
         elem_to_query = {
             "rgb": rgb_parse, 
             "float": lambda el: get(el, "value"), 
             "string": lambda el: self.setup_volume(get(el, "path", str)),
-            "transform": lambda el: self.assign_transform(*transform_parse(el))
+            "transform": lambda el: self.assign_transform(*transform_parse(el)),
+            "bool": lambda el: get(el, "value", bool)
         }
         if elem is not None:
             type_name = elem.get("type")
@@ -93,6 +95,16 @@ class GridVolume_np:
                     name = tag_elem.get("name")
                     if hasattr(self, name):
                         self.__setattr__(name, query_func(tag_elem))
+
+            if self.mono2rgb == True:
+                if self.channel == 3:
+                    CONSOLE.log("Setting 'mono2rgb = True' is meanless for RGB volume. This setting is only meaningful when the volume is mono-chromatic.")
+                else:
+                    CONSOLE.log("Mono-chromatic volume is converted to RGB volume.")
+                    self.channel = 3
+                    self.density_grid = GridVolume_np.make_colorful_volume(self.density_grid, self.xres, self.yres, self.zres)
+            else:
+                self.density_grid = np.concatenate([self.density_grid] * 3, axis = -1)
             
             if self.scale is None:
                 self.scale = np.eye(3, dtype = np.float32)
@@ -119,8 +131,6 @@ class GridVolume_np:
             CONSOLE.log(f"[yellow]Warning[/yellow]: FORCE_MONO_COLOR is True. This only makes sense when we are testing the code.")
 
         density_grid = density_grid.reshape((self.zres, self.yres, self.xres, self.channel))
-        density_grid = GridVolume_np.make_colorful_volume(density_grid, self.xres, self.yres, self.zres)
-        self.channel = 3
         return density_grid
     
     @staticmethod
@@ -258,10 +268,7 @@ class GridVolume:
                 ray_o = self.inv_T @ (ray_o - self.trans)
                 ray_d = self.inv_T @ ray_d
                 if self._type:
-                    if self._type == GridVolume_np.RGB:     # single channel
-                        transm = self.eval_tr_ratio_tracking_3d(grid, ray_o, ray_d, near_far)
-                    else:
-                        transm = self.eval_tr_ratio_tracking_3d(grid, ray_o, ray_d, near_far)
+                    transm = self.eval_tr_ratio_tracking_3d(grid, ray_o, ray_d, near_far)
         return transm
     
     @ti.func
@@ -273,10 +280,7 @@ class GridVolume:
                 ray_o = self.inv_T @ (ray_o - self.trans)
                 ray_d = self.inv_T @ ray_d
                 if self._type:
-                    if self._type == 2:     # single channel
-                        transm = self.sample_distance_delta_tracking_3d(grid, ray_o, ray_d, near_far)
-                    else:
-                        transm = self.sample_distance_delta_tracking_3d(grid, ray_o, ray_d, near_far)
+                    transm = self.sample_distance_delta_tracking_3d(grid, ray_o, ray_d, near_far)
         return transm
     
     @ti.func 
@@ -287,61 +291,6 @@ class GridVolume:
         if (idx >= 0).all() and (idx <= self.max_idxs).all():
             val = grid[idx[2], idx[1], idx[0]]
         return val
-    
-    @ti.func 
-    def density_lookup(self, grid: ti.template(), index, u_offset: vec3) -> float:
-        """ Stochastic lookup of density (RGB volume) """
-        idx = ti.cast(ti.floor(index + (u_offset - 0.5)), int)
-        val = 0.0
-        if (idx >= 0).all() and (idx <= self.max_idxs).all():
-            val = grid[idx[2], idx[1], idx[0]]
-        # indexing pattern z, y, x
-        return val
-    
-    @ti.func 
-    def sample_distance_delta_tracking(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec4:
-        """ Sample distance (mono-chromatic volume) via delta tracking 
-            Note that there is no 'sampling PDF', since we are not going to use it anyway
-        """
-        result = vec4([1, 1, 1, -1])
-        if self._type:
-            inv_maj = 1.0 / self.majorant[0]
-
-            t = near_far[0]
-            t -= ti.log(1.0 - ti.random(float)) * inv_maj
-            while t < near_far[1]:
-                d = self.density_lookup(grid, ray_ol + t * ray_dl, vec3([
-                    ti.random(float), ti.random(float), ti.random(float)
-                ]))
-                # Scatter upon real collision
-                if ti.random(float) < d * inv_maj:
-                    result[:3]  = self.albedo
-                    result[3]   = t 
-                    break
-                t -= ti.log(1.0 - ti.random(float)) * inv_maj
-        return result
-
-    @ti.func
-    def eval_tr_ratio_tracking(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec3:
-        Tr = 1.0
-        if self._type:
-            inv_maj = 1.0 / self.majorant[0]
-
-            t = near_far[0]
-            while True:
-                t -= ti.log(1.0 - ti.random(float)) * inv_maj
-                if t >= near_far[1]: break
-                d = self.density_lookup(grid, ray_ol + t * ray_dl, vec3([
-                    ti.random(float), ti.random(float), ti.random(float)
-                ]))
-                Tr *= ti.max(0, 1.0 - d * inv_maj)
-                # Russian Roulette
-                if Tr < 0.1:
-                    if ti.random(float) >= Tr:
-                        Tr = 0.0
-                        break
-                    Tr = 1.0
-        return vec3([Tr, Tr, Tr])
     
     @ti.func
     def sample_new_rays(self, incid: vec3):

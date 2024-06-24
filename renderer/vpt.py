@@ -40,12 +40,8 @@ class VolumeRenderer(PathTracer):
         if prop["volume"]:
             CONSOLE.log("Loading Grid Volume ...")
             volume = GridVolume_np(prop["volume"][0])
-            if volume.type_id == GridVolume_np.MONO:
-                self.density_grid = ti.field(float, volume.get_shape())
-                volume.density_grid = volume.density_grid.squeeze()
-            elif volume.type_id == GridVolume_np.RGB:
-                self.density_grid = ti.Vector.field(3, float, volume.get_shape())
-            else:
+            self.density_grid = ti.Vector.field(3, float, volume.get_shape())
+            if volume.type_id not in{ GridVolume_np.MONO, GridVolume_np.RGB}:
                 CONSOLE.log(f"Volume type '{volume.type_name}' is not supported.")
                 raise RuntimeError("Unsupported volume type.")
             self.has_volume = True

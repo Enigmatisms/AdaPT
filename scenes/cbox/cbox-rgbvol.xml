@@ -115,6 +115,7 @@
 		<rgb name="albedo" value="#F8F8F8"/>
 		<rgb name="density_scaling" value="20.0"/>
 		<rgb name="par" value="0.7"/>
+		<bool name="mono2rgb" value="true"/>
 
 		<transform name="toWorld">
 			<translate x="0.6" y="0.0" z="1.3"/>
