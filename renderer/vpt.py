@@ -72,7 +72,7 @@ class VolumeRenderer(PathTracer):
         return non_null
 
     @ti.func
-    def sample_mfp(self, ray_o: vec3, ray_d: vec3, idx: int, in_free_space: int, depth: float):
+    def sample_mfp(self, ray_o: vec3, ray_d: vec3, thp: vec3, idx: int, in_free_space: int, depth: float):
         """ Mean free path sampling, returns: 
             - whether medium is a valid scattering medium / mean free path
         """
@@ -91,7 +91,7 @@ class VolumeRenderer(PathTracer):
                 is_mi, mfp, beta = self.bsdf_field[idx].medium.sample_mfp(depth)
             # use medium to sample / calculate transmittance
         if ti.static(self.has_volume):     # grid volume event might override the world medium event (not physically based, but simple to implement)
-            result = self.volume.sample_mfp(self.density_grid, ray_o, ray_d, depth)
+            result = self.volume.sample_mfp(self.density_grid, ray_o, ray_d, thp, depth)
             if result[3] > 0:           # in case grid volume is nested with world medium
                 is_mi = 2
                 mfp   = result[3]
@@ -99,7 +99,7 @@ class VolumeRenderer(PathTracer):
         return is_mi, mfp, beta
     
     @ti.func
-    def track_ray(self, cur_ray, cur_point, depth):
+    def track_ray(self, cur_ray: vec3, cur_point: vec3, thp: vec3, depth: float):
         """ 
             For medium interaction, check if the path to one point is not blocked (by non-null surface object)
             And also we need to calculate the attenuation along the path, e.g.: if the ray passes through
@@ -108,7 +108,7 @@ class VolumeRenderer(PathTracer):
         """
         tr = vec3([1., 1., 1.])
         if ti.static(self.has_volume):     # grid volume transmittance
-            tr *= self.volume.transmittance(self.density_grid, cur_point, cur_ray, depth)
+            tr = self.volume.transmittance(self.density_grid, cur_point, cur_ray, thp, depth)
 
         in_free_space = True
         acc_depth = 0.0
@@ -176,7 +176,7 @@ class VolumeRenderer(PathTracer):
                         in_free_space = tm.dot(it.n_g, ray_d) < 0
                     # Step 3: check for mean free path sampling
                     # Calculate mfp, path_beta = transmittance / PDF
-                    is_mi, it.min_depth, path_beta = self.sample_mfp(ray_o, ray_d, it.obj_id, in_free_space, it.min_depth) 
+                    is_mi, it.min_depth, path_beta = self.sample_mfp(ray_o, ray_d, throughput, it.obj_id, in_free_space, it.min_depth) 
                     if it.obj_id < 0 and not is_mi: break          # exiting world bound
                     hit_point = ray_d * it.min_depth + ray_o
                     throughput *= path_beta         # attenuate first
@@ -202,7 +202,7 @@ class VolumeRenderer(PathTracer):
                             to_emitter  = emit_pos - hit_point
                             emitter_d   = to_emitter.norm()
                             light_dir   = to_emitter / emitter_d
-                            tr, _ = self.track_ray(light_dir, hit_point, emitter_d)
+                            tr, _ = self.track_ray(light_dir, hit_point, throughput, emitter_d)
                             shadow_int *= tr
                             direct_spec = self.eval(it, ray_d, light_dir, is_mi, in_free_space)
                         else:       # the only situation for being invalid, is when there is only one source and the ray hit the source

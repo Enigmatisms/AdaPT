@@ -9,7 +9,7 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="16"/>
+        <integer name="max_bounce" value="4"/>
         <integer name="num_shadow_ray" value="1"/>    
 
 		<integer name="start_t" value="1"/>       

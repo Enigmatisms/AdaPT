@@ -15,8 +15,7 @@ from bxdf.phase import PhaseFunction
 from bxdf.medium import Medium_np
 from la.cam_transform import delocalize_rotate
 from parsers.general_parser import get, rgb_parse, transform_parse
-from sampler.general_sampling import random_rgb
-from renderer.constants import ZERO_V3, ONES_V3, EPSL_V3
+from renderer.constants import ZERO_V3, ONES_V3
 from rich.console import Console
 CONSOLE = Console(width = 128)
 
@@ -263,7 +262,7 @@ class GridVolume:
         return near_far
 
     @ti.func
-    def transmittance(self, grid: ti.template(), ray_o: vec3, ray_d: vec3, max_t: float) -> vec3:
+    def transmittance(self, grid: ti.template(), ray_o: vec3, ray_d: vec3, thp: vec3, max_t: float) -> vec3:
         transm = vec3([1, 1, 1])
         if self._type:
             near_far = self.intersect_volume(ray_o, ray_d, max_t)
@@ -271,11 +270,11 @@ class GridVolume:
                 ray_o = self.inv_T @ (ray_o - self.trans)
                 ray_d = self.inv_T @ ray_d
                 if self._type:
-                    transm = self.eval_tr_ratio_tracking_3d(grid, ray_o, ray_d, near_far)
+                    transm = self.eval_tr_ratio_tracking_3d(grid, ray_o, ray_d, thp, near_far)
         return transm
     
     @ti.func
-    def sample_mfp(self, grid: ti.template(), ray_o: vec3, ray_d: vec3, max_t: float) -> vec4:
+    def sample_mfp(self, grid: ti.template(), ray_o: vec3, ray_d: vec3, thp: vec3, max_t: float) -> vec4:
         transm = vec4([1, 1, 1, -1])
         if self._type: 
             near_far = self.intersect_volume(ray_o, ray_d, max_t)
@@ -283,7 +282,7 @@ class GridVolume:
                 ray_o = self.inv_T @ (ray_o - self.trans)
                 ray_d = self.inv_T @ ray_d
                 if self._type:
-                    transm = self.sample_distance_delta_tracking_3d(grid, ray_o, ray_d, near_far)
+                    transm = self.sample_distance_delta_tracking_3d(grid, ray_o, ray_d, thp, near_far)
         return transm
     
     @ti.func 
@@ -307,30 +306,34 @@ class GridVolume:
         return ret_dir, ret_spec, ret_pdf
     
     @ti.func 
-    def sample_distance_delta_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec4:
+    def sample_distance_delta_tracking_3d(self, 
+        grid: ti.template(), ray_ol: vec3, ray_dl: vec3, thp: vec3, near_far: vec2
+    ) -> vec4:
         result = vec4([1, 1, 1, -1])
         if self._type:
             # Step 1: choose one element according to the majorant
+            pdfs    = thp * self.pdf
+            pdfs   /= pdfs.sum()
             Tr      = 1.0
             pdf     = 1.0
             albedo  = 0.0
             channel = 0
             maj     = self.majorant[2]
             val     = ti.random(float)
-            if val < self.pdf[0]:
+            if val < pdfs[0]:
                 albedo  = self.albedo[0]
                 maj     = self.majorant[0]
-                pdf     = self.pdf[0]
+                pdf     = pdfs[0]
                 channel = 0
-            elif val < self.pdf[0] + self.pdf[1]:
+            elif val < pdfs[0] + pdfs[1]:
                 albedo  = self.albedo[1]
                 maj     = self.majorant[1]
-                pdf     = self.pdf[1]
+                pdf     = pdfs[1]
                 channel = 1
             else:
                 albedo  = self.albedo[2]
                 maj     = self.majorant[2]
-                pdf     = self.pdf[2]
+                pdf     = pdfs[2]
                 channel = 2
             inv_maj     = 1.0 / maj
 
@@ -343,8 +346,8 @@ class GridVolume:
                 # Scatter upon real collision
                 n_s = rgb_select(d, channel)
                 if ti.random(float) < n_s * inv_maj:
-                    Tr *= albedo
-                    result[3]   = t 
+                    Tr       *= albedo
+                    result[3] = t 
                     break
                 
                 t -= ti.log(1.0 - ti.random(float)) * inv_maj
@@ -360,26 +363,30 @@ class GridVolume:
         return result
     
     @ti.func
-    def eval_tr_ratio_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec3:
+    def eval_tr_ratio_tracking_3d(self, 
+        grid: ti.template(), ray_ol: vec3, ray_dl: vec3, thp: vec3, near_far: vec2
+    ) -> vec3:
         transm = ONES_V3
         if self._type:
             # Step 1: choose one element according to the majorant
+            pdfs    = thp * self.pdf
+            pdfs   /= pdfs.sum()
             Tr      = 1.0
             pdf     = 1.0
             channel = 0
             maj     = self.majorant[2]
             val     = ti.random(float)
-            if val < self.pdf[0]:
+            if val < pdfs[0]:
                 maj     = self.majorant[0]
-                pdf     = self.pdf[0]
+                pdf     = pdfs[0]
                 channel = 0
-            elif val < self.pdf[0] + self.pdf[1]:
+            elif val < pdfs[0] + pdfs[1]:
                 maj     = self.majorant[1]
-                pdf     = self.pdf[1]
+                pdf     = pdfs[1]
                 channel = 1
             else:
                 maj     = self.majorant[2]
-                pdf     = self.pdf[2]
+                pdf     = pdfs[2]
                 channel = 2
             inv_maj     = 1.0 / maj
             
