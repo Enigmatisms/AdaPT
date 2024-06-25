@@ -1,5 +1,6 @@
 from pybind11.setup_helpers import Pybind11Extension
 from setuptools import setup
+import platform
 
 __version__ = "0.1.0"
 cxx_std=11
@@ -9,7 +10,7 @@ ext_modules = [
         ["bvh/bvh.cpp"],
         # Example: passing in the version to the compiled code
         define_macros = [('VERSION_INFO', __version__)],
-        extra_compile_args= ['-g', '-O2'],
+        extra_compile_args= ['-g', '-O3' if platform.system() == "Linux" else '-O2'],
         ),
 ]
 

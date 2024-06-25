@@ -9,7 +9,6 @@ import os
 import sys
 sys.path.append("..")
 
-import tqdm
 import numpy as np
 import taichi as ti
 import taichi.math as tm
@@ -22,6 +21,7 @@ from emitters.abtract_source import LightSource, TaichiSource
 
 from bxdf.brdf import BRDF
 from bxdf.bsdf import BSDF, BSDF_np
+from bxdf.volume import GridVolume_np
 from bxdf.texture import Texture, Texture_np
 from parsers.opts import get_options
 from parsers.obj_desc import ObjDescriptor
@@ -31,7 +31,7 @@ from renderer.constants import TRANSPORT_UNI, INV_2PI, INV_PI, INVALID
 from sampler.general_sampling import *
 from utils.tools import TicToc
 from tracer.interaction import Interaction
-from tracer.ti_bvh import LinearBVH, LinearNode, export_python_bvh
+from tracer.ti_bvh import LinearBVH, LinearNode
 
 from rich.console import Console
 CONSOLE = Console(width = 128)
@@ -89,6 +89,8 @@ class PathTracer(TracerBase):
         # FIXME: I might need to dive deeper, this might not be appropriate
         # maybe we should opt for environment map (env lighting)
         self.roughness_map = Texture.field()                                # TODO: this is useless for now
+
+        self.volume = GridVolume_np(None).export()
 
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
         self.obj_nodes = ti.root.bitmasked(ti.i, self.num_objects)

@@ -62,8 +62,6 @@ bool readVolumeData(const std::string& filename, VolumeData& volume) {
         return false;
     }
 
-    printf("Channel: %d\n", volume.channels);
-
     file.seekg(24, std::ios::cur); // Skip the bounding box
 
     int numVoxels = volume.xres * volume.yres * volume.zres * volume.channels;

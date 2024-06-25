@@ -118,11 +118,25 @@
 		<bool name="mono2rgb" value="true"/>
 
 		<transform name="toWorld">
-			<translate x="0.6" y="0.0" z="1.3"/>
-			<rotate type="euler" r="0" p="0.0" y="0"/>
-			<scale x="0.03" y="0.03" z="0.03"/>
+			<translate x="0.5" y="-0.6" z="2.4"/>
+			<rotate type="euler" r="20" p="0.0" y="90"/>
+			<scale x="0.01" y="0.035" z="0.02"/>
 		</transform>
 	</volume>
+
+	<!-- <volume name="janga" type="rgb" phase_type="hg">
+		<string name="density_grid" path="./scenes/volume/embergen_dust_devil_tornado_a_50-256-256-256.vol"/>
+		<rgb name="albedo" value="#F8F8F8"/>
+		<rgb name="density_scaling" value="10.0"/>
+		<rgb name="par" value="0.7"/>
+		<bool name="mono2rgb" value="true"/>
+
+		<transform name="toWorld">
+			<translate x="0.6" y="0.0" z="1.3"/>
+			<rotate type="euler" r="0" p="0.0" y="0"/>
+			<scale x="0.02" y="0.02" z="0.01"/>
+		</transform>
+	</volume> -->
 
 	<world name="yes!">
 		<rgb name="skybox" value="0.0"/>

@@ -36,7 +36,6 @@ class VolumeRenderer(PathTracer):
     ):
         super().__init__(emitters, array_info, objects, prop, bvh_delay)
         self.has_volume = False
-        self.volume = None
         if prop["volume"]:
             CONSOLE.log("Loading Grid Volume ...")
             volume = GridVolume_np(prop["volume"][0])
@@ -49,7 +48,6 @@ class VolumeRenderer(PathTracer):
             self.volume = volume.export()
             CONSOLE.log(f"Grid volume loaded: {volume}")
         else:
-            self.volume = GridVolume_np(None).export()
             self.density_grid = ti.field(float, (1, 1, 1))
         self.world_scattering = self.world.medium._type >= 0
         

@@ -114,7 +114,6 @@ class GridVolume_np:
             if self.type_id == GridVolume_np.MONO:
                 self.density_grid *= self.density_scaling[0]
             else:
-                print(f"Shape: {self.density_grid.shape}, {self.density_scaling}")
                 self.density_grid *= self.density_scaling
 
     def assign_transform(self, trans_r, trans_t, trans_s):
@@ -153,7 +152,8 @@ class GridVolume_np:
             return GridVolume(_type = 0)
         aabb_mini, aabb_maxi = self.get_aabb()
         maj = self.density_grid.max(axis = (0, 1, 2))
-        majorant = vec3(maj) if self.type_id == GridVolume_np.RGB else vec3([maj, maj, maj])         
+        majorant = vec3(maj) if self.type_id == GridVolume_np.RGB else vec3([maj, maj, maj])   
+        CONSOLE.log(f"Majorant: {majorant}. PDF: {majorant / majorant.sum()}")      
         # the shape of density grid: (zres, yres, xres, channels)
         return GridVolume(
             _type   = self.type_id,
@@ -344,7 +344,7 @@ class GridVolume:
     
     @ti.func
     def eval_tr_ratio_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec3:
-        Tr = ONES_V3
+        Tr  = ONES_V3
         if self._type:
             # Step 1: choose one element according to the majorant
             maj     = 1.0
@@ -356,7 +356,6 @@ class GridVolume:
             else:
                 maj     = self.majorant[2]
             inv_maj     = 1.0 / maj
-            
             t = near_far[0]
             while True:
                 dist = -ti.log(1.0 - ti.random(float)) * inv_maj
