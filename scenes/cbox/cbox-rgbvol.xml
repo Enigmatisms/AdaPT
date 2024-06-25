@@ -68,7 +68,7 @@
 
 	<emitter type="area" id="area">
 		<rgb name="emission" value="50.0, 50.0, 50.0"/>
-		<rgb name="scaler" value="0.1"/>
+		<rgb name="scaler" value="0.3"/>
 	</emitter>
 
 	<shape type="obj">
@@ -110,10 +110,10 @@
 	</shape>
 
 	<!-- Definition of grid volume -->
-	<volume name="janga" type="rgb" phase_type="hg">
+	<volume name="janga" type="mono" phase_type="hg">
 		<string name="density_grid" path="./scenes/volume/janga-smoke-264-136-136.vol"/>
 		<rgb name="albedo" value="#F8F8F8"/>
-		<rgb name="density_scaling" value="20.0"/>
+		<rgb name="density_scaling" value="10.0"/>
 		<rgb name="par" value="0.7"/>
 		<bool name="mono2rgb" value="true"/>
 

@@ -71,7 +71,7 @@ class GridVolume_np:
             "float": lambda el: get(el, "value"), 
             "string": lambda el: self.setup_volume(get(el, "path", str)),
             "transform": lambda el: self.assign_transform(*transform_parse(el)),
-            "bool": lambda el: get(el, "value", bool)
+            "bool": lambda el: el.get("value") in {"True", "true"}
         }
         if elem is not None:
             type_name = elem.get("type")
@@ -102,9 +102,10 @@ class GridVolume_np:
                 else:
                     CONSOLE.log("Mono-chromatic volume is converted to RGB volume.")
                     self.channel = 3
+                    self.type_id = GridVolume_np.RGB
                     self.density_grid = GridVolume_np.make_colorful_volume(self.density_grid, self.xres, self.yres, self.zres)
             else:
-                self.density_grid = np.concatenate([self.density_grid] * 3, axis = -1)
+                self.density_grid = np.concatenate([self.density_grid, self.density_grid, self.density_grid], axis = -1)
             
             if self.scale is None:
                 self.scale = np.eye(3, dtype = np.float32)
@@ -113,8 +114,10 @@ class GridVolume_np:
             self.forward_t = self.rotation @ self.scale
             if self.type_id == GridVolume_np.MONO:
                 self.density_grid *= self.density_scaling[0]
+                CONSOLE.log(f"Volume density scaled by {self.density_scaling[0]}.")
             else:
                 self.density_grid *= self.density_scaling
+                CONSOLE.log(f"Volume density scaled by {self.density_scaling}.")
 
     def assign_transform(self, trans_r, trans_t, trans_s):
         self.rotation = trans_r
@@ -138,9 +141,9 @@ class GridVolume_np:
         y_coords = np.linspace(0, 0.9, yres, dtype = np.float32).reshape(1, -1, 1, 1) + 0.1
         x_coords = np.linspace(0, 0.9, xres, dtype = np.float32).reshape(1, 1, -1, 1) + 0.1
         density_grid = np.concatenate([
-            density_grid * z_coords,
-            density_grid * y_coords,
-            density_grid * x_coords 
+            density_grid,
+            density_grid,
+            density_grid,
         ], axis = -1)
         return density_grid
     
@@ -308,25 +311,31 @@ class GridVolume:
         result = vec4([1, 1, 1, -1])
         if self._type:
             # Step 1: choose one element according to the majorant
+            Tr      = 1.0
+            pdf     = 1.0
+            albedo  = 0.0
             channel = 0
-            maj     = 1.0
+            maj     = self.majorant[2]
             val     = ti.random(float)
             if val < self.pdf[0]:
+                albedo  = self.albedo[0]
                 maj     = self.majorant[0]
+                pdf     = self.pdf[0]
                 channel = 0
             elif val < self.pdf[0] + self.pdf[1]:
+                albedo  = self.albedo[1]
                 maj     = self.majorant[1]
+                pdf     = self.pdf[1]
                 channel = 1
             else:
-                channel = 2
+                albedo  = self.albedo[2]
                 maj     = self.majorant[2]
+                pdf     = self.pdf[2]
+                channel = 2
             inv_maj     = 1.0 / maj
 
-            t = near_far[0]
-            dist = -ti.log(1.0 - ti.random(float)) * inv_maj
-            while t + dist < near_far[1]:
-                t += dist
-
+            t = near_far[0] - ti.log(1.0 - ti.random(float)) * inv_maj
+            while t < near_far[1]:
                 d = self.density_lookup_3d(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
@@ -334,47 +343,73 @@ class GridVolume:
                 # Scatter upon real collision
                 n_s = rgb_select(d, channel)
                 if ti.random(float) < n_s * inv_maj:
-                    result[:3] *= self.albedo
+                    Tr *= albedo
                     result[3]   = t 
                     break
-                dist        = -ti.log(1.0 - ti.random(float)) * inv_maj
-            if t + dist >= near_far[1]:
-                dist = near_far[1] - t
+                
+                t -= ti.log(1.0 - ti.random(float)) * inv_maj
+            if self._type == GridVolume_np.RGB:
+                if channel == 0:
+                    result[:3] = vec3([Tr / pdf, 0, 0])
+                elif channel == 1:
+                    result[:3] = vec3([0, Tr / pdf, 0])
+                else:
+                    result[:3] = vec3([0, 0, Tr / pdf])
+            else:
+                result[:3] = vec3([Tr, Tr, Tr])
         return result
     
     @ti.func
     def eval_tr_ratio_tracking_3d(self, grid: ti.template(), ray_ol: vec3, ray_dl: vec3, near_far: vec2) -> vec3:
-        Tr  = ONES_V3
+        transm = ONES_V3
         if self._type:
             # Step 1: choose one element according to the majorant
-            maj     = 1.0
+            Tr      = 1.0
+            pdf     = 1.0
+            channel = 0
+            maj     = self.majorant[2]
             val     = ti.random(float)
             if val < self.pdf[0]:
                 maj     = self.majorant[0]
+                pdf     = self.pdf[0]
+                channel = 0
             elif val < self.pdf[0] + self.pdf[1]:
                 maj     = self.majorant[1]
+                pdf     = self.pdf[1]
+                channel = 1
             else:
                 maj     = self.majorant[2]
+                pdf     = self.pdf[2]
+                channel = 2
             inv_maj     = 1.0 / maj
+            
             t = near_far[0]
             while True:
-                dist = -ti.log(1.0 - ti.random(float)) * inv_maj
+                t -= ti.log(1.0 - ti.random(float)) * inv_maj
                 
-                if t + dist >= near_far[1]: break
-                t += dist
+                if t >= near_far[1]: break
                 # for mono-chromatic medium, this is 1
                 d = self.density_lookup_3d(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
 
-                Tr *= ti.max(ZERO_V3, 1.0 - d * inv_maj)
+                n_s = rgb_select(d, channel)
+                Tr *= ti.max(0.0, 1.0 - n_s * inv_maj)
 
                 # Russian Roulette
-                if Tr.max() < 0.1:
-                    rr_max_val = Tr.max()
-                    if ti.random(float) >= rr_max_val:
-                        Tr.fill(0)
+                if Tr < 0.1:
+                    if ti.random(float) >= Tr:
+                        Tr = 0.0
                         break
-                    Tr /= rr_max_val
-        return Tr
+                    Tr = 1.0
+            if self._type == GridVolume_np.RGB:
+                if channel == 0:
+                    transm = vec3([Tr / pdf, 0, 0])
+                elif channel == 1:
+                    transm = vec3([0, Tr / pdf, 0])
+                else:
+                    transm = vec3([0, 0, Tr / pdf])
+            else:
+                transm = vec3([Tr, Tr, Tr])
+        return transm
     
