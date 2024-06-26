@@ -32,8 +32,6 @@ __all__ = ["GridVolume_np", "GridVolume"]
 
 FORCE_MONO_COLOR = False
 
-""" TODO: add transform parsing
-"""
 class GridVolume_np:
     NONE = 0
     MONO = 1
@@ -323,9 +321,11 @@ class GridVolume:
             Tr      = 1.0
             pdf     = 1.0
             albedo  = 0.0
+            maj     = 0.0
             channel = 0
-            maj     = self.majorant[2]
             val     = ti.random(float)
+
+            # avoid dynamic indexing on GPU (and array might be moved from local registers to global memory)
             if val <= pdfs[0]:
                 albedo  = self.albedo[0]
                 maj     = self.majorant[0]
@@ -378,9 +378,11 @@ class GridVolume:
             pdfs   /= pdfs.sum()
             Tr      = 1.0
             pdf     = 1.0
+            maj     = 0.0
             channel = 0
-            maj     = self.majorant[2]
             val     = ti.random(float)
+
+            # avoid dynamic indexing on GPU (and array might be moved from local registers to global memory)
             if val <= pdfs[0]:
                 maj     = self.majorant[0]
                 pdf     = pdfs[0]

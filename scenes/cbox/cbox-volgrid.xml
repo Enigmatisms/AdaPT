@@ -9,7 +9,7 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="16"/>
+        <integer name="max_bounce" value="8"/>
         <integer name="num_shadow_ray" value="1"/>    
 
 		<integer name="start_t" value="1"/>       
@@ -162,7 +162,7 @@
 		<rgb name="albedo" value="#F8F8F8"/>
 		<rgb name="density_scaling" value="20.0"/>
 		<rgb name="par" value="0.7"/>
-		<bool name="mono2rgb" value="true"/>
+		<bool name="mono2rgb" value="false"/>
 
 		<transform name="toWorld">
 			<translate x="0.6" y="0.0" z="1.3"/>
