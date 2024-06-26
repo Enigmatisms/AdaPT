@@ -64,6 +64,8 @@ class PathTracer(TracerBase):
         self.stratified_sample  = prop['stratified_sampling']   # whether to use stratified sampling
         self.use_mis            = prop['use_mis']               # whether to use multiple importance sampling
         self.num_shadow_ray     = prop['num_shadow_ray']        # number of shadow samples to trace
+        self.rr_threshold       = prop.get('rr_threshold', 0.1) # threshold of employing RR
+        self.rr_bounce_th       = prop.get('rr_bounce_th', 4)   # minimum number of bounces to start RR
         self.brdf_two_sides     = prop.get('brdf_two_sides', False)
         
         if self.num_shadow_ray > 0:

@@ -134,13 +134,13 @@ class GridVolume_np:
     
     @staticmethod
     def make_colorful_volume(density_grid: np.ndarray, xres: int, yres: int, zres: int):
-        z_coords = np.linspace(0, 0.9, zres, dtype = np.float32).reshape(-1, 1, 1, 1) + 0.1
-        y_coords = np.linspace(0, 0.9, yres, dtype = np.float32).reshape(1, -1, 1, 1) + 0.1
-        x_coords = np.linspace(0, 0.9, xres, dtype = np.float32).reshape(1, 1, -1, 1) + 0.1
+        z_coords = np.linspace(0, 4.0, zres, dtype = np.float32).reshape(-1, 1, 1, 1) + 0.1
+        y_coords = np.linspace(0, 0.5, yres, dtype = np.float32).reshape(1, -1, 1, 1) + 0.1
+        x_coords = np.linspace(0, 0.1, xres, dtype = np.float32).reshape(1, 1, -1, 1) + 0.01
         density_grid = np.concatenate([
-            density_grid,
-            density_grid,
-            density_grid,
+            density_grid * z_coords,
+            density_grid * y_coords,
+            density_grid * x_coords,
         ], axis = -1)
         return density_grid
     

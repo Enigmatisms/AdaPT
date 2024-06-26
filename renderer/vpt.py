@@ -164,8 +164,9 @@ class VolumeRenderer(PathTracer):
                     if ti.static(self.use_rr):
                         # Simple Russian Roullete ray termination
                         max_value = throughput.max()
-                        if ti.random(float) > max_value: break
-                        else: throughput *= 1. / (max_value + 1e-7)    # unbiased calculation
+                        if max_value < self.rr_threshold and bounce >= self.rr_bounce_th:
+                            if ti.random(float) > max_value: break
+                            else: throughput *= 1. / (max_value + 1e-7)    # unbiased calculation
                     else:
                         if throughput.max() < 1e-5: break     # contribution too small, break
                     # Step 2: ray intersection
