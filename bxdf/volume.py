@@ -148,13 +148,19 @@ class GridVolume_np:
     
     def get_shape(self) -> Tuple[int, int, int]:
         return (self.zres, self.yres, self.xres)
+    
+    def get_majorant(self, guard = 0.2, scale_ratio = 1.05):
+        maj       = self.density_grid.max(axis = (0, 1, 2))
+        maj_guard = np.mean(maj) * guard
+        maj       = np.maximum(maj, maj_guard)
+        maj      *= scale_ratio
+        return vec3(maj) if self.type_id == GridVolume_np.RGB else vec3([maj, maj, maj])   
 
     def export(self):
         if self.type_id == GridVolume_np.NONE:
             return GridVolume(_type = 0)
         aabb_mini, aabb_maxi = self.get_aabb()
-        maj = self.density_grid.max(axis = (0, 1, 2))
-        majorant = vec3(maj) if self.type_id == GridVolume_np.RGB else vec3([maj, maj, maj])   
+        majorant = self.get_majorant()
         CONSOLE.log(f"Majorant: {majorant}. PDF: {majorant / majorant.sum()}")      
         # the shape of density grid: (zres, yres, xres, channels)
         return GridVolume(
@@ -164,7 +170,7 @@ class GridVolume_np:
             trans   = vec3(self.offset),
             mini    = vec3(aabb_mini), 
             maxi    = vec3(aabb_maxi),
-            max_idxs = vec3i([self.xres, self.yres, self.zres]),
+            max_idxs = vec3i([self.xres - 1, self.yres - 1, self.zres - 1]),
             majorant = majorant,
             pdf      = majorant / majorant.sum(),
             ph       = PhaseFunction(_type = self.phase_type_id, par = vec3(self.par), pdf = vec3(self.pdf))
@@ -188,7 +194,7 @@ class GridVolume_np:
         ])
         world_point = self.local_to_world(all_points)
         # conservative AABB
-        return world_point.min(axis = 0) - 0.1, world_point.max(axis = 0) + 0.1
+        return world_point.min(axis = 0) - 0.01, world_point.max(axis = 0) + 0.01
 
     
     def __repr__(self):
@@ -257,8 +263,8 @@ class GridVolume:
         tmin = ti.min(t1s, t2s)
         tmax = ti.max(t1s, t2s)
 
-        near_far[0] = ti.max(0, tmin.max()) + 1e-4
-        near_far[1] = ti.min(max_t, tmax.min()) - 1e-4
+        near_far[0] = ti.max(0, tmin.max()) + 1e-5
+        near_far[1] = ti.min(max_t, tmax.min()) - 1e-5
         return near_far
 
     @ti.func
@@ -288,10 +294,10 @@ class GridVolume:
     @ti.func 
     def density_lookup_3d(self, grid: ti.template(), index: vec3, u_offset: vec3) -> vec3:
         """ Stochastic lookup of density (mono-chromatic volume) """
-        idx = ti.cast(ti.floor(index + (u_offset - 0.5)), int)
-        val = ZERO_V3
+        idx   = ti.cast(ti.floor(index + (u_offset - 0.5)), int)
+        val   = ZERO_V3
         if (idx >= 0).all() and (idx <= self.max_idxs).all():
-            val = grid[idx[2], idx[1], idx[0]]
+            val   = grid[idx[2], idx[1], idx[0]]
         return val
     
     @ti.func
@@ -320,12 +326,12 @@ class GridVolume:
             channel = 0
             maj     = self.majorant[2]
             val     = ti.random(float)
-            if val < pdfs[0]:
+            if val <= pdfs[0]:
                 albedo  = self.albedo[0]
                 maj     = self.majorant[0]
                 pdf     = pdfs[0]
                 channel = 0
-            elif val < pdfs[0] + pdfs[1]:
+            elif val <= pdfs[0] + pdfs[1]:
                 albedo  = self.albedo[1]
                 maj     = self.majorant[1]
                 pdf     = pdfs[1]
@@ -342,7 +348,6 @@ class GridVolume:
                 d = self.density_lookup_3d(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
-
                 # Scatter upon real collision
                 n_s = rgb_select(d, channel)
                 if ti.random(float) < n_s * inv_maj:
@@ -376,11 +381,11 @@ class GridVolume:
             channel = 0
             maj     = self.majorant[2]
             val     = ti.random(float)
-            if val < pdfs[0]:
+            if val <= pdfs[0]:
                 maj     = self.majorant[0]
                 pdf     = pdfs[0]
                 channel = 0
-            elif val < pdfs[0] + pdfs[1]:
+            elif val <= pdfs[0] + pdfs[1]:
                 maj     = self.majorant[1]
                 pdf     = pdfs[1]
                 channel = 1
@@ -392,6 +397,7 @@ class GridVolume:
             
             t = near_far[0]
             while True:
+                # problem with coordinates
                 t -= ti.log(1.0 - ti.random(float)) * inv_maj
                 
                 if t >= near_far[1]: break

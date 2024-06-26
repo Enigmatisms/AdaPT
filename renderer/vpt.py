@@ -155,10 +155,11 @@ class VolumeRenderer(PathTracer):
                 color           = vec3([0, 0, 0])
                 throughput      = vec3([1, 1, 1])
                 emission_weight = 1.0
-
+                
                 in_free_space = True
                 bounce = 0
-                while True:
+                surface_bounce = 0
+                while surface_bounce < 1:
                     # for _i in range(self.max_bounce):
                     # Step 1: ray termination test - Only RR termination is allowed
                     max_value = throughput.max()
@@ -178,6 +179,10 @@ class VolumeRenderer(PathTracer):
                     # Calculate mfp, path_beta = transmittance / PDF
                     is_mi, it.min_depth, path_beta = self.sample_mfp(ray_o, ray_d, throughput, it.obj_id, in_free_space, it.min_depth) 
                     if it.obj_id < 0 and not is_mi: break          # exiting world bound
+
+                    if is_mi == 0:
+                        surface_bounce += 1
+
                     hit_point = ray_d * it.min_depth + ray_o
                     throughput *= path_beta         # attenuate first
                     if not is_mi and not self.non_null_surface(it.obj_id):
