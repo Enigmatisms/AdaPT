@@ -7,6 +7,7 @@
 import os
 import numpy as np
 import taichi as ti
+import taichi.math as tm
 import xml.etree.ElementTree as xet
 
 from typing import Tuple
@@ -134,15 +135,33 @@ class GridVolume_np:
     
     @staticmethod
     def make_colorful_volume(density_grid: np.ndarray, xres: int, yres: int, zres: int):
-        z_coords = np.linspace(0, 4.0, zres, dtype = np.float32).reshape(-1, 1, 1, 1) + 0.1
-        y_coords = np.linspace(0, 0.5, yres, dtype = np.float32).reshape(1, -1, 1, 1) + 0.1
-        x_coords = np.linspace(0, 0.1, xres, dtype = np.float32).reshape(1, 1, -1, 1) + 0.01
         density_grid = np.concatenate([
-            density_grid * z_coords,
-            density_grid * y_coords,
-            density_grid * x_coords,
+            density_grid,
+            density_grid,
+            density_grid
         ], axis = -1)
-        return density_grid
+
+        # 创建一个从0到1的渐变数组，表示x轴从左到右
+        half_x = zres // 3
+        grad_l = np.linspace(1, 0, half_x, dtype = np.float32) ** 0.25
+        grad_r = np.linspace(0, 1, zres - half_x, dtype = np.float32) ** 0.1
+
+        # 前半部分，从红色（1, 0, 0）到白色（1, 1, 1）
+        left_half = np.zeros((half_x, 3), dtype = np.float32)
+        left_half[:, 0] = 1  # 红色通道保持1
+        left_half[:, 1] = 1 - grad_l  # 绿色通道从0到1
+        left_half[:, 2] = 1 - grad_l  # 蓝色通道从0到1
+
+        # 后半部分，从白色（1, 1, 1）到蓝色（0, 0, 1）
+        right_half = np.zeros((zres - half_x, 3), dtype = np.float32)
+        right_half[:, 0] = 1 - grad_r  # 红色通道从1到0
+        right_half[:, 1] = 1 - grad_r  # 绿色通道从1到0
+        right_half[:, 2] = 1  # 蓝色通道保持1
+
+        # 将两个部分组合在一起
+        color_gradient = np.vstack((left_half, right_half))
+
+        return density_grid * color_gradient[:, None, None, :]
     
     def get_shape(self) -> Tuple[int, int, int]:
         return (self.zres, self.yres, self.xres)
@@ -298,6 +317,25 @@ class GridVolume:
             val   = grid[idx[2], idx[1], idx[0]]
         return val
     
+    @ti.func 
+    def density_lookup_lerp_3d(self, grid: ti.template(), index: vec3, u_offset: vec3) -> vec3:
+        """ Stochastic lookup of density (mono-chromatic volume) """
+        coord = index + (u_offset - 0.5)
+        idx   = ti.cast(ti.floor(coord), int)
+        coord -= idx
+        val   = ZERO_V3
+        if (idx >= 0).all() and (idx <= self.max_idxs - 1).all():
+            v1 = tm.mix(grid[idx[2], idx[1], idx[0]], grid[idx[2], idx[1], idx[0] + 1], coord[0])
+            v2 = tm.mix(grid[idx[2] + 1, idx[1], idx[0]], grid[idx[2] + 1, idx[1], idx[0] + 1], coord[0])
+            v3 = tm.mix(grid[idx[2], idx[1] + 1, idx[0]], grid[idx[2], idx[1] + 1, idx[0] + 1], coord[0])
+            v4 = tm.mix(grid[idx[2] + 1, idx[1] + 1, idx[0]], grid[idx[2] + 1, idx[1] + 1, idx[0] + 1], coord[0])
+
+            v1 = tm.mix(v1, v2, coord[2])
+            v3 = tm.mix(v3, v4, coord[2])
+
+            val = tm.mix(v1, v3, coord[1])
+        return val
+    
     @ti.func
     def sample_new_rays(self, incid: vec3):
         ret_spec = vec3([1, 1, 1])
@@ -345,7 +383,7 @@ class GridVolume:
 
             t = near_far[0] - ti.log(1.0 - ti.random(float)) * inv_maj
             while t < near_far[1]:
-                d = self.density_lookup_3d(grid, ray_ol + t * ray_dl, vec3([
+                d = self.density_lookup_lerp_3d(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
                 # Scatter upon real collision
@@ -404,7 +442,7 @@ class GridVolume:
                 
                 if t >= near_far[1]: break
                 # for mono-chromatic medium, this is 1
-                d = self.density_lookup_3d(grid, ray_ol + t * ray_dl, vec3([
+                d = self.density_lookup_lerp_3d(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
 

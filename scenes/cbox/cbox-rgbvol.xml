@@ -50,13 +50,13 @@
 	</brdf>
 
 	<brdf type="phong" id="left_wall">
-		<rgb name="k_d" value="#DD2525"/>
+		<rgb name="k_d" value="#BDBDBD"/>
 		<rgb name="k_g" value="10.0"/>
 		<rgb name="k_s" value="#221313"/>
 	</brdf>
 
 	<brdf type="phong" id="right_wall">
-		<rgb name="k_d" value="#25DD25"/>
+		<rgb name="k_d" value="#BDBDBD"/>
 		<rgb name="k_g" value="10.0"/>
 		<rgb name="k_s" value="#132213"/>
 	</brdf>
@@ -69,7 +69,7 @@
 
 	<emitter type="area" id="area">
 		<rgb name="emission" value="50.0, 50.0, 50.0"/>
-		<rgb name="scaler" value="0.1"/>
+		<rgb name="scaler" value="0.12"/>
 	</emitter>
 
 	<shape type="obj">
@@ -114,14 +114,14 @@
 	<volume name="janga" type="mono" phase_type="hg">
 		<string name="density_grid" path="./scenes/volume/janga-smoke-264-136-136.vol"/>
 		<rgb name="albedo" value="#F8F8F8"/>
-		<rgb name="density_scaling" value="15.0"/>
+		<rgb name="density_scaling" value="25.0"/>
 		<rgb name="par" value="0.7"/>
 		<bool name="mono2rgb" value="true"/>
 
 		<transform name="toWorld">
-			<translate x="0.6" y="0.0" z="1.3"/>
-			<rotate type="euler" r="0" p="0.0" y="0"/>
-			<scale x="0.03" y="0.03" z="0.03"/>
+			<translate x="0.35" y="-0.6" z="2.8"/>
+			<rotate type="euler" r="10" p="0.0" y="90"/>
+			<scale x="0.01" y="0.035" z="0.02"/>
 		</transform>
 	</volume>
 
