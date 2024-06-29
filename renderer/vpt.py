@@ -99,7 +99,7 @@ class VolumeRenderer(PathTracer):
         return is_mi, mfp, beta
     
     @ti.func
-    def track_ray(self, cur_ray: vec3, cur_point: vec3, thp: vec3, depth: float):
+    def track_ray(self, cur_ray: vec3, cur_point: vec3, thp, depth: float):
         """ 
             For medium interaction, check if the path to one point is not blocked (by non-null surface object)
             And also we need to calculate the attenuation along the path, e.g.: if the ray passes through

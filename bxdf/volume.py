@@ -25,9 +25,9 @@ vec3i = ti.types.vector(3, int)
 try:
     from vol_loader import vol_file_to_numpy
 except ImportError:
-    CONSOLE.log("[red]:skeleton: Error [/red]: vol_loader is not found, possible reason:")
+    CONSOLE.log("[yellow]:skull: Warning [/yellow]: vol_loader is not found, possible reason:")
     CONSOLE.log(f"module not installed. Use 'python ./setup.py install --user' in {'./bxdf/'}")
-    raise ImportError("vol_loader not found")
+    def vol_file_to_numpy(dummy_x, dummy_y): return None, None
 
 __all__ = ["GridVolume_np", "GridVolume"]
 

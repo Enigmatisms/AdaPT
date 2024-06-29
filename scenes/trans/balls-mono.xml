@@ -19,7 +19,7 @@
 
 		<!-- Transient rendering configuration -->
         <string name="decomposition" value="transient_lit"/>	<!-- Decomposition mode -->				
-        <integer name="sample_count" value="220"/>			<!-- Number of bins -->
+        <integer name="sample_count" value="190"/>			<!-- Number of bins -->
         <float name="min_time" value="0.0"/>					<!-- Starting time for camera -->				
         <float name="interval" value="0.05"/>				<!-- Width of a time bin -->			
 		<!-- End of Transient rendering configuration -->
@@ -97,7 +97,7 @@
 
 	<emitter type="point" id="point">
 		<rgb name="emission" value="70.0, 63.2, 60.3"/>
-		<rgb name="scaler" value="0.6"/>
+		<rgb name="scaler" value="2"/>
 		<point name="center" x="2.78" y="4.8" z="3.0"/>
 	</emitter>
 
