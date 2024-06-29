@@ -9,7 +9,7 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="16"/>
+        <integer name="max_bounce" value="32"/>
         <integer name="num_shadow_ray" value="1"/>    
 
 		<integer name="start_t" value="1"/>       
@@ -18,8 +18,8 @@
         <integer name="end_s" value="100"/>          
 
         <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
-        <float name="rr_threshold" value="0.1"/>          
-        <integer name="rr_bounce_th" value="8"/>          
+        <float name="rr_threshold" value="0.05"/>          
+        <integer name="rr_bounce_th" value="24"/>          
 
 		<string name="accelerator" value="bvh"/>
         <boolean name="anti_alias" value="true"/>       	
@@ -50,13 +50,13 @@
 	</brdf>
 
 	<brdf type="phong" id="left_wall">
-		<rgb name="k_d" value="#BDBDBD"/>
+		<rgb name="k_d" value="#DD2525"/>
 		<rgb name="k_g" value="10.0"/>
 		<rgb name="k_s" value="#221313"/>
 	</brdf>
 
 	<brdf type="phong" id="right_wall">
-		<rgb name="k_d" value="#BDBDBD"/>
+		<rgb name="k_d" value="#25DD25"/>
 		<rgb name="k_g" value="10.0"/>
 		<rgb name="k_s" value="#132213"/>
 	</brdf>
@@ -67,18 +67,37 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<emitter type="area" id="area">
-		<rgb name="emission" value="50.0, 50.0, 50.0"/>
-		<rgb name="scaler" value="0.12"/>
+	<emitter type="area" id="area_red">
+		<rgb name="emission" value="50.0, 5.0, 5.0"/>
+		<rgb name="scaler" value="0.08"/>
+	</emitter>
+
+	<emitter type="area" id="area_green">
+		<rgb name="emission" value="5.0, 50.0, 5.0"/>
+		<rgb name="scaler" value="0.08"/>
+	</emitter>
+
+	<emitter type="area" id="area_blue">
+		<rgb name="emission" value="5.0, 5.0, 50.0"/>
+		<rgb name="scaler" value="0.15"/>
 	</emitter>
 
 	<shape type="obj">
-		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
+		<string name="filename" value="../meshes/cornell/cbox_red_light.obj"/>
 		<ref type="material" id="light"/>
-		<ref type="emitter" id="area"/>
-		<transform name="toWorld">
-			<translate x="0" y="-0.001" z="0"/>
-		</transform>
+		<ref type="emitter" id="area_red"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_green_light.obj"/>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area_green"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/cornell/cbox_blue_light.obj"/>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area_blue"/>
 	</shape>
 
 	<shape type="obj">
@@ -112,16 +131,16 @@
 
 	<!-- Definition of grid volume -->
 	<volume name="janga" type="mono" phase_type="hg">
-		<string name="density_grid" path="./scenes/volume/janga-smoke-264-136-136.vol"/>
+		<string name="density_grid" path="./scenes/volume/embergen_dust_devil_tornado_a_50-256-256-256.vol"/>
 		<rgb name="albedo" value="#F8F8F8"/>
-		<rgb name="density_scaling" value="25.0"/>
-		<rgb name="par" value="0.7"/>
+		<rgb name="density_scaling" value="15.0"/>
+		<rgb name="par" value="0.9"/>
 		<bool name="mono2rgb" value="true"/>
 
 		<transform name="toWorld">
-			<translate x="0.35" y="-0.6" z="2.8"/>
+			<translate x="0.35" y="-0.6" z="4.0"/>
 			<rotate type="euler" r="10" p="0.0" y="90"/>
-			<scale x="0.01" y="0.035" z="0.02"/>
+			<scale x="0.02" y="0.025" z="0.02"/>
 		</transform>
 	</volume>
 

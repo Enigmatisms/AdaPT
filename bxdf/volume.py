@@ -141,24 +141,20 @@ class GridVolume_np:
             density_grid
         ], axis = -1)
 
-        # 创建一个从0到1的渐变数组，表示x轴从左到右
         half_x = zres // 3
-        grad_l = np.linspace(1, 0, half_x, dtype = np.float32) ** 0.25
-        grad_r = np.linspace(0, 1, zres - half_x, dtype = np.float32) ** 0.1
+        grad_l = np.linspace(1, 0, half_x, dtype = np.float32) ** 0.65
+        grad_r = np.linspace(0, 1, zres - half_x, dtype = np.float32) ** 0.6
 
-        # 前半部分，从红色（1, 0, 0）到白色（1, 1, 1）
         left_half = np.zeros((half_x, 3), dtype = np.float32)
-        left_half[:, 0] = 1  # 红色通道保持1
-        left_half[:, 1] = 1 - grad_l  # 绿色通道从0到1
-        left_half[:, 2] = 1 - grad_l  # 蓝色通道从0到1
+        left_half[:, 0] = 1 - grad_l
+        left_half[:, 1] = 1
+        left_half[:, 2] = 1
 
-        # 后半部分，从白色（1, 1, 1）到蓝色（0, 0, 1）
         right_half = np.zeros((zres - half_x, 3), dtype = np.float32)
-        right_half[:, 0] = 1 - grad_r  # 红色通道从1到0
-        right_half[:, 1] = 1 - grad_r  # 绿色通道从1到0
-        right_half[:, 2] = 1  # 蓝色通道保持1
+        right_half[:, 0] = 1
+        right_half[:, 1] = 1
+        right_half[:, 2] = 1 - grad_r
 
-        # 将两个部分组合在一起
         color_gradient = np.vstack((left_half, right_half))
 
         return density_grid * color_gradient[:, None, None, :]
@@ -383,7 +379,7 @@ class GridVolume:
 
             t = near_far[0] - ti.log(1.0 - ti.random(float)) * inv_maj
             while t < near_far[1]:
-                d = self.density_lookup_lerp_3d(grid, ray_ol + t * ray_dl, vec3([
+                d = self.density_lookup_3d(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
                 # Scatter upon real collision
@@ -442,7 +438,7 @@ class GridVolume:
                 
                 if t >= near_far[1]: break
                 # for mono-chromatic medium, this is 1
-                d = self.density_lookup_lerp_3d(grid, ray_ol + t * ray_dl, vec3([
+                d = self.density_lookup_3d(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
 
