@@ -13,6 +13,7 @@ from typing import List
 from la.cam_transform import *
 from tracer.path_tracer import PathTracer
 from emitters.abtract_source import LightSource
+from bxdf.volume import GridVolume_np
 
 from parsers.obj_desc import ObjDescriptor
 from sampler.general_sampling import balance_heuristic
@@ -34,6 +35,20 @@ class VolumeRenderer(PathTracer):
         objects: List[ObjDescriptor], prop: dict, bvh_delay: bool = False
     ):
         super().__init__(emitters, array_info, objects, prop, bvh_delay)
+        self.has_volume = False
+        if prop["volume"]:
+            CONSOLE.log("Loading Grid Volume ...")
+            volume = GridVolume_np(prop["volume"][0])
+            self.density_grid = ti.Vector.field(3, float, volume.get_shape())
+            if volume.type_id not in{ GridVolume_np.MONO, GridVolume_np.RGB}:
+                CONSOLE.log(f"Volume type '{volume.type_name}' is not supported.")
+                raise RuntimeError("Unsupported volume type.")
+            self.has_volume = True
+            self.density_grid.from_numpy(volume.density_grid)
+            self.volume = volume.export()
+            CONSOLE.log(f"Grid volume loaded: {volume}")
+        else:
+            self.density_grid = ti.field(float, (1, 1, 1))
         self.world_scattering = self.world.medium._type >= 0
         
     @ti.func
@@ -57,11 +72,11 @@ class VolumeRenderer(PathTracer):
         return non_null
 
     @ti.func
-    def sample_mfp(self, idx: int, in_free_space: int, depth: float):
+    def sample_mfp(self, ray_o: vec3, ray_d: vec3, thp: vec3, idx: int, in_free_space: int, depth: float):
         """ Mean free path sampling, returns: 
             - whether medium is a valid scattering medium / mean free path
         """
-        is_mi = False
+        is_mi = 0
         mfp   = depth
         beta  = vec3([1., 1., 1.])
         # whether the world is valid for scattering: inside the free space and world has scattering medium
@@ -75,10 +90,16 @@ class VolumeRenderer(PathTracer):
             elif not in_free_space:
                 is_mi, mfp, beta = self.bsdf_field[idx].medium.sample_mfp(depth)
             # use medium to sample / calculate transmittance
+        if ti.static(self.has_volume):     # grid volume event might override the world medium event (not physically based, but simple to implement)
+            result = self.volume.sample_mfp(self.density_grid, ray_o, ray_d, thp, depth)
+            if result[3] > 0:           # in case grid volume is nested with world medium
+                is_mi = 2
+                mfp   = result[3]
+                beta  = result[:3]
         return is_mi, mfp, beta
     
     @ti.func
-    def track_ray(self, ray, start_p, depth):
+    def track_ray(self, cur_ray: vec3, cur_point: vec3, thp: vec3, depth: float):
         """ 
             For medium interaction, check if the path to one point is not blocked (by non-null surface object)
             And also we need to calculate the attenuation along the path, e.g.: if the ray passes through
@@ -86,9 +107,10 @@ class VolumeRenderer(PathTracer):
             FIXME: the speed of this method should be boosted
         """
         tr = vec3([1., 1., 1.])
+        if ti.static(self.has_volume):     # grid volume transmittance
+            tr = self.volume.transmittance(self.density_grid, cur_point, cur_ray, thp, depth)
+
         in_free_space = True
-        cur_point = start_p
-        cur_ray = ray
         acc_depth = 0.0
         for _i in range(7):             # maximum tracking depth = 7 (corresponding to at most 2 clouds of smoke)
             it = self.ray_intersect(cur_ray, cur_point, depth)
@@ -133,19 +155,24 @@ class VolumeRenderer(PathTracer):
                 color           = vec3([0, 0, 0])
                 throughput      = vec3([1, 1, 1])
                 emission_weight = 1.0
-
+                
                 in_free_space = True
                 bounce = 0
                 while True:
                     # for _i in range(self.max_bounce):
-                    # Step 1: ray termination test - Only RR termination is allowed
-                    max_value = throughput.max()
-                    if ti.random(float) > max_value: break
-                    else: throughput *= 1. / ti.max(max_value, 1e-7)    # unbiased calculation
+                    # Step 1: ray termination test
+                    if ti.static(self.use_rr):
+                        # Simple Russian Roullete ray termination
+                        max_value = throughput.max()
+                        if max_value < self.rr_threshold and bounce >= self.rr_bounce_th:
+                            if ti.random(float) > max_value: break
+                            else: throughput *= 1. / (max_value + 1e-7)    # unbiased calculation
+                    else:
+                        if throughput.max() < 1e-5: break     # contribution too small, break
                     # Step 2: ray intersection
                     it = self.ray_intersect(ray_d, ray_o)
                     if it.obj_id < 0:     
-                        if not self.world_scattering: break     # nothing is hit, break
+                        if ti.static(not self.world_scattering and not self.has_volume): break     # nothing is hit, break
                         else:                                   # the world is filled with scattering medium
                             it.min_depth = self.world_bound_time(ray_o, ray_d)
                             in_free_space = True
@@ -154,8 +181,9 @@ class VolumeRenderer(PathTracer):
                         in_free_space = tm.dot(it.n_g, ray_d) < 0
                     # Step 3: check for mean free path sampling
                     # Calculate mfp, path_beta = transmittance / PDF
-                    is_mi, it.min_depth, path_beta = self.sample_mfp(it.obj_id, in_free_space, it.min_depth) 
+                    is_mi, it.min_depth, path_beta = self.sample_mfp(ray_o, ray_d, throughput, it.obj_id, in_free_space, it.min_depth) 
                     if it.obj_id < 0 and not is_mi: break          # exiting world bound
+
                     hit_point = ray_d * it.min_depth + ray_o
                     throughput *= path_beta         # attenuate first
                     if not is_mi and not self.non_null_surface(it.obj_id):
@@ -180,7 +208,7 @@ class VolumeRenderer(PathTracer):
                             to_emitter  = emit_pos - hit_point
                             emitter_d   = to_emitter.norm()
                             light_dir   = to_emitter / emitter_d
-                            tr, _ = self.track_ray(light_dir, hit_point, emitter_d)
+                            tr, _ = self.track_ray(light_dir, hit_point, throughput, emitter_d)
                             shadow_int *= tr
                             direct_spec = self.eval(it, ray_d, light_dir, is_mi, in_free_space)
                         else:       # the only situation for being invalid, is when there is only one source and the ray hit the source

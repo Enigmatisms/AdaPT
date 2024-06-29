@@ -107,8 +107,6 @@ class TaichiSource:
                 
                 if ti.static(HEMISPHERE_SAMPLE_SPHERE):
                     to_hit    = (hit_pos - center).normalized()
-                    # the pdf here can be viewed as being both both sa & area measure
-                    # since for a unit sphere, different unit solid angle extends to the same amount of area
                     local_dir, pdf = uniform_sphere()
                     normal, _ = delocalize_rotate(to_hit, local_dir)
                     ret_pos   = center + normal * radius

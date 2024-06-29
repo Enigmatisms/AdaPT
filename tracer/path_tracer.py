@@ -9,7 +9,6 @@ import os
 import sys
 sys.path.append("..")
 
-import tqdm
 import numpy as np
 import taichi as ti
 import taichi.math as tm
@@ -22,6 +21,7 @@ from emitters.abtract_source import LightSource, TaichiSource
 
 from bxdf.brdf import BRDF
 from bxdf.bsdf import BSDF, BSDF_np
+from bxdf.volume import GridVolume_np
 from bxdf.texture import Texture, Texture_np
 from parsers.opts import get_options
 from parsers.obj_desc import ObjDescriptor
@@ -31,7 +31,7 @@ from renderer.constants import TRANSPORT_UNI, INV_2PI, INV_PI, INVALID
 from sampler.general_sampling import *
 from utils.tools import TicToc
 from tracer.interaction import Interaction
-from tracer.ti_bvh import LinearBVH, LinearNode, export_python_bvh
+from tracer.ti_bvh import LinearBVH, LinearNode
 
 from rich.console import Console
 CONSOLE = Console(width = 128)
@@ -64,6 +64,8 @@ class PathTracer(TracerBase):
         self.stratified_sample  = prop['stratified_sampling']   # whether to use stratified sampling
         self.use_mis            = prop['use_mis']               # whether to use multiple importance sampling
         self.num_shadow_ray     = prop['num_shadow_ray']        # number of shadow samples to trace
+        self.rr_threshold       = prop.get('rr_threshold', 0.1) # threshold of employing RR
+        self.rr_bounce_th       = prop.get('rr_bounce_th', 4)   # minimum number of bounces to start RR
         self.brdf_two_sides     = prop.get('brdf_two_sides', False)
         
         if self.num_shadow_ray > 0:
@@ -89,6 +91,8 @@ class PathTracer(TracerBase):
         # FIXME: I might need to dive deeper, this might not be appropriate
         # maybe we should opt for environment map (env lighting)
         self.roughness_map = Texture.field()                                # TODO: this is useless for now
+
+        self.volume = GridVolume_np(None).export()
 
         ti.root.dense(ti.i, self.src_num).place(self.src_field)             # Light source Taichi storage
         self.obj_nodes = ti.root.bitmasked(ti.i, self.num_objects)
@@ -433,10 +437,13 @@ class PathTracer(TracerBase):
         ret_pdf  = 1.0
         is_specular = False
         if is_mi:
-            if in_free_space:       # sample world medium
-                ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
-            else:                   # sample object medium
-                ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].medium.sample_new_rays(incid)
+            if is_mi > 1:               # well this is..., I know it is ugly but...
+                ret_dir, ret_spec, ret_pdf = self.volume.sample_new_rays(incid)
+            else:
+                if in_free_space:       # sample world medium
+                    ret_dir, ret_spec, ret_pdf = self.world.medium.sample_new_rays(incid)
+                else:                   # sample object medium
+                    ret_dir, ret_spec, ret_pdf = self.bsdf_field[it.obj_id].medium.sample_new_rays(incid)
         else:                       # surface sampling
             if ti.is_active(self.obj_nodes, it.obj_id):      # active means the object is attached to BRDF
                 if ti.static(self.brdf_two_sides):

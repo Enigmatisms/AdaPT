@@ -23,6 +23,11 @@ __all__ = ['Medium', 'Medium_np']
 
 class Medium_np:
     __type_mapping = {"hg": 0, "multi-hg": 1, "rayleigh": 2, "mie": 3, "transparent": -1}
+
+    @staticmethod
+    def is_supported_type(_type: str):
+        return Medium_np.__type_mapping.get(_type, None)
+    
     def __init__(self, elem: xet.Element, is_world = False):
         """
             Without spectral information, Rayleigh scattering here might not be physically-based

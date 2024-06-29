@@ -45,13 +45,14 @@ class Renderer(PathTracer):
                 color           = vec3([0, 0, 0])
                 contribution    = vec3([1, 1, 1])
                 emission_weight = 1.0
-                for _i in range(self.max_bounce):
+                for bounce in range(self.max_bounce):
                     if it.is_ray_not_hit(): break                    # nothing is hit, break
                     if ti.static(self.use_rr):
                         # Simple Russian Roullete ray termination
                         max_value = contribution.max()
-                        if ti.random(float) > max_value: break
-                        else: contribution *= 1. / (max_value + 1e-7)    # unbiased calculation
+                        if max_value < self.rr_threshold and bounce >= self.rr_bounce_th:
+                            if ti.random(float) > max_value: break
+                            else: contribution *= 1. / (max_value + 1e-7)    # unbiased calculation
                     else:
                         if contribution.max() < 1e-4: break     # contribution too small, break
                     hit_point   = ray_d * it.min_depth + ray_o

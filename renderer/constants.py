@@ -34,6 +34,7 @@ DEG2RAD = pi / 180.
 
 ZERO_V3 = vec3([0, 0, 0])
 ONES_V3 = vec3([1, 1, 1])
+EPSL_V3 = vec3([1e-4, 1e-4, 1e-4])
 INVALID = vec3([-1, -1, -1])
 AXIS_X  = vec3([1, 0, 0])
 AXIS_Y  = vec3([0, 1, 0])
