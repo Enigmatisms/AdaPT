@@ -1,4 +1,4 @@
-<p align="center"><img src="https://user-images.githubusercontent.com/46109954/231167203-dc5d7efa-85b7-4d04-b00f-2984051bed17.png" style="zoom: 40%;" /></p>
+# AdaPT
 
 ---
 
@@ -40,22 +40,13 @@ Bunny scenes are not uploaded in the repo (90k+ primitives).
 | :------------------------------------: | :---------------------------------: | :------------------------------------: |
 | ![](./assets/adapt-cornell-sphere.png) | ![](./assets/adapt-cornell-box.png) | ![pbr-big-bdpt](https://user-images.githubusercontent.com/126778364/225679926-f75aab9f-0f47-4f45-ab4a-3ea7eaf34055.png)|
 
-
-##### Console output
-
-Powered by rich console. Note that the loading speed bottleneck (in the figure) no longer exists after [PR #19](https://github.com/Enigmatisms/AdaPT/pull/19) ! 
-
-![Screenshot from 2023-05-31 12-36-59](https://github.com/Enigmatisms/AdaPT/assets/46109954/963448af-da1b-422d-bcf7-e44aa4808973)
-
-
-
 ##### Transient state rendering
 
 Note that the gifs presented here are made by compressed jpeg files and optimized (compressed gif). The actual number of images for making the gif is divided by 2, due to the large size of the resulting gif.
 
 |         Transient balls (camera unwarped[^foot])          |         Transient cornell box (camera warped[^foot])         |
 | :------------------------------------: | :---------------------------------: |
-|![ezgif-2-aa699e249c](https://github.com/Enigmatisms/AdaPT/assets/46109954/1bcc24c8-5fb0-496c-a6b4-dde5437056d3)|![ezgif-4-ab2bd63172](https://user-images.githubusercontent.com/126778364/226910971-3764eb68-9e29-41bd-894d-4a27e9dc49d7.gif)|
+|![ezgif-6-ae875d810c](https://github.com/Enigmatisms/AdaPT/assets/46109954/6f952018-a487-4b82-84c9-5f8c88f525f3)|![ezgif-4-ab2bd63172](https://user-images.githubusercontent.com/126778364/226910971-3764eb68-9e29-41bd-894d-4a27e9dc49d7.gif)|
 
 [^foot]: 'Camera unwarped' means the transient profile shows the time when a position in the scene is *hit* by emitter ray. 'Camera warped' means the transient profile shows the total time of a position being hit by the emitter ray which should finally transmits to the camera.
 
