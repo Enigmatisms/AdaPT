@@ -2,9 +2,14 @@
 
 ---
 
-**Ada** **P**ath **T**racer is a simple Monte Carlo path tracing renderer based on [Taichi Lang](https://www.taichi-lang.org/), with which you can play easily. The name `AdaPT` is given by my GF and I think this name is brilliant. Currently, this renderer stops at version 1.5.x, since I think I should focus on something else until we have a better version of the backend (Taichi).
+**Ada** **P**ath **T**racer is a simple Monte Carlo path tracing renderer based on [Taichi Lang](https://www.taichi-lang.org/), with which you can play easily. The name `AdaPT` is given by my GF and I think this name is brilliant. Currently, this renderer stops at version 1.6.0, since I think I should focus on something else until we have a better version of the backend (Taichi).
 
-This renderer is implemented based on **MY OWN** understanding of path tracing and other CG knowledge, therefore I **DO NOT** guarantee usability. The output results look decent nevertheless:
+This renderer is implemented based on **MY OWN** understanding of path tracing and other CG knowledge and is presented with completeness, check the features supported below!
+
+Taichi-lang requirements:
+- Tested on Taichi 1.4.x - 1.6.x.
+- 1.7.x can be used, too. Yet I noticed a significant performance drop in compilation (an with strange warnings unable to be located) but slight runtime performance boost. It is therefore not suggested to run with Taichi-lang 1.7.x.
+- Further development (and support for future Taichi-lang versions): currently not on the agenda
 
 ##### Steady state rendering
 
@@ -87,7 +92,7 @@ BTW, I am just a starter in CG (ray-tracing stuffs) and Taichi Lang, so there WI
 [![Top contributors](https://images.repography.com/41004045/Enigmatisms/AdaPT/recent-activity/fVqlnsVIVw6cNJn7ru5Ony241hiQ-LlfHO1r78JV23M/j2RaKrB53Y5oHM9SSkCt-BypoGCgGiv2DO6gNPeewxQ_users.svg)](https://github.com/Enigmatisms/AdaPT/graphs/contributors)
 
 Other branches:
-- `ad`: support for inverse rendering (automatic differentiable feature from Taichi), but due to the AD support of Taichi being too... lame (I think), there will be strange exceptions preventing using differentiable rendering.
+- `ad`: support for inverse rendering (automatic differentiable feature from Taichi), but I'm not able to make it work in this repo, there will be strange exceptions preventing using differentiable rendering.
 - `more`: BSDF mixture model (mixing different BSDFs). The BSDF management is entirely rewritten, but the code is slow for both runtime and compile time performance though it indeed supports more interesting features. I figure that since mixture is rarely used, we should opt for faster implementation.
 
 ---
