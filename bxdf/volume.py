@@ -358,6 +358,7 @@ class GridVolume:
             maj     = 0.0
             channel = 0
             val     = ti.random(float)
+            w_sum   = 0.0
 
             # avoid dynamic indexing on GPU (and array might be moved from local registers to global memory)
             if val <= pdfs[0]:
@@ -379,15 +380,21 @@ class GridVolume:
 
             t = near_far[0] - ti.log(1.0 - ti.random(float)) * inv_maj
             while t < near_far[1]:
+                w_sum += 1.0
                 d = self.density_lookup_3d(grid, ray_ol + t * ray_dl, vec3([
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
                 # Scatter upon real collision
                 n_t = rgb_select(d, channel)
-                if ti.random(float) < n_t * inv_maj:
-                    Tr       *= albedo
+                inv_w_sum = 1.0 / w_sum
+                if ti.random(float) < n_t * inv_maj * inv_w_sum:
+                    Tr       *= albedo * w_sum
                     result[3] = t 
                     break
+                else:
+                    sigma_n   = maj - n_t
+                    n_ratio   = sigma_n * inv_maj
+                    Tr       *= n_ratio / (1.0 - inv_w_sum + inv_w_sum * n_ratio)
                 
                 t -= ti.log(1.0 - ti.random(float)) * inv_maj
             if self._type == GridVolume_np.RGB:
