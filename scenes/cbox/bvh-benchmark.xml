@@ -9,10 +9,11 @@
 		<float name="far_clip" value="2000"/>
 		<float name="fov" value="39.3077"/>
         <integer name="sample_count" value="128"/>
-        <integer name="max_bounce" value="12"/>
+        <integer name="max_bounce" value="8"/>
         <integer name="num_shadow_ray" value="1"/>       
 
-        <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
+        <string name="accelerator" value="bvh"/>       
+        <boolean name="use_rr" value="false"/>				<!-- Whether to use Russian roulette ray termination -->
         <boolean name="anti_alias" value="true"/>       	
         <boolean name="stratified_sampling" value="true"/>	<!-- TODO: stratified sampling only implemented for pixel sampling -->
         <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
@@ -31,8 +32,8 @@
 		<float name="sample_extent" value="0.2"/>
 
 		<film type="film">
-			<integer name="width" value="512"/>
-			<integer name="height" value="512"/>
+			<integer name="width" value="1024"/>
+			<integer name="height" value="1024"/>
 			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
 			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
 			<integer name="crop_rx" value="0"/>		<!-- Crop half radius for x-axis -->
@@ -70,25 +71,29 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<!-- <emitter type="area" id="area">
+	<bsdf type="det-refraction" id="bunny">
+		<rgb name="k_d" value="0.99, 0.99, 0.99"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.5"/>
+		</medium>
+	</bsdf>
+
+	<emitter type="area" id="area">
 		<rgb name="emission" value="50.0, 50.0, 50.0"/>
 		<rgb name="scaler" value="1.0"/>
-	</emitter> -->
-
-	<emitter type="point" id="point">
-		<rgb name="emission" value="60.0, 60.0, 60.0"/>
-		<rgb name="scaler" value="0.2"/>
-		<point name="center" x="2.779" y="4.5" z="3"/>
 	</emitter>
 
-	<!-- <shape type="obj">
+	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_luminaire.obj"/>
 		<transform name="toWorld">
 			<translate x="0" y="-0.001" z="0"/>
 		</transform>
 		<ref type="material" id="light"/>
 		<ref type="emitter" id="area"/>
-	</shape> -->
+	</shape>
 
 	<shape type="obj">
 		<string name="filename" value="../meshes/cornell/cbox_floor.obj"/>
@@ -96,6 +101,16 @@
 		<transform name="toWorld">
 			<translate x="0" y="0.0" z="0"/>
 		</transform>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/bvh-benchmark/bunny-full.obj"/>
+		<ref type="material" id="bunny"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/bvh-benchmark/bunny.obj"/>
+		<ref type="material" id="bunny"/>
 	</shape>
 
 	<shape type="obj">

@@ -225,12 +225,12 @@ if __name__ == "__main__":
             viz.set_rotation(trans_r)
             last_r = trans_r.copy()
         forward, lateral, elevate = viz.local_to_global()
-        if   window.is_pressed("w"):        viz.cam_t[None] += 0.2 * forward
-        elif window.is_pressed("s"):        viz.cam_t[None] -= 0.2 * forward
-        elif window.is_pressed("a"):        viz.cam_t[None] += 0.2 * lateral
-        elif window.is_pressed("d"):        viz.cam_t[None] -= 0.2 * lateral
-        elif window.is_pressed(tui.SPACE):  viz.cam_t[None] += 0.2 * elevate
-        elif window.is_pressed(tui.SHIFT):  viz.cam_t[None] -= 0.2 * elevate
+        if   window.is_pressed("w"):        viz.cam_t[None] += 0.05 * forward
+        elif window.is_pressed("s"):        viz.cam_t[None] -= 0.05 * forward
+        elif window.is_pressed("a"):        viz.cam_t[None] += 0.05 * lateral
+        elif window.is_pressed("d"):        viz.cam_t[None] -= 0.05 * lateral
+        elif window.is_pressed(tui.SPACE):  viz.cam_t[None] += 0.05 * elevate
+        elif window.is_pressed(tui.SHIFT):  viz.cam_t[None] -= 0.05 * elevate
         elif window.is_pressed(tui.ESCAPE): window.running = False
         
         viz.render()

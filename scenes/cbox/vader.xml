@@ -29,8 +29,8 @@
         <integer name="end_s" value="100"/>   
 
 		<film type="film">
-			<integer name="width" value="750"/>
-			<integer name="height" value="750"/>
+			<integer name="width" value="768"/>
+			<integer name="height" value="768"/>
 			<integer name="crop_x" value="256"/>			<!-- Crop center for x-axis -->
 			<integer name="crop_y" value="256"/>			<!-- Crop center for y-axis -->
 			<integer name="crop_rx" value="0"/>		<!-- Crop half radius for x-axis -->
@@ -69,7 +69,7 @@
 	</brdf>
 
 	<brdf type="specular" id="mirror">
-		<rgb name="k_d" value="#DEDEDE"/>
+		<rgb name="k_d" value="0.9"/>
 		<rgb name="k_g" value="1.0"/>
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
@@ -92,8 +92,8 @@
 		<rgb name="k_s" value="0.0"/>
 	</brdf>
 
-	<bsdf type="lambertian" id="glass">
-		<rgb name="k_d" value="#EAEAEA"/>
+	<bsdf type="det-refraction" id="glass">
+		<rgb name="k_d" value="0.99"/>
 		<medium type="transparent">
 			<rgb name="u_a" value="0.0"/>
 			<rgb name="u_s" value="0.0"/>
@@ -110,7 +110,7 @@
 
 	<emitter type="area" id="area1">
 		<rgb name="emission" value="50.0, 50.0, 50.0"/>
-		<rgb name="scaler" value="0.8"/>
+		<rgb name="scaler" value="1.2"/>
 	</emitter>
 
 	<emitter type="area" id="area2">
@@ -133,7 +133,7 @@
 	<shape type="obj">
 		<string name="filename" value="../meshes/ite-orb/big-floor.obj"/>
 		<ref type="material" id="floor"/>
-		<ref type="texture" id="wood"/>
+		<!-- <ref type="texture" id="wood"/> -->
 	</shape>
 
 	<shape type="obj">
@@ -141,7 +141,7 @@
 		<transform name="toWorld">
 			<rotate type="euler" r="0.0" p="0.0" y="0"/>
 		</transform>
-		<ref type="material" id="new-glossy"/>
+		<ref type="material" id="glass"/>
 		<!-- <ref type="material" id="white"/> -->
 	</shape>
 

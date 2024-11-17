@@ -1,0 +1,110 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- A test file for mitsuba-like scene xml file parser -->
+<!-- Author: Qianyue He / Original credit goes to Wenzel Jakob -->
+<!-- Only Steady state rendering are supported -->
+<!-- Only RGB or rgb spectrums are supported -->
+<scene version="1.1">
+	<sensor type="perspective">
+		<float name="near_clip" value="0.001"/>
+		<float name="far_clip" value="2000"/>
+		<float name="fov" value="35.854"/>
+        <integer name="sample_count" value="128"/>
+        <integer name="max_bounce" value="16"/>
+        <integer name="num_shadow_ray" value="2"/>       
+		<string name="accelerator" value="bvh"/>     
+
+        <boolean name="use_rr" value="true"/>				<!-- Whether to use Russian roulette ray termination -->
+        <boolean name="anti_alias" value="true"/>       	
+        <boolean name="stratified_sampling" value="true"/>
+        <boolean name="use_mis" value="true"/>				<!-- Whether to use multiple importance sampling -->
+		
+		<transform name="toWorld">
+			<lookat target="-0.07223672, -0.0328458, -0.08343023" origin="-0.67170215, 0.56316888, 0.45080543" up="0, 1, 0"/>
+		</transform>
+
+		<film type="film">
+			<integer name="width" value="640"/>
+			<integer name="height" value="640"/>
+			<integer name="sub_samples" value="8"/>
+		</film>
+	</sensor>
+
+	<brdf type="lambertian" id="floor">
+		<rgb name="k_d" value="#BCBCBC"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<brdf type="lambertian" id="light">
+		<rgb name="k_d" value="#555555"/>
+		<rgb name="k_g" value="1.0"/>
+		<rgb name="k_s" value="0.0"/>
+	</brdf>
+
+	<bsdf type="det-refraction" id="glass">
+		<rgb name="k_d" value="#FAFAFA"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.5"/>
+		</medium>
+	</bsdf>
+
+	<bsdf type="det-refraction" id="wine">
+		<rgb name="k_d" value="#722F37"/>
+		<medium type="hg">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="1"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.4"/>
+		</medium>
+	</bsdf>
+
+	<emitter type="area" id="area">
+		<rgb name="emission" value="70.0, 63.2, 60.3"/>
+		<rgb name="scaler" value="16"/>
+	</emitter>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/whiskey/light.obj"/>
+		<ref type="material" id="light"/>
+		<ref type="emitter" id="area"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/whiskey/high-bottle.obj"/>
+		<ref type="material" id="glass"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/whiskey/low-bottle.obj"/>
+		<ref type="material" id="glass"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/whiskey/wine-bottle.obj"/>
+		<ref type="material" id="glass"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/whiskey/wine.obj"/>
+		<ref type="material" id="wine"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="../meshes/whiskey/floor.obj"/>
+		<ref type="material" id="floor"/>
+	</shape>
+
+	<world name="yes!">
+		<rgb name="skybox" value="0.0"/>
+		<rgb name="ambient" value="0.0"/>
+		<medium type="transparent">
+			<rgb name="u_a" value="0.0"/>
+			<rgb name="u_s" value="0.0"/>
+			<rgb name="par" value="0.0"/>
+			<float name="ior" value="1.0"/>
+		</medium>
+	</world>
+</scene>

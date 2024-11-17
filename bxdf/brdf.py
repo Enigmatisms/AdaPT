@@ -402,7 +402,8 @@ class BRDF:
             dot_out = tm.dot(ray_out, it.n_s)
             refra_out, cos_r2 = snell_refraction(ray_out, it.n_s, dot_out, 1.0, self.k_g[2])    # always valid
             out_ref_F = fresnel_equation(1.0, self.k_g[2], ti.abs(dot_out), ti.sqrt(cos_r2))
-            ret_spec = self.eval_oren_nayar(it, refra_in, refra_out) * ((1. - out_ref_F) * (1. - in_ref_F))
+            # originally, it is (1 - in_ref_F) * (1 - out_ref_F)
+            ret_spec = self.eval_oren_nayar(it, refra_in, refra_out) * (1. - ti.max(in_ref_F, out_ref_F))
         return ret_spec
     
     @ti.func

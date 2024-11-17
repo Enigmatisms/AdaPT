@@ -383,8 +383,8 @@ class GridVolume:
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
                 # Scatter upon real collision
-                n_s = rgb_select(d, channel)
-                if ti.random(float) < n_s * inv_maj:
+                n_t = rgb_select(d, channel)
+                if ti.random(float) < n_t * inv_maj:
                     Tr       *= albedo
                     result[3] = t 
                     break
@@ -442,8 +442,8 @@ class GridVolume:
                     ti.random(float), ti.random(float), ti.random(float)
                 ]))
 
-                n_s = rgb_select(d, channel)
-                Tr *= ti.max(0.0, 1.0 - n_s * inv_maj)
+                n_t = rgb_select(d, channel)
+                Tr *= ti.max(0.0, 1.0 - n_t * inv_maj)
 
                 # Russian Roulette
                 if Tr < 0.1:
