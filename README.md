@@ -2,6 +2,14 @@
 
 ---
 
+This renderer, though fully operationing with different version of Taichi lang and different system envs, **is now archived**. 
+
+There will be no more further development for this repo, except some bug fixes, should any get found. My [CUDA-PT](https://github.com/Enigmatisms/cuda-pt) is an upgrade both in functionalities and performance, though both projects are educational. Please refer to [CUDA-PT](https://github.com/Enigmatisms/cuda-pt), if you are interested in a pure GPU path tracer, with nanobind python binding support. The state of archiving might be temporarily lifted, when there is a need for bug fixes. 
+
+**Issues and PRs** will not be accepted in this repo any more, so if you do want to open one, please go to [AdaptiveGallery](https://github.com/Enigmatisms/AdaptiveGallery) where I host some of the results from this repo.
+
+---
+
 **Ada** **P**ath **T**racer is a simple Monte Carlo path tracing renderer based on [Taichi Lang](https://www.taichi-lang.org/), with which you can play easily. The name `AdaPT` is given by my GF and I think this name is brilliant. Currently, this renderer stops at version 1.6.0, since I think I should focus on something else until we have a better version of the backend (Taichi).
 
 This renderer is implemented based on **MY OWN** understanding of path tracing and other CG knowledge and is presented with completeness, check the features supported below!
